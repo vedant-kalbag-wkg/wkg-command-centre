@@ -10,10 +10,20 @@ export async function writeAuditLog(
   entry: {
     actorId: string;
     actorName: string;
-    entityType: "kiosk" | "location" | "installation" | "user";
+    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import";
     entityId: string;
     entityName: string;
-    action: "create" | "update" | "archive" | "assign" | "unassign" | "delete" | "merge";
+    action:
+      | "create"
+      | "update"
+      | "archive"
+      | "assign"
+      | "unassign"
+      | "delete"
+      | "merge"
+      | "stage"
+      | "commit"
+      | "cancel";
     field?: string;
     oldValue?: string;
     newValue?: string;

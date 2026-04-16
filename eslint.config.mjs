@@ -35,6 +35,10 @@ const eslintConfig = defineConfig([
       "src/db/schema.ts",
       "src/db/seed*.ts",
       "src/db/test-*.ts",
+      // Phase 1 M4 — sales CSV import pipeline legitimately inserts into
+      // salesRecords inside an admin-only transaction. No scoping applies
+      // (admins bypass). See docs/plans/2026-04-16-phase-1-m4-csv.md.
+      "src/app/(app)/settings/data-import/sales/**",
     ],
     plugins: {
       wkg: {
