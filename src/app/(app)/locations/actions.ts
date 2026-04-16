@@ -3,7 +3,12 @@
 import { z } from "zod/v4";
 import { db } from "@/db";
 import { locations, kioskAssignments, kiosks, user } from "@/db/schema";
-import { requireRole, canAccessSensitiveFields, redactSensitiveFields } from "@/lib/rbac";
+import {
+  requireRole,
+  canAccessSensitiveFields,
+  redactSensitiveFields,
+  type Role,
+} from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
 import { eq, isNull, and, desc } from "drizzle-orm";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -180,7 +185,10 @@ export async function getLocation(id: string): Promise<
     };
 
     // Apply role-based redaction for sensitive fields
-    const redacted = redactSensitiveFields(locationData, session.user.role ?? "viewer");
+    const userType =
+      (session.user as { userType?: "internal" | "external" }).userType ?? "internal";
+    const role = (session.user.role as Role | null) ?? "viewer";
+    const redacted = redactSensitiveFields(locationData, { userType, role });
 
     return { location: redacted as LocationWithRelations };
   } catch (error) {
@@ -201,7 +209,10 @@ export async function updateLocationField(
     // Banking fields require canAccessSensitiveFields check
     const bankingFields = ["bankingDetails"];
     if (bankingFields.includes(field)) {
-      if (!canAccessSensitiveFields(session.user.role ?? "viewer")) {
+      const userType =
+        (session.user as { userType?: "internal" | "external" }).userType ?? "internal";
+      const role = (session.user.role as Role | null) ?? "viewer";
+      if (!canAccessSensitiveFields({ userType, role })) {
         return { error: "Forbidden: insufficient permissions for banking fields" };
       }
     }

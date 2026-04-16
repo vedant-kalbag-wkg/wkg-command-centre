@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { shouldGateExternalUser } from "@/lib/auth/gating";
 
 export async function proxy(request: NextRequest) {
   const session = await auth.api.getSession({
@@ -18,6 +19,15 @@ export async function proxy(request: NextRequest) {
 
   if (session && isAuthRoute) {
     return NextResponse.redirect(new URL("/kiosks", request.url));
+  }
+
+  // External-user gating: external users may only access /portal/**, auth
+  // routes, and root. Everything else redirects to the portal stub.
+  if (session && (session.user as { userType?: "internal" | "external" }).userType === "external") {
+    const p = request.nextUrl.pathname;
+    if (shouldGateExternalUser("external", p)) {
+      return NextResponse.redirect(new URL("/portal/coming-soon", request.url));
+    }
   }
 
   return NextResponse.next();
