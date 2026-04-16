@@ -10,7 +10,12 @@ import {
   numeric,
   primaryKey,
   uniqueIndex,
+  unique,
+  index,
+  date,
+  time,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 // =============================================================================
 // Better Auth tables
@@ -31,6 +36,10 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
+  // Phase 1 — user classification (internal staff vs external hotel users)
+  userType: text("user_type", { enum: ["internal", "external"] })
+    .notNull()
+    .default("internal"),
 });
 
 export const session = pgTable("session", {
@@ -160,6 +169,14 @@ export const locations = pgTable("locations", {
   internalPocId: text("internal_poc_id").references(() => user.id),
   status: text("status"),
   customFields: jsonb("custom_fields").$type<Record<string, string>>(),
+  // Phase 1 M1 Task 1.5 — hotel dimension fields (ported from data-dashboard analytics schema)
+  numRooms: integer("num_rooms"),
+  hotelAddress: text("hotel_address"),
+  liveDate: timestamp("live_date"),
+  launchPhase: text("launch_phase"),
+  keyContactName: text("key_contact_name"),
+  keyContactEmail: text("key_contact_email"),
+  financeContact: text("finance_contact"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -321,4 +338,371 @@ export const duplicateDismissals = pgTable(
   (t) => [
     uniqueIndex("duplicate_dismissals_pair_idx").on(t.locationAId, t.locationBId),
   ]
+);
+
+// =============================================================================
+// Phase 1 — User scopes (dimension-based access scoping)
+// =============================================================================
+
+// INVARIANT: users with userType='external' MUST have >=1 row in userScopes.
+// Enforced in invite-accept handler (src/lib/auth/invite.ts) and in scopedQuery().
+// Not enforced at DB layer because insert-ordering makes a CHECK constraint impractical.
+export const userScopes = pgTable(
+  "user_scopes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    dimensionType: text("dimension_type", {
+      enum: [
+        "hotel_group",
+        "location",
+        "region",
+        "product",
+        "provider",
+        "location_group",
+      ],
+    }).notNull(),
+    dimensionId: text("dimension_id").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdBy: text("created_by").references(() => user.id),
+  },
+  (t) => ({
+    uniq: unique().on(t.userId, t.dimensionType, t.dimensionId),
+    byUser: index("user_scopes_user_idx").on(t.userId),
+  })
+);
+
+// =============================================================================
+// Phase 1 M1 Task 1.6 — Analytics dimension tables
+// Ported from data-dashboard. These enable scoped analytics: a user with
+// userScopes.dimensionType='hotel_group' sees only locations belonging to that
+// hotel_group via the membership join tables below.
+//
+// NOTE: free-text columns `locations.region`, `locations.hotel_group`,
+// `locations.location_group` coexist with these dimension tables — the tables
+// are used for scoped joins while the free-text columns remain for legacy
+// input / unnormalised data.
+// =============================================================================
+
+// Hotel groups — hierarchical grouping of hotel locations (e.g. Dalata Hotels).
+// Supports nesting via self-referential parentGroupId.
+export const hotelGroups = pgTable("hotel_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  parentGroupId: uuid("parent_group_id").references(
+    (): AnyPgColumn => hotelGroups.id,
+    { onDelete: "set null" },
+  ),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").references(() => user.id),
+});
+
+// Regions — geographic grouping of locations (e.g. UK, EU, North America).
+export const regions = pgTable("regions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  code: text("code"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").references(() => user.id),
+});
+
+// Location groups — arbitrary groupings for scoped access (e.g. "City Centre Hotels").
+export const locationGroups = pgTable("location_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").references(() => user.id),
+});
+
+// Membership join tables (many-to-many between locations and dimensions).
+// Composite PK on (locationId, dimensionId) prevents duplicates.
+// Cascade delete from both sides keeps memberships in sync.
+
+export const locationHotelGroupMemberships = pgTable(
+  "location_hotel_group_memberships",
+  {
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    hotelGroupId: uuid("hotel_group_id")
+      .notNull()
+      .references(() => hotelGroups.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.locationId, t.hotelGroupId] }),
+    byHotelGroup: index("lhg_hotel_group_idx").on(t.hotelGroupId),
+  }),
+);
+
+export const locationRegionMemberships = pgTable(
+  "location_region_memberships",
+  {
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    regionId: uuid("region_id")
+      .notNull()
+      .references(() => regions.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.locationId, t.regionId] }),
+    byRegion: index("lrm_region_idx").on(t.regionId),
+  }),
+);
+
+export const locationGroupMemberships = pgTable(
+  "location_group_memberships",
+  {
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    locationGroupId: uuid("location_group_id")
+      .notNull()
+      .references(() => locationGroups.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.locationId, t.locationGroupId] }),
+    byLocationGroup: index("lgm_location_group_idx").on(t.locationGroupId),
+  }),
+);
+
+// =============================================================================
+// Phase 1 M1 Task 1.7 — Sales-data pipeline tables
+// Ported from data-dashboard CSV shape. Three tables:
+//   - salesImports    — one row per CSV upload (metadata + status)
+//   - importStagings  — per-row staging area pre-commit (validation/rollback)
+//   - salesRecords    — committed fact table (per transaction)
+//
+// Ordering note: salesImports declared FIRST (no forward FKs); importStagings
+// next (references salesImports); salesRecords last (references salesImports).
+// Only salesRecords.importId points AT salesImports — not reverse — so no
+// circular dependency at declaration time.
+//
+// NOTE: drizzle-kit's `text(..., { enum: [...] })` helper enforces the enum
+// at the TypeScript type level only. The migration (0008) hand-appends CHECK
+// constraints at the DB layer for `sales_imports.status` and
+// `import_stagings.status`, matching the pattern established by 0003 and 0005.
+// =============================================================================
+
+export const salesImports = pgTable("sales_imports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  filename: text("filename").notNull(),
+  sourceHash: text("source_hash").notNull(),
+  uploadedBy: text("uploaded_by").notNull().references(() => user.id),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+  rowCount: integer("row_count").notNull().default(0),
+  dateRangeStart: date("date_range_start"),
+  dateRangeEnd: date("date_range_end"),
+  status: text("status", { enum: ["staging", "committed", "failed", "rolled_back"] })
+    .notNull()
+    .default("staging"),
+  errors: jsonb("errors"),
+});
+
+export const importStagings = pgTable(
+  "import_stagings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    importId: uuid("import_id")
+      .notNull()
+      .references(() => salesImports.id, { onDelete: "cascade" }),
+    rowNumber: integer("row_number").notNull(),
+    rawRow: jsonb("raw_row").notNull(),
+    parsedRow: jsonb("parsed_row"),
+    status: text("status", { enum: ["pending", "valid", "invalid", "committed"] })
+      .notNull()
+      .default("pending"),
+    validationErrors: jsonb("validation_errors"),
+  },
+  (t) => ({
+    byImport: index("staging_import_idx").on(t.importId),
+  }),
+);
+
+export const salesRecords = pgTable(
+  "sales_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    importId: uuid("import_id").references(() => salesImports.id, { onDelete: "set null" }),
+    saleRef: text("sale_ref").notNull(),
+    refNo: text("ref_no"),
+    transactionDate: date("transaction_date").notNull(),
+    transactionTime: time("transaction_time"),
+    locationId: uuid("location_id").notNull().references(() => locations.id),
+    productId: uuid("product_id").notNull().references(() => products.id),
+    providerId: uuid("provider_id").references(() => providers.id),
+    quantity: integer("quantity").notNull().default(1),
+    grossAmount: numeric("gross_amount", { precision: 12, scale: 2 }).notNull(),
+    netAmount: numeric("net_amount", { precision: 12, scale: 2 }),
+    discountCode: text("discount_code"),
+    discountAmount: numeric("discount_amount", { precision: 12, scale: 2 }),
+    bookingFee: numeric("booking_fee", { precision: 12, scale: 2 }),
+    saleCommission: numeric("sale_commission", { precision: 12, scale: 2 }),
+    currency: text("currency").notNull().default("GBP"),
+    customerCode: text("customer_code"),
+    customerName: text("customer_name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    saleRefIdx: index("sales_sale_ref_idx").on(t.saleRef),
+    locDateIdx: index("sales_loc_date_idx").on(t.locationId, t.transactionDate),
+    prodDateIdx: index("sales_prod_date_idx").on(t.productId, t.transactionDate),
+    provDateIdx: index("sales_prov_date_idx").on(t.providerId, t.transactionDate),
+    uniq: unique().on(t.saleRef, t.transactionDate),
+  }),
+);
+
+// =============================================================================
+// Phase 1 M1 Task 1.8 — Remaining analytics tables (ported from data-dashboard)
+//
+// Source migrations in /Users/vedant/Work/WeKnowGroup/data-dashboard/supabase/migrations/:
+//   - 20260223_add_outlet_exclusions.sql          → outletExclusions
+//   - 20260317_phase4_trend_builder.sql           → eventCategories, businessEvents,
+//                                                   analyticsSavedViews (saved_views),
+//                                                   weatherCache
+// Inferred (no Supabase migration — see task 1.8 in docs/plans):
+//   - analyticsPresets — saved filter/dimension configs (shape per design doc).
+//   - eventLog         — lightweight analytics usage tracking.
+//
+// Adaptations vs Supabase source:
+//   - `auth.users(id) uuid` → `user.id text` (Better Auth text IDs).
+//   - Dropped Supabase RLS policies / is_admin() / auth.uid() references;
+//     scoping is handled in our scopedQuery() layer.
+//   - `saved_views.series_config` (jsonb) → `analyticsSavedViews.config` +
+//     added `viewType` (trend|pivot|heatmap) enum per design doc.
+//   - CHECK constraints for text({enum}) columns are hand-appended in the
+//     0009 migration (same pattern as 0003/0005/0008).
+// =============================================================================
+
+// outletExclusions — admin-managed outlet exclusion rules with exact/regex patterns.
+export const outletExclusions = pgTable(
+  "outlet_exclusions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    outletCode: text("outlet_code").notNull(),
+    patternType: text("pattern_type", { enum: ["exact", "regex"] })
+      .notNull()
+      .default("exact"),
+    label: text("label"),
+    createdBy: text("created_by").references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uniq: unique().on(t.outletCode, t.patternType),
+    byPatternType: index("outlet_exclusions_pattern_type_idx").on(t.patternType),
+    byOutletCode: index("outlet_exclusions_outlet_code_idx").on(t.outletCode),
+  }),
+);
+
+// analyticsPresets — saved filter/dimension configs (per-user, shareable).
+// Inferred shape — no Supabase migration; see M1 Task 1.8 notes.
+export const analyticsPresets = pgTable("analytics_presets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  config: jsonb("config").notNull(),
+  isShared: boolean("is_shared").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// analyticsSavedViews — per-user saved analytics view configurations
+// (trend / pivot / heatmap). Ported from data-dashboard `saved_views` with
+// `viewType` added per our design doc; Supabase `series_config` → `config`.
+export const analyticsSavedViews = pgTable(
+  "analytics_saved_views",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    viewType: text("view_type", { enum: ["trend", "pivot", "heatmap"] }).notNull(),
+    config: jsonb("config").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uniqOwnerName: unique().on(t.ownerId, t.name),
+    byOwner: index("analytics_saved_views_owner_idx").on(t.ownerId),
+  }),
+);
+
+// eventCategories — taxonomy for business events (Promotion, Holiday, ...).
+export const eventCategories = pgTable("event_categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  color: text("color").notNull().default("#666666"),
+  isCore: boolean("is_core").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// businessEvents — annotatable business events shown on trend charts.
+export const businessEvents = pgTable(
+  "business_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: text("title").notNull(),
+    description: text("description"),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => eventCategories.id),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date"),
+    scopeType: text("scope_type", {
+      enum: ["global", "hotel", "region", "hotel_group"],
+    }),
+    scopeValue: text("scope_value"),
+    createdBy: text("created_by").references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byDates: index("business_events_dates_idx").on(t.startDate, t.endDate),
+  }),
+);
+
+// weatherCache — cache of weather API responses keyed by cacheKey (e.g.
+// "loc:<locationId>:<date>"). Supabase source uses a single text PK cache_key
+// which already gives us the composite-uniqueness property (locationId+date).
+export const weatherCache = pgTable(
+  "weather_cache",
+  {
+    cacheKey: text("cache_key").primaryKey(),
+    dateFrom: date("date_from").notNull(),
+    dateTo: date("date_to").notNull(),
+    data: jsonb("data").notNull(),
+    isForecast: boolean("is_forecast").notNull().default(false),
+    cachedAt: timestamp("cached_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byCachedAt: index("weather_cache_cached_idx").on(t.cachedAt),
+  }),
+);
+
+// eventLog — lightweight analytics usage tracking. userId is nullable to
+// support anonymous / system events (e.g. scheduled exports).
+export const eventLog = pgTable(
+  "event_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    actionType: text("action_type").notNull(),
+    metadata: jsonb("metadata"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUser: index("event_log_user_idx").on(t.userId),
+    byAction: index("event_log_action_idx").on(t.actionType),
+    byOccurred: index("event_log_occurred_idx").on(t.occurredAt),
+  }),
 );

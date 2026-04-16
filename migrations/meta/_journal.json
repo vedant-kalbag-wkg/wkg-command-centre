@@ -22,6 +22,55 @@
       "when": 1775042326327,
       "tag": "0002_equal_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776355492722,
+      "tag": "0003_user_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776356091560,
+      "tag": "0004_sync_imported_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776356725618,
+      "tag": "0005_user_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776356957927,
+      "tag": "0006_locations_hotel_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776357147654,
+      "tag": "0007_analytics_dimensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776357350312,
+      "tag": "0008_sales_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776357647466,
+      "tag": "0009_remaining_analytics_tables",
+      "breakpoints": true
     }
   ]
 }
