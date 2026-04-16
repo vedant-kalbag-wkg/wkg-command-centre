@@ -15,8 +15,9 @@ test.describe("Table View (VIEW-01, VIEW-02, VIEW-03)", () => {
     await expect(page.getByRole("tab", { name: "Table" })).toBeVisible();
     // Verify table structure
     await expect(page.locator('[data-slot="table"]')).toBeVisible();
-    // Check column headers are visible
-    await expect(page.getByRole("columnheader", { name: /kiosk id/i })).toBeVisible();
+    // Check column headers are visible — per MIGR-12 the primary ID column
+    // is "Asset" (hardware serial number); "Kiosk ID" is hidden by default.
+    await expect(page.getByRole("columnheader", { name: /asset/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /venue/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /region/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /stage/i })).toBeVisible();
@@ -28,13 +29,15 @@ test.describe("Table View (VIEW-01, VIEW-02, VIEW-03)", () => {
   });
 
   test("VIEW-01: can sort table by column header click", async ({ page }) => {
-    const kioskIdHeader = page.getByRole("columnheader", { name: /kiosk id/i });
-    await kioskIdHeader.click();
+    // "Asset" is the primary default-visible ID column (MIGR-12);
+    // "Kiosk ID" is hidden by default.
+    const assetHeader = page.getByRole("columnheader", { name: /asset/i });
+    await assetHeader.click();
     // After click, a sort indicator should appear
-    await expect(kioskIdHeader).toBeVisible();
+    await expect(assetHeader).toBeVisible();
     // Click again to toggle sort direction
-    await kioskIdHeader.click();
-    await expect(kioskIdHeader).toBeVisible();
+    await assetHeader.click();
+    await expect(assetHeader).toBeVisible();
   });
 
   // VIEW-02: Filtering
