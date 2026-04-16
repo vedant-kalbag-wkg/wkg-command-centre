@@ -11,6 +11,7 @@
 
 import { db } from "@/db";
 import { requireRole } from "@/lib/rbac";
+import { CsvFileSource } from "@/lib/sales/csv-file-source";
 import {
   _cancelImportForActor,
   _commitImportForActor,
@@ -36,10 +37,7 @@ export async function stageImport(formData: FormData): Promise<StageSummary> {
   if (!(file instanceof File)) throw new Error("No file uploaded");
   if (!file.name.toLowerCase().endsWith(".csv")) throw new Error("Only .csv files are supported");
 
-  const buffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
-  return _stageImportForActor({ filename: file.name, bytes }, actor, db);
+  return _stageImportForActor(new CsvFileSource(file), actor, db);
 }
 
 export async function commitImport(importId: string): Promise<CommitResult> {

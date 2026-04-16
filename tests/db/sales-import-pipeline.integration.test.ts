@@ -18,6 +18,19 @@ import {
   _stageImportForActor,
   type ImportActor,
 } from "@/app/(app)/settings/data-import/sales/pipeline";
+import { computeSourceHash } from "@/lib/csv/sales-csv";
+import type { SalesDataSource } from "@/lib/sales/source";
+
+function memorySource(filename: string, bytes: Uint8Array): SalesDataSource {
+  return {
+    pull: async () => ({
+      filename,
+      sourceLabel: `csv:${filename}`,
+      sourceHash: computeSourceHash(bytes),
+      bytes,
+    }),
+  };
+}
 
 const HEADER =
   "Saleref,RefNo,Din,Time,OutletCode,ProductName,ProviderName,Quantity,Gross,Net,DiscountCode,DiscountAmount,BookingFee,SaleCommission,Currency,CustomerCode,CustomerName";
@@ -73,7 +86,7 @@ describe("sales-import pipeline (integration)", () => {
   describe("stageImport", () => {
     it("happy path: stages 3 valid rows and returns correct summary", async () => {
       const summary = await _stageImportForActor(
-        { filename: "happy.csv", bytes: new TextEncoder().encode(HAPPY_CSV) },
+        memorySource("happy.csv", new TextEncoder().encode(HAPPY_CSV)),
         admin,
         ctx.db,
       );
@@ -100,9 +113,9 @@ describe("sales-import pipeline (integration)", () => {
 
     it("rejects duplicate upload (same sourceHash)", async () => {
       const bytes = new TextEncoder().encode(HAPPY_CSV);
-      await _stageImportForActor({ filename: "a.csv", bytes }, admin, ctx.db);
+      await _stageImportForActor(memorySource("a.csv", bytes), admin, ctx.db);
       await expect(
-        _stageImportForActor({ filename: "a.csv", bytes }, admin, ctx.db),
+        _stageImportForActor(memorySource("a.csv", bytes), admin, ctx.db),
       ).rejects.toThrow(/already been uploaded/i);
     });
 
@@ -110,7 +123,7 @@ describe("sales-import pipeline (integration)", () => {
       const csv =
         HEADER + "\nS-X,R-1,01-Mar-26,10:15,OUT-UNKNOWN,London Eye,,1,10.00,,,,,,GBP,,\n";
       const summary = await _stageImportForActor(
-        { filename: "bad-outlet.csv", bytes: new TextEncoder().encode(csv) },
+        memorySource("bad-outlet.csv", new TextEncoder().encode(csv)),
         admin,
         ctx.db,
       );
@@ -131,7 +144,7 @@ describe("sales-import pipeline (integration)", () => {
 
     it("writes a stage audit log entry", async () => {
       const summary = await _stageImportForActor(
-        { filename: "audit.csv", bytes: new TextEncoder().encode(HAPPY_CSV) },
+        memorySource("audit.csv", new TextEncoder().encode(HAPPY_CSV)),
         admin,
         ctx.db,
       );
@@ -149,7 +162,7 @@ describe("sales-import pipeline (integration)", () => {
   describe("commitImport", () => {
     it("happy path: commits all staged rows into salesRecords", async () => {
       const { importId } = await _stageImportForActor(
-        { filename: "happy.csv", bytes: new TextEncoder().encode(HAPPY_CSV) },
+        memorySource("happy.csv", new TextEncoder().encode(HAPPY_CSV)),
         admin,
         ctx.db,
       );
@@ -179,7 +192,7 @@ describe("sales-import pipeline (integration)", () => {
         HEADER +
         "\nS-1,R-1,01-Mar-26,10:15,OUT-A,London Eye,,1,10.00,,,,,,GBP,,\nS-2,R-2,01-Mar-26,10:15,OUT-UNKNOWN,London Eye,,1,10.00,,,,,,GBP,,\n";
       const { importId } = await _stageImportForActor(
-        { filename: "mixed.csv", bytes: new TextEncoder().encode(csv) },
+        memorySource("mixed.csv", new TextEncoder().encode(csv)),
         admin,
         ctx.db,
       );
@@ -200,7 +213,7 @@ describe("sales-import pipeline (integration)", () => {
 
     it("writes a commit audit log entry with committedRows in metadata", async () => {
       const { importId } = await _stageImportForActor(
-        { filename: "audit.csv", bytes: new TextEncoder().encode(HAPPY_CSV) },
+        memorySource("audit.csv", new TextEncoder().encode(HAPPY_CSV)),
         admin,
         ctx.db,
       );
@@ -216,7 +229,7 @@ describe("sales-import pipeline (integration)", () => {
 
     it("rejects commit on a non-staging import", async () => {
       const { importId } = await _stageImportForActor(
-        { filename: "happy.csv", bytes: new TextEncoder().encode(HAPPY_CSV) },
+        memorySource("happy.csv", new TextEncoder().encode(HAPPY_CSV)),
         admin,
         ctx.db,
       );
@@ -228,7 +241,7 @@ describe("sales-import pipeline (integration)", () => {
 
     it("rolls back on unique-constraint conflict with pre-existing sales rows", async () => {
       const { importId: firstId } = await _stageImportForActor(
-        { filename: "first.csv", bytes: new TextEncoder().encode(HAPPY_CSV) },
+        memorySource("first.csv", new TextEncoder().encode(HAPPY_CSV)),
         admin,
         ctx.db,
       );
@@ -237,7 +250,7 @@ describe("sales-import pipeline (integration)", () => {
       // Second upload with DIFFERENT bytes but overlapping (saleRef, date)
       const duplicateContent = HAPPY_CSV.replace("S-001,R-1", "S-001,R-REDO");
       const { importId: secondId } = await _stageImportForActor(
-        { filename: "second.csv", bytes: new TextEncoder().encode(duplicateContent) },
+        memorySource("second.csv", new TextEncoder().encode(duplicateContent)),
         admin,
         ctx.db,
       );
@@ -258,7 +271,7 @@ describe("sales-import pipeline (integration)", () => {
     it("deletes staging rows and marks import failed (hash preserved)", async () => {
       const bytes = new TextEncoder().encode(HAPPY_CSV);
       const { importId } = await _stageImportForActor(
-        { filename: "cancel.csv", bytes },
+        memorySource("cancel.csv", bytes),
         admin,
         ctx.db,
       );
@@ -279,13 +292,13 @@ describe("sales-import pipeline (integration)", () => {
 
       // Re-uploading same bytes still rejected (hash is preserved)
       await expect(
-        _stageImportForActor({ filename: "retry.csv", bytes }, admin, ctx.db),
+        _stageImportForActor(memorySource("retry.csv", bytes), admin, ctx.db),
       ).rejects.toThrow(/already been uploaded/i);
     });
 
     it("writes a cancel audit log entry", async () => {
       const { importId } = await _stageImportForActor(
-        { filename: "c.csv", bytes: new TextEncoder().encode(HAPPY_CSV) },
+        memorySource("c.csv", new TextEncoder().encode(HAPPY_CSV)),
         admin,
         ctx.db,
       );

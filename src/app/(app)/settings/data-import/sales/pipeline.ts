@@ -28,12 +28,12 @@ import {
 } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import {
-  computeSourceHash,
   parseSalesCsv,
   type ParsedSalesRow,
   type RowValidationError,
 } from "@/lib/csv/sales-csv";
 import { resolveDimensions, type DimensionInput } from "@/lib/csv/dimension-resolver";
+import type { SalesDataSource } from "@/lib/sales/source";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = NodePgDatabase | any;
@@ -69,11 +69,12 @@ type StoredStagedRow = {
  * can show them. Throws if an import with the same sourceHash already exists.
  */
 export async function _stageImportForActor(
-  upload: { filename: string; bytes: Uint8Array },
+  source: SalesDataSource,
   actor: ImportActor,
   db: AnyDb,
 ): Promise<StageSummary> {
-  const sourceHash = computeSourceHash(upload.bytes);
+  const pulled = await source.pull();
+  const { filename, bytes, sourceHash } = pulled;
 
   const existing = await db
     .select({ id: salesImports.id })
@@ -86,7 +87,7 @@ export async function _stageImportForActor(
     );
   }
 
-  const text = new TextDecoder().decode(upload.bytes);
+  const text = new TextDecoder().decode(bytes);
   const parseResult = parseSalesCsv(text);
 
   const parsedRows: Array<{ rowNumber: number; parsed: ParsedSalesRow }> = [];
@@ -108,7 +109,7 @@ export async function _stageImportForActor(
     const [imp] = await tx
       .insert(salesImports)
       .values({
-        filename: upload.filename,
+        filename,
         sourceHash,
         uploadedBy: actor.id,
         rowCount: parseResult.totalRows,
@@ -185,7 +186,7 @@ export async function _stageImportForActor(
       actorName: actor.name,
       entityType: "sales_import",
       entityId: importId,
-      entityName: upload.filename,
+      entityName: filename,
       action: "stage",
       newValue: `${validCount}/${parseResult.totalRows} valid`,
     },
