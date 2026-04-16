@@ -1,7 +1,12 @@
 import { inArray, sql } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { locations, products, providers as providersTable } from "@/db/schema";
 import type { RowValidationError } from "./sales-csv";
+
+// Drizzle DB shape — kept loose so both the prod postgres-js-backed singleton
+// and testcontainers' node-postgres-backed instance (with a slightly different
+// schema type parameter) satisfy it.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDb = { select: (...args: any[]) => any };
 
 export type DimensionInput = {
   rowNumber: number;
@@ -39,7 +44,7 @@ export type ResolvedRow =
  * multiple unknowns on one row accumulate into that row's errors array.
  */
 export async function resolveDimensions(
-  db: NodePgDatabase,
+  db: AnyDb,
   rows: DimensionInput[],
 ): Promise<ResolvedRow[]> {
   if (rows.length === 0) return [];
