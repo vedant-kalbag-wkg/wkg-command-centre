@@ -149,6 +149,10 @@ export const locations = pgTable("locations", {
     Array<{ name: string; role: string; email: string; phone: string }>
   >(),
   customerCode: text("customer_code"),
+  // Phase 1 M4 — outlet code is the stable identifier for a hotel in the
+  // sales CSV. Data-dashboard's hotel_metadata_cache used it as the PK; we
+  // mirror that on locations so CSV rows can FK-resolve to locations.id.
+  outletCode: text("outlet_code").unique(),
   hotelGroup: text("hotel_group"),
   sourcedBy: text("sourced_by"),
   bankingDetails: jsonb("banking_details"),
@@ -496,7 +500,8 @@ export const locationGroupMemberships = pgTable(
 export const salesImports = pgTable("sales_imports", {
   id: uuid("id").primaryKey().defaultRandom(),
   filename: text("filename").notNull(),
-  sourceHash: text("source_hash").notNull(),
+  // Unique so duplicate uploads are caught at the DB layer (not just app-level).
+  sourceHash: text("source_hash").notNull().unique(),
   uploadedBy: text("uploaded_by").notNull().references(() => user.id),
   uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
   rowCount: integer("row_count").notNull().default(0),

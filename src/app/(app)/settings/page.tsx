@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, GitBranch, ScrollText, Database, Copy } from "lucide-react";
+import { Users, GitBranch, ScrollText, Database, Copy, FileUp } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import {
   Card,
@@ -90,6 +90,24 @@ export default async function SettingsPage() {
                 </div>
                 <CardDescription className="text-sm text-wk-night-grey">
                   Import kiosk and location records from Monday.com.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link href="/settings/data-import/sales" className="group">
+            <Card className="h-full cursor-pointer border-wk-mid-grey/40 transition-shadow group-hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-9 h-9 rounded-lg bg-wk-sky-blue flex items-center justify-center">
+                    <FileUp className="w-5 h-5 text-wk-azure" />
+                  </div>
+                  <CardTitle className="text-base font-medium">Sales Import</CardTitle>
+                </div>
+                <CardDescription className="text-sm text-wk-night-grey">
+                  Upload a sales CSV, validate rows, and commit into the sales fact table.
                 </CardDescription>
               </CardHeader>
             </Card>

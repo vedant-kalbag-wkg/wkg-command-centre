@@ -1,0 +1,4 @@
+Saleref,RefNo,Din,Time,OutletCode,ProductName,ProviderName,Quantity,Gross,Net,DiscountCode,DiscountAmount,BookingFee,SaleCommission,Currency,CustomerCode,CustomerName
+S-UAT-001,R-1,01-Mar-26,10:15,OUT-UAT-A,UAT Tour,UAT Provider,2,80.00,70.00,,,5.00,7.00,GBP,C-1,Jane
+S-UAT-002,R-2,01-Mar-26,11:30,OUT-UAT-B,UAT Tour,UAT Provider,1,35.00,30.00,PROMO10,3.50,2.50,3.00,GBP,C-2,Dan
+S-UAT-003,R-3,02-Mar-26,14:00,OUT-UAT-A,UAT Tour,UAT Provider,4,120.00,100.00,,,10.00,12.00,EUR,,

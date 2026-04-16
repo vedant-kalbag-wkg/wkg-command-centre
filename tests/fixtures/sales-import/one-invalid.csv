@@ -1,0 +1,3 @@
+Saleref,RefNo,Din,Time,OutletCode,ProductName,ProviderName,Quantity,Gross,Net,DiscountCode,DiscountAmount,BookingFee,SaleCommission,Currency,CustomerCode,CustomerName
+S-UAT-OK-1,R-1,03-Mar-26,10:15,OUT-UAT-A,UAT Tour,UAT Provider,1,50.00,,,,,,GBP,,
+S-UAT-BAD-1,R-2,03-Mar-26,10:16,OUT-GHOST,UAT Tour,UAT Provider,1,50.00,,,,,,GBP,,
