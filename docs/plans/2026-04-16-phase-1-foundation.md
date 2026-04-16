@@ -35,6 +35,8 @@ Run:
 cd /Users/vedant/Work/WeKnowGroup/wkg-kiosk-tool
 rsync -a --exclude='.git' --exclude='node_modules' --exclude='.next' \
   --exclude='test-results' --exclude='*.png' --exclude='tsconfig.tsbuildinfo' \
+  --exclude='.claude' --exclude='.planning' --exclude='.playwright-cli' \
+  --exclude='.github/workflows' \
   /Users/vedant/Work/WeKnowGroup/kiosk-management/ ./
 ```
 
