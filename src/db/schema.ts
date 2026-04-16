@@ -12,6 +12,8 @@ import {
   uniqueIndex,
   unique,
   index,
+  date,
+  time,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
@@ -467,5 +469,91 @@ export const locationGroupMemberships = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.locationId, t.locationGroupId] }),
     byLocationGroup: index("lgm_location_group_idx").on(t.locationGroupId),
+  }),
+);
+
+// =============================================================================
+// Phase 1 M1 Task 1.7 — Sales-data pipeline tables
+// Ported from data-dashboard CSV shape. Three tables:
+//   - salesImports    — one row per CSV upload (metadata + status)
+//   - importStagings  — per-row staging area pre-commit (validation/rollback)
+//   - salesRecords    — committed fact table (per transaction)
+//
+// Ordering note: salesImports declared FIRST (no forward FKs); importStagings
+// next (references salesImports); salesRecords last (references salesImports).
+// Only salesRecords.importId points AT salesImports — not reverse — so no
+// circular dependency at declaration time.
+//
+// NOTE: drizzle-kit's `text(..., { enum: [...] })` helper enforces the enum
+// at the TypeScript type level only. The migration (0008) hand-appends CHECK
+// constraints at the DB layer for `sales_imports.status` and
+// `import_stagings.status`, matching the pattern established by 0003 and 0005.
+// =============================================================================
+
+export const salesImports = pgTable("sales_imports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  filename: text("filename").notNull(),
+  sourceHash: text("source_hash").notNull(),
+  uploadedBy: text("uploaded_by").notNull().references(() => user.id),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+  rowCount: integer("row_count").notNull().default(0),
+  dateRangeStart: date("date_range_start"),
+  dateRangeEnd: date("date_range_end"),
+  status: text("status", { enum: ["staging", "committed", "failed", "rolled_back"] })
+    .notNull()
+    .default("staging"),
+  errors: jsonb("errors"),
+});
+
+export const importStagings = pgTable(
+  "import_stagings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    importId: uuid("import_id")
+      .notNull()
+      .references(() => salesImports.id, { onDelete: "cascade" }),
+    rowNumber: integer("row_number").notNull(),
+    rawRow: jsonb("raw_row").notNull(),
+    parsedRow: jsonb("parsed_row"),
+    status: text("status", { enum: ["pending", "valid", "invalid", "committed"] })
+      .notNull()
+      .default("pending"),
+    validationErrors: jsonb("validation_errors"),
+  },
+  (t) => ({
+    byImport: index("staging_import_idx").on(t.importId),
+  }),
+);
+
+export const salesRecords = pgTable(
+  "sales_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    importId: uuid("import_id").references(() => salesImports.id, { onDelete: "set null" }),
+    saleRef: text("sale_ref").notNull(),
+    refNo: text("ref_no"),
+    transactionDate: date("transaction_date").notNull(),
+    transactionTime: time("transaction_time"),
+    locationId: uuid("location_id").notNull().references(() => locations.id),
+    productId: uuid("product_id").notNull().references(() => products.id),
+    providerId: uuid("provider_id").references(() => providers.id),
+    quantity: integer("quantity").notNull().default(1),
+    grossAmount: numeric("gross_amount", { precision: 12, scale: 2 }).notNull(),
+    netAmount: numeric("net_amount", { precision: 12, scale: 2 }),
+    discountCode: text("discount_code"),
+    discountAmount: numeric("discount_amount", { precision: 12, scale: 2 }),
+    bookingFee: numeric("booking_fee", { precision: 12, scale: 2 }),
+    saleCommission: numeric("sale_commission", { precision: 12, scale: 2 }),
+    currency: text("currency").notNull().default("GBP"),
+    customerCode: text("customer_code"),
+    customerName: text("customer_name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    saleRefIdx: index("sales_sale_ref_idx").on(t.saleRef),
+    locDateIdx: index("sales_loc_date_idx").on(t.locationId, t.transactionDate),
+    prodDateIdx: index("sales_prod_date_idx").on(t.productId, t.transactionDate),
+    provDateIdx: index("sales_prov_date_idx").on(t.providerId, t.transactionDate),
+    uniq: unique().on(t.saleRef, t.transactionDate),
   }),
 );

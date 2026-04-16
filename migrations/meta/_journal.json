@@ -57,6 +57,13 @@
       "when": 1776357147654,
       "tag": "0007_analytics_dimensions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776357350312,
+      "tag": "0008_sales_tables",
+      "breakpoints": true
     }
   ]
 }
