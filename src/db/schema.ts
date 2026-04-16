@@ -205,7 +205,10 @@ export const auditLogs = pgTable("audit_logs", {
   actorId: text("actor_id"),
   actorName: text("actor_name"),
   entityType: text("entity_type").notNull(),
-  entityId: uuid("entity_id").notNull(),
+  // text (not uuid) — entity IDs are heterogeneous across types: kiosks /
+  // installations / locations are uuid, but Better Auth user IDs are random
+  // 32-char strings. uuid would reject the user-typed audit rows.
+  entityId: text("entity_id").notNull(),
   entityName: text("entity_name"),
   action: text("action").notNull(),
   field: text("field"),

@@ -71,6 +71,13 @@
       "when": 1776357647466,
       "tag": "0009_remaining_analytics_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776362172818,
+      "tag": "0010_audit_logs_entity_id_text",
+      "breakpoints": true
     }
   ]
 }

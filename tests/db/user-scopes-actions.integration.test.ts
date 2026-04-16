@@ -18,7 +18,7 @@ import {
   _addScopeForActor,
   _removeScopeForActor,
   type Actor,
-} from '@/app/(app)/settings/users/[id]/scopes-actions';
+} from '@/app/(app)/settings/users/[id]/scopes-internal';
 
 /**
  * Integration tests for userScopes CRUD server actions.

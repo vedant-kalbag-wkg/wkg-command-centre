@@ -33,9 +33,11 @@ import {
   addScope,
   listScopes,
   removeScope,
-  type DimensionType,
-  type UserScopeRow,
 } from "@/app/(app)/settings/users/[id]/scopes-actions";
+import type {
+  DimensionType,
+  UserScopeRow,
+} from "@/app/(app)/settings/users/[id]/scopes-internal";
 import type { UserListItem } from "@/app/(app)/settings/users/actions";
 
 interface ManageScopesDialogProps {
