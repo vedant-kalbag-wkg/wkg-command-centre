@@ -10,7 +10,7 @@ describe("test-db smoke", () => {
   }, 120_000);
 
   afterAll(async () => {
-    if (ctx) await teardownTestDb(ctx.pool);
+    if (ctx) await teardownTestDb(ctx);
   });
 
   it("runs a trivial query", async () => {

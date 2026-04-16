@@ -7,7 +7,18 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import path from "node:path";
 
-let container: StartedPostgreSqlContainer | null = null;
+/**
+ * Integration test template:
+ *   let ctx: Awaited<ReturnType<typeof setupTestDb>>;
+ *   beforeAll(async () => { ctx = await setupTestDb(); }, 120_000);
+ *   afterAll(async () => { if (ctx) await teardownTestDb(ctx); });
+ */
+
+export type TestDbContext = {
+  db: ReturnType<typeof drizzle>;
+  pool: Pool;
+  container: StartedPostgreSqlContainer;
+};
 
 /**
  * Spin up a fresh Postgres 16 container via Testcontainers, connect a
@@ -15,24 +26,30 @@ let container: StartedPostgreSqlContainer | null = null;
  * migrations (from `./migrations`). Returns the db, pool, and container so
  * tests can teardown cleanly.
  *
- * NOTE: module-level `container` is intentional for now — tests within a
- * single file share one container, but running multiple integration suites
- * in parallel would collide. Good enough for M1 Task 1.1.
+ * If migration (or pool construction) fails, the container is stopped and the
+ * pool is ended before the error propagates — no orphaned resources.
  */
-export async function setupTestDb() {
-  container = await new PostgreSqlContainer("postgres:16").start();
-  const pool = new Pool({ connectionString: container.getConnectionUri() });
-  const db = drizzle(pool);
-  await migrate(db, {
-    migrationsFolder: path.join(process.cwd(), "migrations"),
-  });
-  return { db, pool, container };
+export async function setupTestDb(): Promise<TestDbContext> {
+  const container = await new PostgreSqlContainer("postgres:16").start();
+  try {
+    const pool = new Pool({ connectionString: container.getConnectionUri() });
+    try {
+      const db = drizzle(pool);
+      await migrate(db, {
+        migrationsFolder: path.join(process.cwd(), "migrations"),
+      });
+      return { db, pool, container };
+    } catch (err) {
+      await pool.end();
+      throw err;
+    }
+  } catch (err) {
+    await container.stop();
+    throw err;
+  }
 }
 
-export async function teardownTestDb(pool: Pool) {
-  await pool.end();
-  if (container) {
-    await container.stop();
-    container = null;
-  }
+export async function teardownTestDb(ctx: TestDbContext) {
+  await ctx.pool.end();
+  await ctx.container.stop();
 }
