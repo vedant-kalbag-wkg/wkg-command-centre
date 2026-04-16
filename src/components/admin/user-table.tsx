@@ -30,6 +30,7 @@ import { DeactivateDialog } from "@/components/admin/deactivate-dialog";
 import { ReactivateDialog } from "@/components/admin/reactivate-dialog";
 import { DeleteUserDialog } from "@/components/admin/delete-user-dialog";
 import { EditUserDialog } from "@/components/admin/edit-user-dialog";
+import { ManageScopesDialog } from "@/components/admin/manage-scopes-dialog";
 import { MergeDialog } from "@/components/table/merge-dialog";
 import { mergeUsersAction } from "@/app/(app)/settings/users/merge-action";
 import { bulkDeactivateUsers } from "@/app/(app)/settings/users/actions";
@@ -72,6 +73,7 @@ export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
   const [deactivateUser, setDeactivateUser] = useState<UserListItem | null>(null);
   const [reactivateUserState, setReactivateUserState] = useState<UserListItem | null>(null);
   const [editUser, setEditUser] = useState<UserListItem | null>(null);
+  const [manageScopesUser, setManageScopesUser] = useState<UserListItem | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [mergeOpen, setMergeOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -288,6 +290,11 @@ export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
                       >
                         Change role
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setManageScopesUser(user)}
+                      >
+                        Manage scopes
+                      </DropdownMenuItem>
                       {!user.banned ? (
                         <DropdownMenuItem
                           variant="destructive"
@@ -357,6 +364,16 @@ export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
             if (!open) setEditUser(null);
           }}
           onSuccess={onRefresh}
+        />
+      )}
+
+      {manageScopesUser && (
+        <ManageScopesDialog
+          user={manageScopesUser}
+          open={!!manageScopesUser}
+          onOpenChange={(open) => {
+            if (!open) setManageScopesUser(null);
+          }}
         />
       )}
 
