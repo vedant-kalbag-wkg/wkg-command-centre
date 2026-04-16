@@ -10,6 +10,8 @@ import {
   numeric,
   primaryKey,
   uniqueIndex,
+  unique,
+  index,
 } from "drizzle-orm/pg-core";
 
 // =============================================================================
@@ -325,4 +327,38 @@ export const duplicateDismissals = pgTable(
   (t) => [
     uniqueIndex("duplicate_dismissals_pair_idx").on(t.locationAId, t.locationBId),
   ]
+);
+
+// =============================================================================
+// Phase 1 — User scopes (dimension-based access scoping)
+// =============================================================================
+
+// INVARIANT: users with userType='external' MUST have >=1 row in userScopes.
+// Enforced in invite-accept handler (src/lib/auth/invite.ts) and in scopedQuery().
+// Not enforced at DB layer because insert-ordering makes a CHECK constraint impractical.
+export const userScopes = pgTable(
+  "user_scopes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    dimensionType: text("dimension_type", {
+      enum: [
+        "hotel_group",
+        "location",
+        "region",
+        "product",
+        "provider",
+        "location_group",
+      ],
+    }).notNull(),
+    dimensionId: text("dimension_id").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdBy: text("created_by").references(() => user.id),
+  },
+  (t) => ({
+    uniq: unique().on(t.userId, t.dimensionType, t.dimensionId),
+    byUser: index("user_scopes_user_idx").on(t.userId),
+  })
 );

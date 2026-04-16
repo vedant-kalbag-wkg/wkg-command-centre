@@ -36,6 +36,13 @@
       "when": 1776356091560,
       "tag": "0004_sync_imported_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776356725618,
+      "tag": "0005_user_scopes",
+      "breakpoints": true
     }
   ]
 }
