@@ -1,6 +1,7 @@
 {
-  "name": "kiosk-management",
+  "name": "wkg-kiosk-tool",
   "version": "0.1.0",
+  "description": "Unified kiosk operations + analytics platform (WeKnow Group)",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3003",
