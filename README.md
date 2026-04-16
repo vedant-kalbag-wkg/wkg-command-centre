@@ -28,11 +28,13 @@ A top-level `docs/ARCHITECTURE.md` is pending and will land in a later task.
 
 ## Getting started
 
+See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the full local setup — prerequisites, Postgres container, environment variables, migrations, and seed data.
+
+TL;DR once set up:
+
 ```bash
 npm install
 npm run dev
 ```
 
-The dev server runs on port 3003 (see `package.json`).
-
-Full dev-environment setup (database, env vars, seed data) will be documented in `docs/DEVELOPMENT.md` once Task 0.4 lands.
+The dev server runs on port 3003 (see `package.json`). The app redirects to `/login`; the seed script creates an admin user (`admin@weknow.co` / `Admin123!`).
