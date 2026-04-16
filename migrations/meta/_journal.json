@@ -50,6 +50,13 @@
       "when": 1776356957927,
       "tag": "0006_locations_hotel_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776357147654,
+      "tag": "0007_analytics_dimensions",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ import {
   unique,
   index,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 // =============================================================================
 // Better Auth tables
@@ -369,4 +370,102 @@ export const userScopes = pgTable(
     uniq: unique().on(t.userId, t.dimensionType, t.dimensionId),
     byUser: index("user_scopes_user_idx").on(t.userId),
   })
+);
+
+// =============================================================================
+// Phase 1 M1 Task 1.6 — Analytics dimension tables
+// Ported from data-dashboard. These enable scoped analytics: a user with
+// userScopes.dimensionType='hotel_group' sees only locations belonging to that
+// hotel_group via the membership join tables below.
+//
+// NOTE: free-text columns `locations.region`, `locations.hotel_group`,
+// `locations.location_group` coexist with these dimension tables — the tables
+// are used for scoped joins while the free-text columns remain for legacy
+// input / unnormalised data.
+// =============================================================================
+
+// Hotel groups — hierarchical grouping of hotel locations (e.g. Dalata Hotels).
+// Supports nesting via self-referential parentGroupId.
+export const hotelGroups = pgTable("hotel_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  parentGroupId: uuid("parent_group_id").references(
+    (): AnyPgColumn => hotelGroups.id,
+    { onDelete: "set null" },
+  ),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").references(() => user.id),
+});
+
+// Regions — geographic grouping of locations (e.g. UK, EU, North America).
+export const regions = pgTable("regions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  code: text("code"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").references(() => user.id),
+});
+
+// Location groups — arbitrary groupings for scoped access (e.g. "City Centre Hotels").
+export const locationGroups = pgTable("location_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").references(() => user.id),
+});
+
+// Membership join tables (many-to-many between locations and dimensions).
+// Composite PK on (locationId, dimensionId) prevents duplicates.
+// Cascade delete from both sides keeps memberships in sync.
+
+export const locationHotelGroupMemberships = pgTable(
+  "location_hotel_group_memberships",
+  {
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    hotelGroupId: uuid("hotel_group_id")
+      .notNull()
+      .references(() => hotelGroups.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.locationId, t.hotelGroupId] }),
+    byHotelGroup: index("lhg_hotel_group_idx").on(t.hotelGroupId),
+  }),
+);
+
+export const locationRegionMemberships = pgTable(
+  "location_region_memberships",
+  {
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    regionId: uuid("region_id")
+      .notNull()
+      .references(() => regions.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.locationId, t.regionId] }),
+    byRegion: index("lrm_region_idx").on(t.regionId),
+  }),
+);
+
+export const locationGroupMemberships = pgTable(
+  "location_group_memberships",
+  {
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    locationGroupId: uuid("location_group_id")
+      .notNull()
+      .references(() => locationGroups.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.locationId, t.locationGroupId] }),
+    byLocationGroup: index("lgm_location_group_idx").on(t.locationGroupId),
+  }),
 );
