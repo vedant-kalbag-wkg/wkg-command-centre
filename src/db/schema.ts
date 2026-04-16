@@ -31,6 +31,10 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
+  // Phase 1 — user classification (internal staff vs external hotel users)
+  userType: text("user_type", { enum: ["internal", "external"] })
+    .notNull()
+    .default("internal"),
 });
 
 export const session = pgTable("session", {

@@ -22,6 +22,13 @@
       "when": 1775042326327,
       "tag": "0002_equal_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776355492722,
+      "tag": "0003_user_type",
+      "breakpoints": true
     }
   ]
 }
