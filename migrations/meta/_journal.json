@@ -43,6 +43,13 @@
       "when": 1776356725618,
       "tag": "0005_user_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776356957927,
+      "tag": "0006_locations_hotel_fields",
+      "breakpoints": true
     }
   ]
 }
