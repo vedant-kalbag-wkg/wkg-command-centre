@@ -18,6 +18,18 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 30, // 30 days — LOCKED DECISION
     updateAge: 60 * 60 * 24, // Refresh daily (sliding window)
   },
+  user: {
+    additionalFields: {
+      // Surface the userType column on session.user so the proxy can gate
+      // external users out of internal routes. `input: false` keeps it out
+      // of any signup payload — userType is set at invite time, not by users.
+      userType: {
+        type: "string",
+        input: false,
+        required: false,
+      },
+    },
+  },
   plugins: [
     admin({
       defaultRole: "member",
