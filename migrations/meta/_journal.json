@@ -64,6 +64,13 @@
       "when": 1776357350312,
       "tag": "0008_sales_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776357647466,
+      "tag": "0009_remaining_analytics_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -557,3 +557,152 @@ export const salesRecords = pgTable(
     uniq: unique().on(t.saleRef, t.transactionDate),
   }),
 );
+
+// =============================================================================
+// Phase 1 M1 Task 1.8 — Remaining analytics tables (ported from data-dashboard)
+//
+// Source migrations in /Users/vedant/Work/WeKnowGroup/data-dashboard/supabase/migrations/:
+//   - 20260223_add_outlet_exclusions.sql          → outletExclusions
+//   - 20260317_phase4_trend_builder.sql           → eventCategories, businessEvents,
+//                                                   analyticsSavedViews (saved_views),
+//                                                   weatherCache
+// Inferred (no Supabase migration — see task 1.8 in docs/plans):
+//   - analyticsPresets — saved filter/dimension configs (shape per design doc).
+//   - eventLog         — lightweight analytics usage tracking.
+//
+// Adaptations vs Supabase source:
+//   - `auth.users(id) uuid` → `user.id text` (Better Auth text IDs).
+//   - Dropped Supabase RLS policies / is_admin() / auth.uid() references;
+//     scoping is handled in our scopedQuery() layer.
+//   - `saved_views.series_config` (jsonb) → `analyticsSavedViews.config` +
+//     added `viewType` (trend|pivot|heatmap) enum per design doc.
+//   - CHECK constraints for text({enum}) columns are hand-appended in the
+//     0009 migration (same pattern as 0003/0005/0008).
+// =============================================================================
+
+// outletExclusions — admin-managed outlet exclusion rules with exact/regex patterns.
+export const outletExclusions = pgTable(
+  "outlet_exclusions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    outletCode: text("outlet_code").notNull(),
+    patternType: text("pattern_type", { enum: ["exact", "regex"] })
+      .notNull()
+      .default("exact"),
+    label: text("label"),
+    createdBy: text("created_by").references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uniq: unique().on(t.outletCode, t.patternType),
+    byPatternType: index("outlet_exclusions_pattern_type_idx").on(t.patternType),
+    byOutletCode: index("outlet_exclusions_outlet_code_idx").on(t.outletCode),
+  }),
+);
+
+// analyticsPresets — saved filter/dimension configs (per-user, shareable).
+// Inferred shape — no Supabase migration; see M1 Task 1.8 notes.
+export const analyticsPresets = pgTable("analytics_presets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  config: jsonb("config").notNull(),
+  isShared: boolean("is_shared").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// analyticsSavedViews — per-user saved analytics view configurations
+// (trend / pivot / heatmap). Ported from data-dashboard `saved_views` with
+// `viewType` added per our design doc; Supabase `series_config` → `config`.
+export const analyticsSavedViews = pgTable(
+  "analytics_saved_views",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    viewType: text("view_type", { enum: ["trend", "pivot", "heatmap"] }).notNull(),
+    config: jsonb("config").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uniqOwnerName: unique().on(t.ownerId, t.name),
+    byOwner: index("analytics_saved_views_owner_idx").on(t.ownerId),
+  }),
+);
+
+// eventCategories — taxonomy for business events (Promotion, Holiday, ...).
+export const eventCategories = pgTable("event_categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  color: text("color").notNull().default("#666666"),
+  isCore: boolean("is_core").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// businessEvents — annotatable business events shown on trend charts.
+export const businessEvents = pgTable(
+  "business_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: text("title").notNull(),
+    description: text("description"),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => eventCategories.id),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date"),
+    scopeType: text("scope_type", {
+      enum: ["global", "hotel", "region", "hotel_group"],
+    }),
+    scopeValue: text("scope_value"),
+    createdBy: text("created_by").references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byDates: index("business_events_dates_idx").on(t.startDate, t.endDate),
+  }),
+);
+
+// weatherCache — cache of weather API responses keyed by cacheKey (e.g.
+// "loc:<locationId>:<date>"). Supabase source uses a single text PK cache_key
+// which already gives us the composite-uniqueness property (locationId+date).
+export const weatherCache = pgTable(
+  "weather_cache",
+  {
+    cacheKey: text("cache_key").primaryKey(),
+    dateFrom: date("date_from").notNull(),
+    dateTo: date("date_to").notNull(),
+    data: jsonb("data").notNull(),
+    isForecast: boolean("is_forecast").notNull().default(false),
+    cachedAt: timestamp("cached_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byCachedAt: index("weather_cache_cached_idx").on(t.cachedAt),
+  }),
+);
+
+// eventLog — lightweight analytics usage tracking. userId is nullable to
+// support anonymous / system events (e.g. scheduled exports).
+export const eventLog = pgTable(
+  "event_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    actionType: text("action_type").notNull(),
+    metadata: jsonb("metadata"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byUser: index("event_log_user_idx").on(t.userId),
+    byAction: index("event_log_action_idx").on(t.actionType),
+    byOccurred: index("event_log_occurred_idx").on(t.occurredAt),
+  }),
+);
