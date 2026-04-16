@@ -173,6 +173,20 @@ git commit -m "docs: local dev DB setup"
 
 ---
 
+### Task 0.5: Baseline Playwright green-up (hybrid)
+
+**Added mid-milestone** after Task 0.4 revealed 15 pre-existing Playwright failures inherited from the `kiosk-management` source repo. The user chose a **hybrid approach**: quick-fix trivially wrong tests (stale selectors, missing sign-in), defer anything requiring seed-fixture expansion or app-code changes.
+
+**Scope:**
+- **Fixed (test-only edits):** stale column selectors (`kiosk id` → `Asset` per MIGR-12), smoke test sign-in, Settings-in-sidebar-footer selector. Result: 15 → 12 failures, 67 → 70 passing.
+- **Deferred:** everything requiring seed-fixture expansion or feature implementation. Full backlog with per-item root cause, fix direction, and effort estimate captured in [`docs/plans/2026-04-16-m0-deferred-test-backlog.md`](./2026-04-16-m0-deferred-test-backlog.md).
+
+**Constraints:** no edits to `src/app/**`, `src/components/**`, `src/lib/**`. Test-file edits must reflect real UI state (no assertion weakening).
+
+**M0 merge gate:** the 12 remaining failures are accepted as baseline tech debt inherited from upstream; they are gated to be picked up in M1 test-hardening. No NEW regressions are allowed against the post-0.5 baseline (70 passed / 29 skipped / 12 failed).
+
+---
+
 ## Milestone 1 — Schema Extensions
 
 **Outcome:** Drizzle schema contains every new table from the design doc plus `userType` / `userScopes`. Migration applies cleanly, invariants enforced (external users require ≥1 scope row, no external-admin), and integration tests pass against a real Postgres.
