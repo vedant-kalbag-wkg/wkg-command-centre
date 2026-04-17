@@ -68,6 +68,8 @@ async function ensureUser(
     .set({ userType: opts.userType, banned: false })
     .where(eq(user.id, userId));
 
+  await db.delete(userScopes).where(eq(userScopes.userId, userId));
+
   if (opts.scopes) {
     for (const scope of opts.scopes) {
       await db

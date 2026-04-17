@@ -53,6 +53,8 @@ async function ensureExternalTestUser(): Promise<string> {
     .set({ userType: "external", banned: false })
     .where(eq(user.id, userId));
 
+  await db.delete(userScopes).where(eq(userScopes.userId, userId));
+
   await db
     .insert(userScopes)
     .values({

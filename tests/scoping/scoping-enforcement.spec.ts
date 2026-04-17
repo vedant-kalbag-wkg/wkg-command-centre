@@ -79,6 +79,10 @@ async function ensureUser(
     .set({ userType: opts.userType, banned: false })
     .where(eq(user.id, userId));
 
+  // Reset scopes to exactly what's specified — removes stale scopes
+  // left by other tests (e.g., manage-scopes adds e2e-add-* entries)
+  await db.delete(userScopes).where(eq(userScopes.userId, userId));
+
   if (opts.scopes) {
     for (const scope of opts.scopes) {
       await db
