@@ -49,7 +49,7 @@ async function ensureUser(
   creds: { email: string; password: string; name: string },
   opts: {
     userType: "internal" | "external";
-    scopes?: { dimensionType: string; dimensionId: string }[];
+    scopes?: { dimensionType: "hotel_group" | "region" | "location_group" | "location" | "product" | "provider"; dimensionId: string }[];
   },
 ): Promise<string> {
   let userId: string;
