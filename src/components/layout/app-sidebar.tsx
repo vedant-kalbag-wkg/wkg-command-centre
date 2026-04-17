@@ -2,13 +2,31 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutGrid, MapPin, Settings, LogOut, CalendarClock, Package, Layers } from "lucide-react";
+import {
+  LayoutGrid,
+  MapPin,
+  Settings,
+  LogOut,
+  CalendarClock,
+  Package,
+  Layers,
+  BarChart3,
+  Table2,
+  Grid3X3,
+  TrendingUp,
+  Building2,
+  Globe,
+  Filter,
+  Ban,
+  CalendarRange,
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -25,6 +43,22 @@ const entityItems = [
   { title: "Installations", href: "/installations", icon: CalendarClock },
   { title: "Products", href: "/products", icon: Package },
   { title: "Kiosk Config Groups", href: "/kiosk-config-groups", icon: Layers },
+];
+
+const analyticsItems = [
+  { title: "Portfolio", href: "/analytics/portfolio", icon: BarChart3 },
+  { title: "Heat Map", href: "/analytics/heat-map", icon: Grid3X3 },
+  { title: "Trend Builder", href: "/analytics/trend-builder", icon: TrendingUp },
+  { title: "Hotel Groups", href: "/analytics/hotel-groups", icon: Building2 },
+  { title: "Regions", href: "/analytics/regions", icon: Globe },
+  { title: "Location Groups", href: "/analytics/location-groups", icon: MapPin },
+  { title: "Pivot Table", href: "/analytics/pivot-table", icon: Table2 },
+];
+
+const adminSettingsItems = [
+  { title: "Analytics Presets", href: "/settings/analytics-presets", icon: Filter },
+  { title: "Outlet Exclusions", href: "/settings/outlet-exclusions", icon: Ban },
+  { title: "Business Events", href: "/settings/business-events", icon: CalendarRange },
 ];
 
 // Settings moved to SidebarFooter (near sign-out)
@@ -120,6 +154,40 @@ export function AppSidebar({ user }: AppSidebarProps) {
             </SidebarGroupContent>
           </SidebarGroup>
 
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-white/50">
+              Analytics
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {analyticsItems.map((item) => {
+                  const isActive =
+                    pathname === item.href ||
+                    pathname.startsWith(item.href + "/");
+
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        tooltip={item.title}
+                        className="h-10 px-2 rounded-lg text-white/70 hover:text-white hover:bg-[rgba(0,166,211,0.20)] data-active:text-white data-active:bg-[rgba(0,166,211,0.20)] data-active:border-l-2 data-active:border-l-[#00A6D3] [&_svg]:size-[18px]"
+                        render={
+                          <Link
+                            href={item.href}
+                            aria-current={isActive ? "page" : undefined}
+                          />
+                        }
+                      >
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
         </nav>
       </SidebarContent>
 
@@ -150,6 +218,31 @@ export function AppSidebar({ user }: AppSidebarProps) {
               );
             })()}
           </SidebarMenuItem>
+
+          {user?.role === "admin" &&
+            adminSettingsItems.map((item) => {
+              const isActive =
+                pathname === item.href ||
+                pathname.startsWith(item.href + "/");
+              return (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    isActive={isActive}
+                    tooltip={item.title}
+                    className="h-10 px-2 rounded-lg text-white/70 hover:text-white hover:bg-[rgba(0,166,211,0.20)] data-active:text-white data-active:bg-[rgba(0,166,211,0.20)] data-active:border-l-2 data-active:border-l-[#00A6D3] [&_svg]:size-[18px]"
+                    render={
+                      <Link
+                        href={item.href}
+                        aria-current={isActive ? "page" : undefined}
+                      />
+                    }
+                  >
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
         </SidebarMenu>
 
         <SidebarSeparator className="my-2" />

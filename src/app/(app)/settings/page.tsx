@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, GitBranch, ScrollText, Copy, FileUp } from "lucide-react";
+import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import {
   Card,
@@ -108,6 +108,60 @@ export default async function SettingsPage() {
                 </div>
                 <CardDescription className="text-sm text-wk-night-grey">
                   Detect and merge duplicate hotel locations.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link href="/settings/analytics-presets" className="group">
+            <Card className="h-full cursor-pointer border-wk-mid-grey/40 transition-shadow group-hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-9 h-9 rounded-lg bg-wk-sky-blue flex items-center justify-center">
+                    <SlidersHorizontal className="w-5 h-5 text-wk-azure" />
+                  </div>
+                  <CardTitle className="text-base font-medium">Analytics Presets</CardTitle>
+                </div>
+                <CardDescription className="text-sm text-wk-night-grey">
+                  Manage saved filter configurations for analytics views.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link href="/settings/outlet-exclusions" className="group">
+            <Card className="h-full cursor-pointer border-wk-mid-grey/40 transition-shadow group-hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-9 h-9 rounded-lg bg-wk-sky-blue flex items-center justify-center">
+                    <Ban className="w-5 h-5 text-wk-azure" />
+                  </div>
+                  <CardTitle className="text-base font-medium">Outlet Exclusions</CardTitle>
+                </div>
+                <CardDescription className="text-sm text-wk-night-grey">
+                  Exclude outlet codes from analytics using exact or regex patterns.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link href="/settings/business-events" className="group">
+            <Card className="h-full cursor-pointer border-wk-mid-grey/40 transition-shadow group-hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-9 h-9 rounded-lg bg-wk-sky-blue flex items-center justify-center">
+                    <CalendarDays className="w-5 h-5 text-wk-azure" />
+                  </div>
+                  <CardTitle className="text-base font-medium">Business Events</CardTitle>
+                </div>
+                <CardDescription className="text-sm text-wk-night-grey">
+                  Annotate trend charts with business events and manage event categories.
                 </CardDescription>
               </CardHeader>
             </Card>

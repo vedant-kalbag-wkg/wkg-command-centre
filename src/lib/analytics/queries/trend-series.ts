@@ -1,0 +1,188 @@
+import { db } from "@/db";
+import {
+  salesRecords,
+  locations,
+  businessEvents,
+  eventCategories,
+  locationHotelGroupMemberships,
+  locationRegionMemberships,
+  locationGroupMemberships,
+} from "@/db/schema";
+import { sql, inArray, type SQL } from "drizzle-orm";
+import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
+import type { UserCtx } from "@/lib/scoping/scoped-query";
+import {
+  buildExclusionCondition,
+  combineConditions,
+} from "@/lib/analytics/queries/shared";
+import type {
+  TrendMetric,
+  SeriesFilters,
+  TrendDataPoint,
+  BusinessEventDisplay,
+} from "@/lib/analytics/types";
+
+// ─── Internal: cast db for scopedSalesCondition ──────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const dbAny = db as any;
+
+// ─── Internal: build series-specific dimension filters ───────────────────────
+
+function buildSeriesDimensionFilters(filters: SeriesFilters): SQL[] {
+  const conditions: SQL[] = [];
+
+  if (filters.productIds?.length) {
+    conditions.push(inArray(salesRecords.productId, filters.productIds));
+  }
+  if (filters.locationIds?.length) {
+    conditions.push(inArray(salesRecords.locationId, filters.locationIds));
+  }
+  if (filters.hotelGroupIds?.length) {
+    conditions.push(
+      sql`${salesRecords.locationId} IN (
+        SELECT ${locationHotelGroupMemberships.locationId}
+        FROM ${locationHotelGroupMemberships}
+        WHERE ${inArray(locationHotelGroupMemberships.hotelGroupId, filters.hotelGroupIds)}
+      )`,
+    );
+  }
+  if (filters.regionIds?.length) {
+    conditions.push(
+      sql`${salesRecords.locationId} IN (
+        SELECT ${locationRegionMemberships.locationId}
+        FROM ${locationRegionMemberships}
+        WHERE ${inArray(locationRegionMemberships.regionId, filters.regionIds)}
+      )`,
+    );
+  }
+  if (filters.locationGroupIds?.length) {
+    conditions.push(
+      sql`${salesRecords.locationId} IN (
+        SELECT ${locationGroupMemberships.locationId}
+        FROM ${locationGroupMemberships}
+        WHERE ${inArray(locationGroupMemberships.locationGroupId, filters.locationGroupIds)}
+      )`,
+    );
+  }
+  // categoryIds filter: products table `name` is used as category identifier
+  // (same pattern as buildDimensionFilters in shared.ts — products table has
+  // no separate category column; the product name IS the category).
+  if (filters.categoryIds?.length) {
+    conditions.push(
+      sql`${salesRecords.productId} IN (
+        SELECT id FROM products WHERE name = ANY(${filters.categoryIds})
+      )`,
+    );
+  }
+
+  return conditions;
+}
+
+// ─── Internal: metric aggregation expression ─────────────────────────────────
+
+function metricExpression(metric: TrendMetric): SQL {
+  switch (metric) {
+    case "revenue":
+      return sql`SUM(${salesRecords.grossAmount}::numeric)`;
+    case "transactions":
+      return sql`COUNT(*)::numeric`;
+    case "avg_basket_value":
+      return sql`SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(*), 0)`;
+    case "booking_fee":
+      return sql`SUM(${salesRecords.bookingFee}::numeric)`;
+  }
+}
+
+// ─── Main Query ──────────────────────────────────────────────────────────────
+
+export async function getTrendSeriesData(
+  metric: TrendMetric,
+  filters: SeriesFilters,
+  dateFrom: string,
+  dateTo: string,
+  userCtx: UserCtx,
+): Promise<TrendDataPoint[]> {
+  const [scopeCondition, exclusionCondition] = await Promise.all([
+    scopedSalesCondition(dbAny, userCtx),
+    buildExclusionCondition(),
+  ]);
+
+  const dateCondition = sql`${salesRecords.transactionDate} >= ${dateFrom} AND ${salesRecords.transactionDate} <= ${dateTo}`;
+  const seriesConditions = buildSeriesDimensionFilters(filters);
+
+  const whereClause = combineConditions([
+    dateCondition,
+    scopeCondition,
+    exclusionCondition,
+    ...seriesConditions,
+  ]);
+
+  const rows = await db.execute<{
+    date: string;
+    value: string;
+  }>(sql`
+    SELECT
+      ${salesRecords.transactionDate}::text AS date,
+      COALESCE(${metricExpression(metric)}, 0) AS value
+    FROM ${salesRecords}
+      INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
+    ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+    GROUP BY ${salesRecords.transactionDate}
+    ORDER BY ${salesRecords.transactionDate} ASC
+  `);
+
+  return rows.map((row) => ({
+    date: row.date,
+    value: Number(row.value),
+  }));
+}
+
+// ─── Business Events Query ───────────────────────────────────────────────────
+
+export async function getBusinessEvents(
+  dateFrom: string,
+  dateTo: string,
+): Promise<BusinessEventDisplay[]> {
+  const rows = await db.execute<{
+    id: string;
+    title: string;
+    description: string | null;
+    start_date: string;
+    end_date: string | null;
+    category_id: string;
+    category_name: string;
+    category_color: string;
+    scope_type: string | null;
+    scope_value: string | null;
+  }>(sql`
+    SELECT
+      ${businessEvents.id}::text AS id,
+      ${businessEvents.title} AS title,
+      ${businessEvents.description} AS description,
+      ${businessEvents.startDate}::text AS start_date,
+      ${businessEvents.endDate}::text AS end_date,
+      ${businessEvents.categoryId}::text AS category_id,
+      ${eventCategories.name} AS category_name,
+      ${eventCategories.color} AS category_color,
+      ${businessEvents.scopeType} AS scope_type,
+      ${businessEvents.scopeValue} AS scope_value
+    FROM ${businessEvents}
+      INNER JOIN ${eventCategories} ON ${businessEvents.categoryId} = ${eventCategories.id}
+    WHERE ${businessEvents.startDate} <= ${dateTo}
+      AND (${businessEvents.endDate} IS NULL OR ${businessEvents.endDate} >= ${dateFrom})
+    ORDER BY ${businessEvents.startDate} ASC
+  `);
+
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    categoryId: row.category_id,
+    categoryName: row.category_name,
+    categoryColor: row.category_color,
+    scopeType: (row.scope_type ?? "global") as BusinessEventDisplay["scopeType"],
+    scopeValue: row.scope_value,
+  }));
+}

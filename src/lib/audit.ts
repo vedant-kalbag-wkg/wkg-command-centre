@@ -10,7 +10,7 @@ export async function writeAuditLog(
   entry: {
     actorId: string;
     actorName: string;
-    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import";
+    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation";
     entityId: string;
     entityName: string;
     action:
@@ -23,7 +23,9 @@ export async function writeAuditLog(
       | "merge"
       | "stage"
       | "commit"
-      | "cancel";
+      | "cancel"
+      | "start_impersonation"
+      | "stop_impersonation";
     field?: string;
     oldValue?: string;
     newValue?: string;

@@ -1,0 +1,75 @@
+"use client";
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/analytics/empty-state";
+import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import type { OutletTierRow, OutletTier } from "@/lib/analytics/types";
+
+interface OutletTiersProps {
+  data: OutletTierRow[];
+  loading?: boolean;
+}
+
+const tierStyles: Record<OutletTier, string> = {
+  Premium: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  Standard: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  Developing:
+    "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  Emerging: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+};
+
+export function OutletTiers({ data, loading = false }: OutletTiersProps) {
+  if (!loading && data.length === 0) {
+    return <EmptyState message="No outlet data for selected filters" />;
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Outlet Code</TableHead>
+          <TableHead>Hotel Name</TableHead>
+          <TableHead className="text-right">Revenue</TableHead>
+          <TableHead className="text-right">Transactions</TableHead>
+          <TableHead className="text-right">Share</TableHead>
+          <TableHead>Tier</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data.map((row) => (
+          <TableRow key={row.outletCode || row.hotelName}>
+            <TableCell className="font-mono text-xs">
+              {row.outletCode || "\u2014"}
+            </TableCell>
+            <TableCell className="font-medium">{row.hotelName}</TableCell>
+            <TableCell className="text-right">
+              {formatCurrency(row.revenue)}
+            </TableCell>
+            <TableCell className="text-right">
+              {formatNumber(row.transactions)}
+            </TableCell>
+            <TableCell className="text-right">
+              {row.sharePercentage.toFixed(1)}%
+            </TableCell>
+            <TableCell>
+              <Badge
+                variant="secondary"
+                className={tierStyles[row.tier]}
+              >
+                {row.tier}
+              </Badge>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
