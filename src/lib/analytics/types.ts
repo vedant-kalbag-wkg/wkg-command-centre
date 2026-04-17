@@ -332,6 +332,18 @@ export type CohortComparison = {
   delta: { revenue: number; transactions: number; avgRevenue: number };
 };
 
+// ─── Comparison Types ────────────────────────────────────────────────────────
+
+export type ComparisonEntityType = "location" | "hotel_group" | "region"
+
+export type ComparisonEntity = {
+  entityId: string
+  entityName: string
+  revenue: number
+  transactions: number
+  avgBasket: number
+}
+
 // ─── Change Indicator ─────────────────────────────────────────────────────────
 
 export type ChangeDirection = "up" | "down" | "neutral"

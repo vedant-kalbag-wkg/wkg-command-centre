@@ -20,6 +20,7 @@ import {
   Ban,
   CalendarRange,
   FlaskConical,
+  ArrowLeftRight,
 } from "lucide-react";
 import {
   Sidebar,
@@ -55,6 +56,7 @@ const analyticsItems = [
   { title: "Location Groups", href: "/analytics/location-groups", icon: MapPin },
   { title: "Pivot Table", href: "/analytics/pivot-table", icon: Table2 },
   { title: "Experiments", href: "/analytics/experiments", icon: FlaskConical },
+  { title: "Compare", href: "/analytics/compare", icon: ArrowLeftRight },
 ];
 
 const adminSettingsItems = [
