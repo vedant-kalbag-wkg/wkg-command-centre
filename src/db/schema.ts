@@ -733,6 +733,25 @@ export const locationFlags = pgTable("location_flags", {
   resolutionNote: text("resolution_note"),
 });
 
+// =============================================================================
+// Phase 1 M12.2 — Experiment cohorts
+// Allows users to define location cohorts, compare metrics against a control
+// group (rest of portfolio or named locations), and overlay intervention dates.
+// =============================================================================
+
+export const experimentCohorts = pgTable("experiment_cohorts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  description: text("description"),
+  locationIds: jsonb("location_ids").$type<string[]>().notNull(),
+  controlType: text("control_type", { enum: ["rest_of_portfolio", "named_control"] }).notNull().default("rest_of_portfolio"),
+  controlLocationIds: jsonb("control_location_ids").$type<string[]>(),
+  interventionDate: date("intervention_date"),
+  createdBy: text("created_by").notNull().references(() => user.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // eventLog — lightweight analytics usage tracking. userId is nullable to
 // support anonymous / system events (e.g. scheduled exports).
 export const eventLog = pgTable(

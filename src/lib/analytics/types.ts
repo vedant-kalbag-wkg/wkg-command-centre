@@ -312,6 +312,26 @@ export type LocationFlag = {
   resolutionNote: string | null;
 };
 
+// ─── Experiment Cohort Types ─────────────────────────────────────────────────
+
+export type ExperimentCohort = {
+  id: string;
+  name: string;
+  description: string | null;
+  locationIds: string[];
+  controlType: "rest_of_portfolio" | "named_control";
+  controlLocationIds: string[] | null;
+  interventionDate: string | null;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type CohortComparison = {
+  cohortMetrics: { revenue: number; transactions: number; avgRevenue: number };
+  controlMetrics: { revenue: number; transactions: number; avgRevenue: number };
+  delta: { revenue: number; transactions: number; avgRevenue: number };
+};
+
 // ─── Change Indicator ─────────────────────────────────────────────────────────
 
 export type ChangeDirection = "up" | "down" | "neutral"
