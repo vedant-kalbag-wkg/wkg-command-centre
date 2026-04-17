@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays } from "lucide-react";
+import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays, ClipboardCheck } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import {
   Card,
@@ -162,6 +162,24 @@ export default async function SettingsPage() {
                 </div>
                 <CardDescription className="text-sm text-wk-night-grey">
                   Annotate trend charts with business events and manage event categories.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link href="/settings/data-quality" className="group">
+            <Card className="h-full cursor-pointer border-wk-mid-grey/40 transition-shadow group-hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-9 h-9 rounded-lg bg-wk-sky-blue flex items-center justify-center">
+                    <ClipboardCheck className="w-5 h-5 text-wk-azure" />
+                  </div>
+                  <CardTitle className="text-base font-medium">Data Quality</CardTitle>
+                </div>
+                <CardDescription className="text-sm text-wk-night-grey">
+                  View which locations are missing region, hotel group, operating group, or market metadata.
                 </CardDescription>
               </CardHeader>
             </Card>
