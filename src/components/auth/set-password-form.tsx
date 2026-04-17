@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
+import { getInviteContext } from "@/app/(auth)/set-password/actions";
 
 const setPasswordSchema = z
   .object({
@@ -30,9 +31,22 @@ export function SetPasswordForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
 
+  const isInvite = searchParams.get("invite") === "1";
+  const inviteEmail = searchParams.get("email") || "";
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [inviteCtx, setInviteCtx] = useState<{
+    userType: string;
+    scopes: { dimensionType: string; dimensionLabel: string; dimensionName: string }[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (isInvite && inviteEmail) {
+      getInviteContext(inviteEmail).then(setInviteCtx).catch(() => {});
+    }
+  }, [isInvite, inviteEmail]);
 
   const {
     register,
@@ -62,8 +76,26 @@ export function SetPasswordForm() {
 
   return (
     <div className="flex flex-col gap-4">
+      {inviteCtx && inviteCtx.scopes.length > 0 && (
+        <div className="rounded-lg border border-[#00A6D3]/20 bg-[#00A6D3]/5 p-4">
+          <p className="text-sm font-medium text-wk-graphite mb-2">
+            You&apos;ll have access to:
+          </p>
+          <ul className="text-sm text-wk-night-grey space-y-1">
+            {inviteCtx.scopes.map((s, i) => (
+              <li key={i}>
+                &bull; {s.dimensionName}{" "}
+                <span className="text-xs text-muted-foreground">
+                  ({s.dimensionLabel})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <h2 className="text-xl font-bold tracking-[-0.01em] text-wk-graphite">
-        Set your password
+        {isInvite ? "Welcome — set your password" : "Set your password"}
       </h2>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
