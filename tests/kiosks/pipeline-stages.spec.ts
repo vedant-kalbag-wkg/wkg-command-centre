@@ -13,15 +13,27 @@ test.describe("Pipeline Stages (KIOSK-04)", () => {
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByText("Manage Pipeline Stages")).toBeVisible();
 
+    // Count existing stages before adding
+    const rows = page.locator('[class*="flex items-center gap-2 py-2"]');
+    const countBefore = await rows.count();
+
     // Click Add stage button
     await page.getByRole("button", { name: /add stage/i }).click();
 
-    // A new stage "New Stage" should appear
-    await expect(page.getByText("New Stage")).toBeVisible();
+    // One more stage row should appear
+    await expect(rows).toHaveCount(countBefore + 1, { timeout: 5000 });
 
-    // Cleanup: Delete the newly added stage by renaming + deleting via kebab menu
-    // (hover over "New Stage" row to show kebab, then delete)
-    // Note: cleanup is best-effort in tests
+    // Cleanup: delete the newly added stage via its kebab menu
+    const newRow = rows.last();
+    await newRow.locator("button").last().click({ force: true });
+    const deleteItem = page.getByRole("menuitem", { name: /delete/i });
+    if (await deleteItem.isVisible().catch(() => false)) {
+      await deleteItem.click();
+      const confirmBtn = page.getByRole("button", { name: /delete/i }).last();
+      if (await confirmBtn.isVisible().catch(() => false)) {
+        await confirmBtn.click();
+      }
+    }
   });
 
   test("KIOSK-04: admin can rename a pipeline stage", async ({ page }) => {
