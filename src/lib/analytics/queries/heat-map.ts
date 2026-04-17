@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { salesRecords, locations, kioskAssignments } from "@/db/schema";
-import { sql, type SQL } from "drizzle-orm";
+import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
@@ -74,8 +74,8 @@ export async function getHeatMapData(
 ): Promise<HeatMapData> {
   const whereClause = await buildHeatMapWhere(filters, userCtx);
 
-  // 1. Query sales grouped by location AND kiosk counts per location (parallel)
-  const salesQuery = db.execute<{
+  // 1. Query sales grouped by location
+  const rows = await db.execute<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -98,22 +98,24 @@ export async function getHeatMapData(
     GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
   `);
 
-  // Kiosk count: distinct kiosks assigned to each location during the filter period
-  const kioskCountQuery = db.execute<{
-    location_id: string;
-    kiosk_count: string;
-  }>(sql`
-    SELECT
-      ${kioskAssignments.locationId} AS location_id,
-      COUNT(DISTINCT ${kioskAssignments.kioskId})::text AS kiosk_count
-    FROM ${kioskAssignments}
-    WHERE ${kioskAssignments.assignedAt} <= ${filters.dateTo}::timestamptz
-      AND (${kioskAssignments.unassignedAt} IS NULL
-           OR ${kioskAssignments.unassignedAt} > ${filters.dateFrom}::timestamptz)
-    GROUP BY ${kioskAssignments.locationId}
-  `);
-
-  const [rows, kioskCountRows] = await Promise.all([salesQuery, kioskCountQuery]);
+  // Kiosk count: scoped to locations from the sales query results
+  const locationIds = rows.map((r) => r.location_id);
+  const kioskCountRows = locationIds.length > 0
+    ? await db.execute<{
+        location_id: string;
+        kiosk_count: string;
+      }>(sql`
+        SELECT
+          ${kioskAssignments.locationId} AS location_id,
+          COUNT(DISTINCT ${kioskAssignments.kioskId})::text AS kiosk_count
+        FROM ${kioskAssignments}
+        WHERE ${inArray(kioskAssignments.locationId, locationIds)}
+          AND ${kioskAssignments.assignedAt} <= ${filters.dateTo}::timestamptz
+          AND (${kioskAssignments.unassignedAt} IS NULL
+               OR ${kioskAssignments.unassignedAt} > ${filters.dateFrom}::timestamptz)
+        GROUP BY ${kioskAssignments.locationId}
+      `)
+    : [];
 
   if (rows.length === 0) {
     return {
@@ -155,16 +157,19 @@ export async function getHeatMapData(
   const tpkValues = rawHotels.map((h) => h.txnPerKiosk).filter((v): v is number => v !== null);
   const abvValues = rawHotels.map((h) => h.avgBasketValue);
 
+  const minOf = (arr: number[]) => arr.reduce((a, b) => Math.min(a, b), Infinity);
+  const maxOf = (arr: number[]) => arr.reduce((a, b) => Math.max(a, b), -Infinity);
+
   const ranges = {
-    revenue: { min: Math.min(...revenueValues), max: Math.max(...revenueValues) },
-    transactions: { min: Math.min(...txnValues), max: Math.max(...txnValues) },
+    revenue: { min: minOf(revenueValues), max: maxOf(revenueValues) },
+    transactions: { min: minOf(txnValues), max: maxOf(txnValues) },
     revenuePerRoom: rprValues.length > 0
-      ? { min: Math.min(...rprValues), max: Math.max(...rprValues) }
+      ? { min: minOf(rprValues), max: maxOf(rprValues) }
       : null,
     txnPerKiosk: tpkValues.length > 0
-      ? { min: Math.min(...tpkValues), max: Math.max(...tpkValues) }
+      ? { min: minOf(tpkValues), max: maxOf(tpkValues) }
       : null,
-    basketValue: { min: Math.min(...abvValues), max: Math.max(...abvValues) },
+    basketValue: { min: minOf(abvValues), max: maxOf(abvValues) },
   };
 
   // 4. Calculate composite scores

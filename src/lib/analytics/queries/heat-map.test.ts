@@ -69,7 +69,7 @@ const kioskRows = [
 
 describe("getHeatMapData – kiosk enrichment", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockExecute.mockReset();
   });
 
   it("computes txnPerKiosk when kiosk counts are available", async () => {

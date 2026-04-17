@@ -34,8 +34,8 @@ const HISTORICAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function daysAgo(n: number): Date {
   const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - n);
+  d.setUTCHours(0, 0, 0, 0);
   return d;
 }
 
@@ -44,7 +44,7 @@ function toISODate(d: Date): string {
 }
 
 function parseDate(s: string): Date {
-  return new Date(s + "T00:00:00");
+  return new Date(s + "T00:00:00Z");
 }
 
 // ─── Cache Helpers ──────────────────────────────────────────────────────────
@@ -235,6 +235,7 @@ export async function fetchWeatherData(
 
   // ── Cache write ─────────────────────────────────────────────────────────
   const forecast = isForecastRange(dateTo);
+  const now = new Date();
   try {
     await db
       .insert(weatherCache)
@@ -244,14 +245,14 @@ export async function fetchWeatherData(
         dateTo,
         data: data as unknown as Record<string, unknown>,
         isForecast: forecast,
-        cachedAt: new Date(),
+        cachedAt: now,
       })
       .onConflictDoUpdate({
         target: weatherCache.cacheKey,
         set: {
           data: data as unknown as Record<string, unknown>,
           isForecast: forecast,
-          cachedAt: new Date(),
+          cachedAt: now,
         },
       });
   } catch {
