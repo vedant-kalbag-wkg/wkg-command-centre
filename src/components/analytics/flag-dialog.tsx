@@ -22,6 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Flag } from "lucide-react";
 import { createFlag } from "@/app/(app)/analytics/flags/actions";
+import { CreateActionDialog } from "@/components/analytics/create-action-dialog";
 import type { FlagType } from "@/lib/analytics/types";
 
 interface FlagDialogProps {
@@ -113,7 +114,17 @@ export function FlagDialog({
             </div>
           </div>
 
-          <DialogFooter className="mt-4">
+          <DialogFooter className="mt-4 flex items-center justify-between">
+            <CreateActionDialog
+              locationId={locationId}
+              locationName={locationName}
+              sourceType="flag"
+              defaultTitle={`Investigate ${locationName} — ${flagType} flag`}
+            >
+              <Button type="button" variant="outline" size="sm">
+                Create Action Instead
+              </Button>
+            </CreateActionDialog>
             <Button type="submit" disabled={isPending}>
               {isPending ? "Flagging..." : "Create Flag"}
             </Button>

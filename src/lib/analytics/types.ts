@@ -332,6 +332,29 @@ export type CohortComparison = {
   delta: { revenue: number; transactions: number; avgRevenue: number };
 };
 
+// ─── Action Item Types ──────────────────────────────────────────────────────
+
+export type ActionItemType = "investigation" | "relocation" | "training" | "equipment_change";
+export type ActionItemStatus = "open" | "in_progress" | "resolved" | "cancelled";
+
+export type ActionItem = {
+  id: string;
+  sourceType: "flag" | "manual" | "data_quality";
+  sourceId: string | null;
+  locationId: string | null;
+  locationName: string | null;
+  actionType: ActionItemType;
+  title: string;
+  description: string | null;
+  ownerName: string | null;
+  ownerId: string | null;
+  dueDate: string | null;
+  status: ActionItemStatus;
+  outcomeNotes: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+};
+
 // ─── Comparison Types ────────────────────────────────────────────────────────
 
 export type ComparisonEntityType = "location" | "hotel_group" | "region"

@@ -752,6 +752,30 @@ export const experimentCohorts = pgTable("experiment_cohorts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// =============================================================================
+// Phase 1 M13.2 — Insight-to-action workflow
+// Action items derived from performance flags, data-quality issues, or manual
+// creation. Tracks investigation, relocation, training, and equipment changes.
+// =============================================================================
+
+export const actionItems = pgTable("action_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceType: text("source_type", { enum: ["flag", "manual", "data_quality"] }).notNull(),
+  sourceId: text("source_id"),
+  locationId: uuid("location_id").references(() => locations.id, { onDelete: "set null" }),
+  actionType: text("action_type", { enum: ["investigation", "relocation", "training", "equipment_change"] }).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  ownerId: text("owner_id").references(() => user.id, { onDelete: "set null" }),
+  dueDate: date("due_date"),
+  status: text("status", { enum: ["open", "in_progress", "resolved", "cancelled"] }).notNull().default("open"),
+  outcomeNotes: text("outcome_notes"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdBy: text("created_by").notNull().references(() => user.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // eventLog — lightweight analytics usage tracking. userId is nullable to
 // support anonymous / system events (e.g. scheduled exports).
 export const eventLog = pgTable(
