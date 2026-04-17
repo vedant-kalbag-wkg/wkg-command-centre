@@ -13,7 +13,7 @@ import { user, userScopes } from "@/db/schema";
  * Seeds an external user (creating it if missing) with one userScopes row
  * so the external-user invariant is satisfied, then signs in as that user
  * and verifies the proxy redirects every internal route to
- * /portal/coming-soon while leaving /portal/coming-soon and /login alone.
+ * /portal/analytics/portfolio while leaving /portal/* and /login alone.
  *
  * Originally deferred in the M3 plan — included here once the manage-scopes
  * dialog and the audit_logs.entity_id text fix were in place.
@@ -80,24 +80,24 @@ test.describe("External user middleware gating", () => {
     await ensureExternalTestUser();
   });
 
-  test("external user is redirected to /portal/coming-soon from /kiosks", async ({
+  test("external user is redirected to /portal/analytics/portfolio from /kiosks", async ({
     page,
   }) => {
     await signInAsExternal(page);
     await page.goto("/kiosks");
-    await expect(page).toHaveURL(/\/portal\/coming-soon$/);
+    await expect(page).toHaveURL(/\/portal\/analytics\/portfolio$/);
   });
 
   test("external user is redirected from /locations", async ({ page }) => {
     await signInAsExternal(page);
     await page.goto("/locations");
-    await expect(page).toHaveURL(/\/portal\/coming-soon$/);
+    await expect(page).toHaveURL(/\/portal\/analytics\/portfolio$/);
   });
 
   test("external user is redirected from /settings/users", async ({ page }) => {
     await signInAsExternal(page);
     await page.goto("/settings/users");
-    await expect(page).toHaveURL(/\/portal\/coming-soon$/);
+    await expect(page).toHaveURL(/\/portal\/analytics\/portfolio$/);
   });
 
   test("external user can load /portal/coming-soon directly", async ({
@@ -111,10 +111,11 @@ test.describe("External user middleware gating", () => {
     ).toBeVisible();
   });
 
-  test("external user can sign out from the portal stub", async ({ page }) => {
+  test("external user can sign out from the portal", async ({ page }) => {
     await signInAsExternal(page);
-    await page.goto("/portal/coming-soon");
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.goto("/portal/analytics/portfolio");
+    await page.waitForURL(/\/portal\/analytics\/portfolio/, { timeout: 15000 });
+    await page.getByRole("button", { name: "Sign out" }).first().click();
     await page.waitForURL(/\/login$/, { timeout: 10000 });
   });
 });
