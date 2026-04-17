@@ -16,10 +16,16 @@ import {
 } from "@/lib/analytics/formatters";
 import { cn } from "@/lib/utils";
 import type { HeatMapHotel } from "@/lib/analytics/types";
+import {
+  classifyTrafficLight,
+  trafficLightBgColor,
+  type ThresholdConfig,
+} from "@/lib/analytics/thresholds";
 
 interface PerformanceTableProps {
   data: HeatMapHotel[];
   title: string;
+  thresholdConfig?: ThresholdConfig;
 }
 
 function scoreColorClass(score: number): string {
@@ -28,7 +34,13 @@ function scoreColorClass(score: number): string {
   return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
 }
 
-export function PerformanceTable({ data, title }: PerformanceTableProps) {
+const trafficLightLabel: Record<string, string> = {
+  red: "Low",
+  amber: "Mid",
+  green: "High",
+};
+
+export function PerformanceTable({ data, title, thresholdConfig }: PerformanceTableProps) {
   if (data.length === 0) {
     return <EmptyState message={`No ${title.toLowerCase()} data available`} />;
   }
@@ -52,6 +64,9 @@ export function PerformanceTable({ data, title }: PerformanceTableProps) {
               <TableHead className="text-right">Txn / Kiosk</TableHead>
               <TableHead className="text-right">Avg Basket</TableHead>
               <TableHead className="text-right w-20">Score</TableHead>
+              {thresholdConfig && (
+                <TableHead className="text-center w-16">Status</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -95,6 +110,29 @@ export function PerformanceTable({ data, title }: PerformanceTableProps) {
                     {row.compositeScore.toFixed(1)}
                   </span>
                 </TableCell>
+                {thresholdConfig && (() => {
+                  const light = classifyTrafficLight(row.revenue, thresholdConfig);
+                  return (
+                    <TableCell className="text-center">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                          trafficLightBgColor(light),
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "inline-block h-2 w-2 rounded-full",
+                            light === "red" && "bg-red-500",
+                            light === "amber" && "bg-amber-500",
+                            light === "green" && "bg-green-500",
+                          )}
+                        />
+                        {trafficLightLabel[light]}
+                      </span>
+                    </TableCell>
+                  );
+                })()}
               </TableRow>
             ))}
           </TableBody>

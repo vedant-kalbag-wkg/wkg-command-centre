@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays, ClipboardCheck } from "lucide-react";
+import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays, ClipboardCheck, Gauge } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import {
   Card,
@@ -180,6 +180,24 @@ export default async function SettingsPage() {
                 </div>
                 <CardDescription className="text-sm text-wk-night-grey">
                   View which locations are missing region, hotel group, operating group, or market metadata.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link href="/settings/thresholds" className="group">
+            <Card className="h-full cursor-pointer border-wk-mid-grey/40 transition-shadow group-hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-9 h-9 rounded-lg bg-wk-sky-blue flex items-center justify-center">
+                    <Gauge className="w-5 h-5 text-wk-azure" />
+                  </div>
+                  <CardTitle className="text-base font-medium">Performance Thresholds</CardTitle>
+                </div>
+                <CardDescription className="text-sm text-wk-night-grey">
+                  Configure traffic-light revenue thresholds (Red / Amber / Green) for analytics views.
                 </CardDescription>
               </CardHeader>
             </Card>

@@ -11,11 +11,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { cn } from "@/lib/utils";
+import {
+  classifyTrafficLight,
+  trafficLightBgColor,
+  type ThresholdConfig,
+} from "@/lib/analytics/thresholds";
 import type { OutletTierRow, OutletTier } from "@/lib/analytics/types";
 
 interface OutletTiersProps {
   data: OutletTierRow[];
   loading?: boolean;
+  thresholdConfig?: ThresholdConfig;
 }
 
 const tierStyles: Record<OutletTier, string> = {
@@ -26,7 +33,13 @@ const tierStyles: Record<OutletTier, string> = {
   Emerging: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
-export function OutletTiers({ data, loading = false }: OutletTiersProps) {
+const trafficLightLabel: Record<string, string> = {
+  red: "Low",
+  amber: "Mid",
+  green: "High",
+};
+
+export function OutletTiers({ data, loading = false, thresholdConfig }: OutletTiersProps) {
   if (!loading && data.length === 0) {
     return <EmptyState message="No outlet data for selected filters" />;
   }
@@ -41,6 +54,7 @@ export function OutletTiers({ data, loading = false }: OutletTiersProps) {
           <TableHead className="text-right">Transactions</TableHead>
           <TableHead className="text-right">Share</TableHead>
           <TableHead>Tier</TableHead>
+          {thresholdConfig && <TableHead className="text-center">Status</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -67,6 +81,29 @@ export function OutletTiers({ data, loading = false }: OutletTiersProps) {
                 {row.tier}
               </Badge>
             </TableCell>
+            {thresholdConfig && (() => {
+              const light = classifyTrafficLight(row.revenue, thresholdConfig);
+              return (
+                <TableCell className="text-center">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                      trafficLightBgColor(light),
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-2 w-2 rounded-full",
+                        light === "red" && "bg-red-500",
+                        light === "amber" && "bg-amber-500",
+                        light === "green" && "bg-green-500",
+                      )}
+                    />
+                    {trafficLightLabel[light]}
+                  </span>
+                </TableCell>
+              );
+            })()}
           </TableRow>
         ))}
       </TableBody>

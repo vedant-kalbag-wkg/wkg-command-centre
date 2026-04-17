@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchPortfolioData } from "./actions";
+import { fetchPortfolioData, fetchThresholdConfig } from "./actions";
 import { AnalyticsSummary } from "./analytics-summary";
 import { CategoryPerformance } from "./category-performance";
 import { TopProducts } from "./top-products";
@@ -12,10 +12,12 @@ import { DailyTrends } from "./daily-trends";
 import { HourlyDistribution } from "./hourly-distribution";
 import { OutletTiers } from "./outlet-tiers";
 import type { PortfolioData } from "@/lib/analytics/types";
+import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 
 export default function PortfolioPage() {
   const filters = useAnalyticsFilters();
   const [data, setData] = useState<PortfolioData | null>(null);
+  const [thresholdConfig, setThresholdConfig] = useState<ThresholdConfig>({ redMax: 500, greenMin: 1500 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,9 +36,13 @@ export default function PortfolioPage() {
 
     try {
       const parsed = JSON.parse(filtersJson);
-      const result = await fetchPortfolioData(parsed);
+      const [result, thresholds] = await Promise.all([
+        fetchPortfolioData(parsed),
+        fetchThresholdConfig(),
+      ]);
       if (!controller.signal.aborted) {
         setData(result);
+        setThresholdConfig(thresholds);
       }
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -133,7 +139,7 @@ export default function PortfolioPage() {
       </SectionAccordion>
 
       <SectionAccordion title="Outlet Tiers">
-        <OutletTiers data={portfolio.outletTiers} loading={loading} />
+        <OutletTiers data={portfolio.outletTiers} loading={loading} thresholdConfig={thresholdConfig} />
       </SectionAccordion>
     </div>
   );
