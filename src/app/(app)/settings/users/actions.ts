@@ -8,7 +8,12 @@ import { headers } from "next/headers";
 const emailSchema = z.email("Invalid email address");
 const roleSchema = z.enum(["admin", "member", "viewer"]);
 
-export async function inviteUser(email: string, role: Role) {
+export async function inviteUser(
+  email: string,
+  role: Role,
+  userType: "internal" | "external" = "internal",
+  scopes: { dimensionType: string; dimensionId: string }[] = [],
+) {
   try {
     await requireRole("admin");
 
@@ -37,11 +42,42 @@ export async function inviteUser(email: string, role: Role) {
       });
     }
 
+    // Set userType on user record
+    const { db } = await import("@/db");
+    const { user: userTable, userScopes } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    await db
+      .update(userTable)
+      .set({ userType })
+      .where(eq(userTable.id, userId));
+
+    // Insert scopes for external users
+    if (userType === "external") {
+      if (scopes.length === 0) {
+        return { error: "External users require at least one scope" };
+      }
+
+      // Get current admin session for createdBy
+      const session = await auth.api.getSession({
+        headers: await headers(),
+      });
+
+      await db.insert(userScopes).values(
+        scopes.map((s) => ({
+          userId,
+          dimensionType: s.dimensionType as typeof userScopes.$inferInsert.dimensionType,
+          dimensionId: s.dimensionId,
+          createdBy: session?.user.id ?? null,
+        })),
+      );
+    }
+
     // The password reset email IS the invite email (per RESEARCH.md Pattern 5)
     await auth.api.requestPasswordReset({
       body: {
         email: validatedEmail,
-        redirectTo: "/set-password",
+        redirectTo: `/set-password?invite=1&email=${encodeURIComponent(validatedEmail)}`,
       },
     });
 
