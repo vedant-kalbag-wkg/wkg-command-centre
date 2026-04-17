@@ -6,6 +6,7 @@ import {
   locationHotelGroupMemberships,
   locationGroupMemberships,
   regions,
+  markets,
   hotelGroups,
   locationGroups,
 } from "@/db/schema";
@@ -57,7 +58,8 @@ function baseFromWithRegions(): SQL {
   return sql`${salesRecords}
     INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     INNER JOIN ${locationRegionMemberships} ON ${locations.id} = ${locationRegionMemberships.locationId}
-    INNER JOIN ${regions} ON ${locationRegionMemberships.regionId} = ${regions.id}`;
+    INNER JOIN ${regions} ON ${locationRegionMemberships.regionId} = ${regions.id}
+    LEFT JOIN ${markets} ON ${regions.marketId} = ${markets.id}`;
 }
 
 // ─── 1. Regions List ────────────────────────────────────────────────────────
@@ -72,17 +74,21 @@ export async function getRegionsList(
     db.execute<{
       region_id: string;
       region_name: string;
+      market_id: string | null;
+      market_name: string | null;
       revenue: string;
       transactions: string;
     }>(sql`
       SELECT
         ${regions.id} AS region_id,
         ${regions.name} AS region_name,
+        ${markets.id} AS market_id,
+        ${markets.name} AS market_name,
         COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
         COUNT(*)::text AS transactions
       FROM ${baseFromWithRegions()}
       ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-      GROUP BY ${regions.id}, ${regions.name}
+      GROUP BY ${regions.id}, ${regions.name}, ${markets.id}, ${markets.name}
       ORDER BY revenue DESC
     `),
     db.execute<{
@@ -114,6 +120,8 @@ export async function getRegionsList(
     transactions: Number(row.transactions),
     hotelGroupCount: countMap.get(row.region_id)?.hg ?? 0,
     locationGroupCount: countMap.get(row.region_id)?.lg ?? 0,
+    marketId: row.market_id ?? null,
+    marketName: row.market_name ?? null,
   }));
 }
 

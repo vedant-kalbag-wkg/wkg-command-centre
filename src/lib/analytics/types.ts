@@ -212,6 +212,8 @@ export type RegionData = {
   transactions: number
   hotelGroupCount: number
   locationGroupCount: number
+  marketId: string | null
+  marketName: string | null
 }
 
 export type RegionDetail = {

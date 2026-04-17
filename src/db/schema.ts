@@ -154,6 +154,7 @@ export const locations = pgTable("locations", {
   // mirror that on locations so CSV rows can FK-resolve to locations.id.
   outletCode: text("outlet_code").unique(),
   hotelGroup: text("hotel_group"),
+  operatingGroupId: uuid("operating_group_id").references(() => hotelGroups.id, { onDelete: "set null" }),
   sourcedBy: text("sourced_by"),
   bankingDetails: jsonb("banking_details"),
   contractValue: numeric("contract_value"),
@@ -393,6 +394,16 @@ export const userScopes = pgTable(
 // input / unnormalised data.
 // =============================================================================
 
+// Markets — top-level geographic grouping (e.g. UK & Ireland, Continental Europe).
+// Regions belong to a market, enabling hierarchical geo drill-down.
+export const markets = pgTable("markets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  code: text("code"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").references(() => user.id),
+});
+
 // Hotel groups — hierarchical grouping of hotel locations (e.g. Dalata Hotels).
 // Supports nesting via self-referential parentGroupId.
 export const hotelGroups = pgTable("hotel_groups", {
@@ -411,6 +422,7 @@ export const regions = pgTable("regions", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
   code: text("code"),
+  marketId: uuid("market_id").references(() => markets.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   createdBy: text("created_by").references(() => user.id),
 });
