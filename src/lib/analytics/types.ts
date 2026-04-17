@@ -6,7 +6,7 @@ export type DatePreset =
 
 export type FilterDimension =
   | "hotelIds" | "regionIds" | "productIds"
-  | "hotelGroupIds" | "locationGroupIds" | "categoryIds"
+  | "hotelGroupIds" | "locationGroupIds"
 
 export type AnalyticsFilters = {
   dateFrom: string       // YYYY-MM-DD
@@ -16,7 +16,6 @@ export type AnalyticsFilters = {
   productIds?: string[]
   hotelGroupIds?: string[]
   locationGroupIds?: string[]
-  categoryIds?: string[] // product category names
 }
 
 // ─── Portfolio Types ──────────────────────────────────────────────────────────
@@ -121,7 +120,6 @@ export type SeriesFilters = {
   hotelGroupIds?: string[]
   regionIds?: string[]
   locationGroupIds?: string[]
-  categoryIds?: string[]
 }
 
 export type SeriesConfig = {
@@ -275,7 +273,6 @@ export type DimensionOptions = {
   hotelGroups: { id: string; name: string }[]
   regions: { id: string; name: string }[]
   locationGroups: { id: string; name: string }[]
-  categories: string[]
 }
 
 // ─── Change Indicator ─────────────────────────────────────────────────────────

@@ -48,7 +48,6 @@ export function generateSeriesLabel(
     ...(filters.hotelGroupIds ?? []),
     ...(filters.regionIds ?? []),
     ...(filters.locationGroupIds ?? []),
-    ...(filters.categoryIds ?? []),
   ];
   if (allValues.length === 0) return `${metricName} | All`;
   return `${metricName} | ${allValues.join(", ")}`;
