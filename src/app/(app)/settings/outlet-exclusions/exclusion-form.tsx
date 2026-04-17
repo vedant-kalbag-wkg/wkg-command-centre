@@ -81,7 +81,7 @@ export function ExclusionForm({ onSubmit }: ExclusionFormProps) {
           <Label htmlFor="excl-type">Pattern Type</Label>
           <Select
             value={patternType}
-            onValueChange={(v) => setPatternType(v as "exact" | "regex")}
+            onValueChange={(v) => v && setPatternType(v as "exact" | "regex")}
           >
             <SelectTrigger className="w-full" id="excl-type">
               <SelectValue />
