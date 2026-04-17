@@ -1,8 +1,7 @@
-import "dotenv/config";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { kiosks, pipelineStages, locations, kioskAssignments } from "./schema";
-import { eq, count } from "drizzle-orm";
+import { count } from "drizzle-orm";
 import { config } from "dotenv";
 
 config({ path: ".env.local" });
