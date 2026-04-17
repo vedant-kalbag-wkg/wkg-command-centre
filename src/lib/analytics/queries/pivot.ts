@@ -16,7 +16,7 @@ import {
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
-import { getPreviousPeriodDates } from "@/lib/analytics/metrics";
+import { getComparisonDates } from "@/lib/analytics/metrics";
 import {
   validatePivotConfig,
   buildPivotSQL,
@@ -286,23 +286,3 @@ async function addPeriodComparison(
   };
 }
 
-function getComparisonDates(
-  dateFrom: string,
-  dateTo: string,
-  mode: "mom" | "yoy",
-): { prevFrom: string; prevTo: string } {
-  if (mode === "yoy") {
-    // Year-over-year: same dates, one year earlier
-    const from = new Date(dateFrom);
-    const to = new Date(dateTo);
-    from.setFullYear(from.getFullYear() - 1);
-    to.setFullYear(to.getFullYear() - 1);
-    return {
-      prevFrom: from.toISOString().split("T")[0],
-      prevTo: to.toISOString().split("T")[0],
-    };
-  }
-
-  // Month-over-month: same duration, immediately preceding
-  return getPreviousPeriodDates(dateFrom, dateTo);
-}

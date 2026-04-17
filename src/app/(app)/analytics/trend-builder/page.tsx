@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
   fetchTrendSeriesData,
+  fetchTrendSeriesDataYoY,
   fetchWeatherData,
   fetchBusinessEvents,
 } from "./actions";
@@ -39,11 +40,16 @@ export default function TrendBuilderPage() {
   const setShowWeather = useTrendStore((s) => s.setShowWeather);
   const showEvents = useTrendStore((s) => s.showEvents);
   const setShowEvents = useTrendStore((s) => s.setShowEvents);
+  const showYoY = useTrendStore((s) => s.showYoY);
+  const setShowYoY = useTrendStore((s) => s.setShowYoY);
   const activeEventCategories = useTrendStore((s) => s.activeEventCategories);
   const toggleAppliedHidden = useTrendStore((s) => s.toggleAppliedHidden);
 
   // Data state
   const [seriesData, setSeriesData] = useState<Map<string, TrendDataPoint[]>>(
+    new Map(),
+  );
+  const [yoyData, setYoyData] = useState<Map<string, TrendDataPoint[]>>(
     new Map(),
   );
   const [weatherData, setWeatherData] = useState<DailyWeather[]>([]);
@@ -87,6 +93,19 @@ export default function TrendBuilderPage() {
         return [s.id, data] as const;
       });
 
+      // Fetch YoY series in parallel when enabled
+      const yoyPromises = showYoY
+        ? parsed.map(async (s) => {
+            const data = await fetchTrendSeriesDataYoY(
+              s.metric,
+              s.filters,
+              dateFrom,
+              dateTo,
+            );
+            return [s.id, data] as const;
+          })
+        : [];
+
       // Fetch weather + events in parallel with series
       const weatherPromise = showWeather
         ? (() => {
@@ -99,14 +118,16 @@ export default function TrendBuilderPage() {
         ? fetchBusinessEvents(dateFrom, dateTo)
         : Promise.resolve([]);
 
-      const [seriesResults, weatherResult, eventsResult] = await Promise.all([
+      const [seriesResults, yoyResults, weatherResult, eventsResult] = await Promise.all([
         Promise.all(seriesPromises),
+        Promise.all(yoyPromises),
         weatherPromise,
         eventsPromise,
       ]);
 
       if (!controller.signal.aborted) {
         setSeriesData(new Map(seriesResults));
+        setYoyData(showYoY ? new Map(yoyResults) : new Map());
         setWeatherData(weatherResult);
         setEvents(eventsResult);
       }
@@ -121,7 +142,7 @@ export default function TrendBuilderPage() {
         setLoading(false);
       }
     }
-  }, [seriesJson, dateFrom, dateTo, showWeather, showEvents]);
+  }, [seriesJson, dateFrom, dateTo, showWeather, showEvents, showYoY]);
 
   useEffect(() => {
     loadData();
@@ -175,6 +196,17 @@ export default function TrendBuilderPage() {
             Events
           </Label>
         </div>
+
+        <div className="flex items-center gap-2">
+          <Switch
+            id="show-yoy"
+            checked={showYoY}
+            onCheckedChange={setShowYoY}
+          />
+          <Label htmlFor="show-yoy" className="text-xs">
+            YoY Overlay
+          </Label>
+        </div>
       </div>
 
       {/* Main chart */}
@@ -183,6 +215,7 @@ export default function TrendBuilderPage() {
       ) : (
         <TrendChart
           allData={seriesData}
+          yoyData={yoyData}
           appliedSeries={appliedSeries}
           granularity={granularity}
           dateFrom={dateFrom}

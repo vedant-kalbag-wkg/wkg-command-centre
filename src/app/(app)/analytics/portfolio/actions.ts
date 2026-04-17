@@ -8,6 +8,7 @@ import { getHighPerformerPatterns } from "@/lib/analytics/queries/high-performer
 import { fetchLocationFlags } from "@/app/(app)/analytics/flags/actions";
 import type {
   AnalyticsFilters,
+  ComparisonMode,
   PortfolioData,
   BusinessEventDisplay,
   HighPerformerPatterns,
@@ -16,9 +17,10 @@ import type {
 
 export async function fetchPortfolioData(
   filters: AnalyticsFilters,
+  comparison: ComparisonMode = "mom",
 ): Promise<PortfolioData> {
   const userCtx = await getUserCtx();
-  return getPortfolioData(filters, userCtx);
+  return getPortfolioData(filters, userCtx, comparison);
 }
 
 export async function fetchThresholdConfig(): Promise<ThresholdConfig> {

@@ -10,9 +10,10 @@ import {
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
-import { getPreviousPeriodDates, calculatePercentile, classifyOutletTier } from "@/lib/analytics/metrics";
+import { getComparisonDates, calculatePercentile, classifyOutletTier } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
+  ComparisonMode,
   PortfolioSummary,
   CategoryPerformanceRow,
   TopProductRow,
@@ -304,8 +305,9 @@ export async function getOutletTiers(
 export async function getPortfolioData(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
+  comparison: ComparisonMode = "mom",
 ): Promise<PortfolioData> {
-  const { prevFrom, prevTo } = getPreviousPeriodDates(filters.dateFrom, filters.dateTo);
+  const { prevFrom, prevTo } = getComparisonDates(filters.dateFrom, filters.dateTo, comparison);
   const previousFilters: AnalyticsFilters = {
     ...filters,
     dateFrom: prevFrom,
@@ -333,6 +335,7 @@ export async function getPortfolioData(
   return {
     summary,
     previousSummary,
+    comparisonMode: comparison,
     categoryPerformance,
     topProducts,
     dailyTrends,

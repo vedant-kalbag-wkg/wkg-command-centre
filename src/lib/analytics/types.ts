@@ -73,9 +73,12 @@ export type OutletTierRow = {
 
 export type OutletTier = "Premium" | "Standard" | "Developing" | "Emerging"
 
+export type ComparisonMode = "mom" | "yoy"
+
 export type PortfolioData = {
   summary: PortfolioSummary
   previousSummary: PortfolioSummary | null
+  comparisonMode?: ComparisonMode
   categoryPerformance: CategoryPerformanceRow[]
   topProducts: TopProductRow[]
   dailyTrends: DailyTrendRow[]

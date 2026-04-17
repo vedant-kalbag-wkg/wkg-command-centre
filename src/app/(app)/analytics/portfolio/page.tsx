@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { fetchPortfolioData, fetchThresholdConfig, fetchPortfolioEvents, fetchHighPerformerPatterns, fetchActiveFlags } from "./actions";
 import { EVENT_CATEGORIES } from "@/lib/stores/trend-store";
 import { AnalyticsSummary } from "./analytics-summary";
@@ -13,7 +14,7 @@ import { DailyTrends } from "./daily-trends";
 import { HourlyDistribution } from "./hourly-distribution";
 import { OutletTiers } from "./outlet-tiers";
 import { HighPerformerPatterns } from "./high-performer-patterns";
-import type { AnalyticsFilters, PortfolioData, BusinessEventDisplay, HighPerformerPatterns as HighPerformerPatternsData, LocationFlag } from "@/lib/analytics/types";
+import type { AnalyticsFilters, ComparisonMode, PortfolioData, BusinessEventDisplay, HighPerformerPatterns as HighPerformerPatternsData, LocationFlag } from "@/lib/analytics/types";
 import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 
 export default function PortfolioPage() {
@@ -23,6 +24,7 @@ export default function PortfolioPage() {
   const [events, setEvents] = useState<BusinessEventDisplay[]>([]);
   const [highPerformerData, setHighPerformerData] = useState<HighPerformerPatternsData | null>(null);
   const [flags, setFlags] = useState<LocationFlag[]>([]);
+  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("mom");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +47,7 @@ export default function PortfolioPage() {
     try {
       const parsed = JSON.parse(filtersJson) as AnalyticsFilters;
       const [result, thresholds, eventsResult, hpResult, activeFlags] = await Promise.all([
-        fetchPortfolioData(parsed),
+        fetchPortfolioData(parsed, comparisonMode),
         fetchThresholdConfig(),
         fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo),
         fetchHighPerformerPatterns(parsed),
@@ -69,7 +71,7 @@ export default function PortfolioPage() {
         setLoading(false);
       }
     }
-  }, [filtersJson]);
+  }, [filtersJson, comparisonMode]);
 
   useEffect(() => {
     loadData();
@@ -100,13 +102,34 @@ export default function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Portfolio Overview
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Comprehensive view of sales performance across your portfolio
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Portfolio Overview
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Comprehensive view of sales performance across your portfolio
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1 rounded-lg border bg-muted/50 p-1">
+          <Button
+            size="sm"
+            variant={comparisonMode === "mom" ? "default" : "ghost"}
+            className="h-7 px-3 text-xs"
+            onClick={() => setComparisonMode("mom")}
+          >
+            MoM
+          </Button>
+          <Button
+            size="sm"
+            variant={comparisonMode === "yoy" ? "default" : "ghost"}
+            className="h-7 px-3 text-xs"
+            onClick={() => setComparisonMode("yoy")}
+          >
+            YoY
+          </Button>
+        </div>
       </div>
 
       {error && (
