@@ -52,8 +52,10 @@ test.describe("Admin invite user", () => {
       page.getByText(`Invite sent to ${testEmail}`)
     ).toBeVisible({ timeout: 10000 });
 
-    // Verify new user appears in the table
-    await expect(page.getByText(testEmail)).toBeVisible({ timeout: 5000 });
+    // Verify new user appears in the table (use role to avoid matching toast)
+    await expect(
+      page.getByRole("cell", { name: testEmail })
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("invite shows error for invalid email", async ({ page }) => {
