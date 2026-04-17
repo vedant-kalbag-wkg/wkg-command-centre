@@ -34,6 +34,7 @@ import {
 interface FilterState {
   actorId: string;
   entityType: string;
+  actorUserType: string;
   dateFrom: string;
   dateTo: string;
 }
@@ -84,6 +85,7 @@ export function AuditTable() {
   const [filters, setFilters] = React.useState<FilterState>({
     actorId: "",
     entityType: "",
+    actorUserType: "all",
     dateFrom: "",
     dateTo: "",
   });
@@ -105,6 +107,7 @@ export function AuditTable() {
     fetchAuditEntries({
       actorId: filters.actorId || undefined,
       entityType: filters.entityType || undefined,
+      actorUserType: filters.actorUserType !== "all" ? filters.actorUserType as "internal" | "external" : undefined,
       dateFrom: filters.dateFrom || undefined,
       dateTo: filters.dateTo || undefined,
       limit: 20,
@@ -127,6 +130,7 @@ export function AuditTable() {
       const { entries: more, hasMore: hm, remainingCount: rc } = await fetchAuditEntries({
         actorId: filters.actorId || undefined,
         entityType: filters.entityType || undefined,
+        actorUserType: filters.actorUserType !== "all" ? filters.actorUserType as "internal" | "external" : undefined,
         dateFrom: filters.dateFrom || undefined,
         dateTo: filters.dateTo || undefined,
         cursor,
@@ -141,10 +145,10 @@ export function AuditTable() {
   }
 
   function clearFilters() {
-    setFilters({ actorId: "", entityType: "", dateFrom: "", dateTo: "" });
+    setFilters({ actorId: "", entityType: "", actorUserType: "all", dateFrom: "", dateTo: "" });
   }
 
-  const hasFilters = Object.values(filters).some((v) => v !== "");
+  const hasFilters = filters.actorId !== "" || filters.entityType !== "" || filters.actorUserType !== "all" || filters.dateFrom !== "" || filters.dateTo !== "";
 
   return (
     <div className="space-y-4">
@@ -194,6 +198,26 @@ export function AuditTable() {
               <SelectItem value="__all__">All</SelectItem>
               <SelectItem value="kiosk">Kiosk</SelectItem>
               <SelectItem value="location">Location</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* User Type filter */}
+        <div className="space-y-1.5 min-w-[160px]">
+          <Label className="text-xs text-wk-night-grey">User Type</Label>
+          <Select
+            value={filters.actorUserType}
+            onValueChange={(val) =>
+              setFilters((prev) => ({ ...prev, actorUserType: (val as string) ?? "all" }))
+            }
+          >
+            <SelectTrigger id="filter-user-type" className="h-8 w-full text-sm bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="internal">Internal</SelectItem>
+              <SelectItem value="external">External</SelectItem>
             </SelectContent>
           </Select>
         </div>

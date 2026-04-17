@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { MoreHorizontal, Merge, Trash2, UserX } from "lucide-react";
 import {
   Table,
@@ -35,6 +36,7 @@ import { MergeDialog } from "@/components/table/merge-dialog";
 import { mergeUsersAction } from "@/app/(app)/settings/users/merge-action";
 import { bulkDeactivateUsers } from "@/app/(app)/settings/users/actions";
 import type { UserListItem } from "@/app/(app)/settings/users/actions";
+import { startImpersonation } from "@/app/(app)/settings/users/impersonation-actions";
 
 function RoleBadge({ role }: { role: string }) {
   const label = role.charAt(0).toUpperCase() + role.slice(1);
@@ -69,6 +71,7 @@ interface UserTableProps {
 }
 
 export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
+  const router = useRouter();
   const [changeRoleUser, setChangeRoleUser] = useState<UserListItem | null>(null);
   const [deactivateUser, setDeactivateUser] = useState<UserListItem | null>(null);
   const [reactivateUserState, setReactivateUserState] = useState<UserListItem | null>(null);
@@ -144,6 +147,16 @@ export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
       toast.success(`Deactivated ${result.count} users`);
       clearSelection();
       onRefresh();
+    }
+  }
+
+  async function handlePreviewAs(targetUser: UserListItem) {
+    const result = await startImpersonation(targetUser.id);
+    if (result.success) {
+      toast.success(`Previewing as ${targetUser.name || targetUser.email}`);
+      router.push("/analytics/portfolio");
+    } else {
+      toast.error(result.error ?? "Failed to start preview");
     }
   }
 
@@ -295,6 +308,13 @@ export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
                       >
                         Manage scopes
                       </DropdownMenuItem>
+                      {!user.banned && user.role !== "admin" && (
+                        <DropdownMenuItem
+                          onClick={() => handlePreviewAs(user)}
+                        >
+                          Preview as
+                        </DropdownMenuItem>
+                      )}
                       {!user.banned ? (
                         <DropdownMenuItem
                           variant="destructive"

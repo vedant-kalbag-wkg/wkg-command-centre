@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { auditLogs } from "@/db/schema";
+import { auditLogs, user } from "@/db/schema";
 import { requireRole, getSessionOrThrow } from "@/lib/rbac";
 import {
   eq,
@@ -10,6 +10,7 @@ import {
   and,
   gte,
   lte,
+  sql,
   type SQL,
 } from "drizzle-orm";
 
@@ -31,6 +32,7 @@ export type FetchAuditEntriesParams = {
   entityType?: string;
   entityId?: string;
   actorId?: string;
+  actorUserType?: "internal" | "external";
   dateFrom?: string;
   dateTo?: string;
   cursor?: string; // id of last entry from previous page
@@ -42,7 +44,7 @@ export async function fetchAuditEntries(params: FetchAuditEntriesParams = {}): P
   hasMore: boolean;
   remainingCount: number;
 }> {
-  const { entityType, entityId, actorId, dateFrom, dateTo, cursor, limit = 20 } = params;
+  const { entityType, entityId, actorId, actorUserType, dateFrom, dateTo, cursor, limit = 20 } = params;
 
   // Entity-specific queries: any logged-in user. Global queries: admin only.
   if (!entityId) {
@@ -61,6 +63,11 @@ export async function fetchAuditEntries(params: FetchAuditEntriesParams = {}): P
   }
   if (actorId) {
     conditions.push(eq(auditLogs.actorId, actorId));
+  }
+  if (actorUserType) {
+    conditions.push(
+      sql`${auditLogs.actorId} IN (SELECT ${user.id} FROM ${user} WHERE ${user.userType} = ${actorUserType})`
+    );
   }
   if (dateFrom) {
     conditions.push(gte(auditLogs.createdAt, new Date(dateFrom)));
