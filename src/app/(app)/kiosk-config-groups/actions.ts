@@ -9,7 +9,6 @@ import {
 } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { eq, sql } from "drizzle-orm";
-import { fetchAllItems } from "@/lib/monday-client";
 
 export type ConfigGroupListItem = {
   id: string;
@@ -71,68 +70,4 @@ export async function listConfigGroups(): Promise<ConfigGroupListItem[]> {
     });
   }
   return result;
-}
-
-export async function importConfigGroups(boardId: string): Promise<
-  { imported: number; assigned: number } | { error: string }
-> {
-  try {
-    await requireRole("admin");
-
-    // Fetch all items from the Monday.com board
-    const allItems = [];
-    for await (const page of fetchAllItems(boardId)) {
-      allItems.push(...page);
-    }
-
-    if (allItems.length === 0) {
-      return { error: "No items found on board " + boardId };
-    }
-
-    // Map item names to kioskConfigGroups rows (upsert)
-    let importedCount = 0;
-    const groupNameToId = new Map<string, string>();
-
-    for (const item of allItems) {
-      const groupName = item.name?.trim();
-      if (!groupName) continue;
-
-      const existing = await db
-        .select({ id: kioskConfigGroups.id })
-        .from(kioskConfigGroups)
-        .where(eq(kioskConfigGroups.name, groupName))
-        .limit(1);
-
-      if (existing.length > 0) {
-        groupNameToId.set(groupName, existing[0].id);
-      } else {
-        const [inserted] = await db
-          .insert(kioskConfigGroups)
-          .values({ name: groupName })
-          .returning({ id: kioskConfigGroups.id });
-        groupNameToId.set(groupName, inserted.id);
-        importedCount++;
-      }
-    }
-
-    // Assign kioskConfigGroupId FK on kiosks where regionGroup matches the group name
-    let assignedCount = 0;
-    for (const [groupName, groupId] of groupNameToId) {
-      await db
-        .update(kiosks)
-        .set({ kioskConfigGroupId: groupId })
-        .where(eq(kiosks.regionGroup, groupName));
-      const countResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(kiosks)
-        .where(eq(kiosks.kioskConfigGroupId, groupId));
-      assignedCount += countResult[0]?.count ?? 0;
-    }
-
-    return { imported: importedCount, assigned: assignedCount };
-  } catch (err) {
-    return {
-      error: err instanceof Error ? err.message : "Failed to import config groups",
-    };
-  }
 }

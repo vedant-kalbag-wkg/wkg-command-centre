@@ -40,7 +40,7 @@ async function ensureExternalTestUser(): Promise<string> {
         email: EXTERNAL_TEST_USER.email,
         password: EXTERNAL_TEST_USER.password,
         name: EXTERNAL_TEST_USER.name,
-        role: "member",
+        role: "user",
       },
     });
     userId = created.user.id;

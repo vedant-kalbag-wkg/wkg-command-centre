@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:seed": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed.ts"
+    "db:seed": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed.ts",
+    "db:seed:sales-demo": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-sales-demo.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1012.0",
