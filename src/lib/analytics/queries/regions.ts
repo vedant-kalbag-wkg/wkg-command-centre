@@ -73,32 +73,12 @@ export async function getRegionsList(
     region_name: string;
     revenue: string;
     transactions: string;
-    hotel_group_count: string;
-    location_group_count: string;
   }>(sql`
     SELECT
       ${regions.id} AS region_id,
       ${regions.name} AS region_name,
       COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      (
-        SELECT COUNT(DISTINCT ${locationHotelGroupMemberships.hotelGroupId})::text
-        FROM ${locationHotelGroupMemberships}
-        WHERE ${locationHotelGroupMemberships.locationId} IN (
-          SELECT ${locationRegionMemberships.locationId}
-          FROM ${locationRegionMemberships} AS lrm2
-          WHERE lrm2.${sql.raw("region_id")} = ${regions.id}
-        )
-      ) AS hotel_group_count,
-      (
-        SELECT COUNT(DISTINCT ${locationGroupMemberships.locationGroupId})::text
-        FROM ${locationGroupMemberships}
-        WHERE ${locationGroupMemberships.locationId} IN (
-          SELECT ${locationRegionMemberships.locationId}
-          FROM ${locationRegionMemberships} AS lrm3
-          WHERE lrm3.${sql.raw("region_id")} = ${regions.id}
-        )
-      ) AS location_group_count
+      COUNT(*)::text AS transactions
     FROM ${baseFromWithRegions()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${regions.id}, ${regions.name}
@@ -110,8 +90,8 @@ export async function getRegionsList(
     name: row.region_name,
     revenue: Number(row.revenue),
     transactions: Number(row.transactions),
-    hotelGroupCount: Number(row.hotel_group_count),
-    locationGroupCount: Number(row.location_group_count),
+    hotelGroupCount: 0,
+    locationGroupCount: 0,
   }));
 }
 
