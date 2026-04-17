@@ -180,29 +180,74 @@ async function migrateDimensions() {
         .onConflictDoNothing();
     }
   }
-  log("DIMENSIONS", `Locations: ${locInserted} inserted, ${locUpdated} updated`);
+  log("DIMENSIONS", `Locations from hotel_metadata_cache: ${locInserted} inserted, ${locUpdated} updated`);
 
-  // Products — distinct product_name from sales_data
-  const { data: prodNames, error: prodErr } = await supabase
-    .from("sales_data")
-    .select("product_name")
-    .not("product_name", "is", null);
-  if (prodErr) throw new Error(`products read failed: ${prodErr.message}`);
-  const uniqueProducts = new Set((prodNames ?? []).map((r: { product_name: string }) => r.product_name));
-  for (const name of uniqueProducts) {
-    if (!name?.trim()) continue;
+  // ── Fill gaps: create stub locations for outlet codes in sales_data
+  // that aren't in hotel_metadata_cache. Location metadata is the kiosk-
+  // management side's job — sales data only carries the outlet_code FK.
+  // Stubs use the outlet_code as the name; admins enrich later.
+  const allSalesCodes = new Set<string>();
+  const SCAN_BATCH = 1000;
+  let scanOffset = 0;
+  while (true) {
+    const { data: page } = await supabase
+      .from("sales_data")
+      .select("outlet_code")
+      .range(scanOffset, scanOffset + SCAN_BATCH - 1)
+      .order("id", { ascending: true });
+    if (!page || page.length === 0) break;
+    for (const r of page) if (r.outlet_code) allSalesCodes.add(r.outlet_code);
+    scanOffset += SCAN_BATCH;
+  }
+
+  let stubCount = 0;
+  for (const code of allSalesCodes) {
+    if (locationIdMap.has(code)) continue;
+    const existing = await db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(eq(locations.outletCode, code))
+      .limit(1);
+    if (existing.length > 0) {
+      locationIdMap.set(code, existing[0].id);
+      continue;
+    }
+    const [row] = await db
+      .insert(locations)
+      .values({ name: code, outletCode: code })
+      .returning({ id: locations.id });
+    locationIdMap.set(code, row.id);
+    stubCount++;
+  }
+  log("DIMENSIONS", `Stub locations created for unmatched outlet codes: ${stubCount}`);
+
+  // Products — paginate ALL distinct product_name values from sales_data
+  const allProductNames = new Set<string>();
+  scanOffset = 0;
+  while (true) {
+    const { data: page } = await supabase
+      .from("sales_data")
+      .select("product_name")
+      .range(scanOffset, scanOffset + SCAN_BATCH - 1)
+      .order("id", { ascending: true });
+    if (!page || page.length === 0) break;
+    for (const r of page) if (r.product_name?.trim()) allProductNames.add(r.product_name.trim());
+    scanOffset += SCAN_BATCH;
+  }
+
+  for (const name of allProductNames) {
     const [row] = await db
       .insert(products)
-      .values({ name: name.trim() })
+      .values({ name })
       .onConflictDoNothing({ target: products.name })
       .returning({ id: products.id });
-    if (row) productIdMap.set(name.trim().toLowerCase(), row.id);
+    if (row) productIdMap.set(name.toLowerCase(), row.id);
     else {
-      const [existing] = await db.select({ id: products.id }).from(products).where(eq(products.name, name.trim()));
-      if (existing) productIdMap.set(name.trim().toLowerCase(), existing.id);
+      const [existing] = await db.select({ id: products.id }).from(products).where(eq(products.name, name));
+      if (existing) productIdMap.set(name.toLowerCase(), existing.id);
     }
   }
-  log("DIMENSIONS", `Products: ${uniqueProducts.size}`);
+  log("DIMENSIONS", `Products: ${allProductNames.size}`);
 }
 
 // ──────────────────────────────────────────────────────────────
