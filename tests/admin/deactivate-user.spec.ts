@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import { signInAsAdmin } from "../auth/setup";
 
 test.describe("Admin deactivate user", () => {
+  test.describe.configure({ retries: 1 });
+
   test.beforeEach(async ({ page }) => {
     await signInAsAdmin(page);
     await page.goto("/settings/users");

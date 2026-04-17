@@ -14,7 +14,11 @@ import { DateRangePicker } from "./date-range-picker";
 import { Button } from "@/components/ui/button";
 import type { DimensionOptions } from "@/lib/analytics/types";
 
-export function AnalyticsFilterBar() {
+export function AnalyticsFilterBar({
+  fetchOptions = getDimensionOptions,
+}: {
+  fetchOptions?: () => Promise<DimensionOptions>;
+} = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [options, setOptions] = useState<DimensionOptions | null>(null);
@@ -25,10 +29,10 @@ export function AnalyticsFilterBar() {
   // Load dimension options on mount
   useEffect(() => {
     startTransition(async () => {
-      const opts = await getDimensionOptions();
+      const opts = await fetchOptions();
       setOptions(opts);
     });
-  }, []);
+  }, [fetchOptions]);
 
   // Hydrate store from URL on mount
   useEffect(() => {

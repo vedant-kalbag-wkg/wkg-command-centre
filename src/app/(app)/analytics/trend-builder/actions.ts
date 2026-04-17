@@ -54,6 +54,7 @@ export async function fetchBusinessEvents(
   dateFrom: string,
   dateTo: string,
 ): Promise<BusinessEventDisplay[]> {
-  await getUserCtx();
+  const userCtx = await getUserCtx();
+  if (userCtx.userType === "external") return [];
   return getBusinessEvents(dateFrom, dateTo);
 }

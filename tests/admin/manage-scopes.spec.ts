@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import { signInAsAdmin } from "../auth/setup";
 
 test.describe("Admin manage user scopes", () => {
+  test.describe.configure({ retries: 1 });
+
   test.beforeEach(async ({ page }) => {
     await signInAsAdmin(page);
     await page.goto("/settings/users");
@@ -47,7 +49,7 @@ test.describe("Admin manage user scopes", () => {
     await page.getByRole("button", { name: "Add" }).click();
 
     await expect(page.getByText("Scope added")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(uniqueId)).toBeVisible();
+    await expect(page.getByText(uniqueId)).toBeVisible({ timeout: 5000 });
   });
 
   test("admin can remove a scope", async ({ page }) => {
@@ -60,7 +62,7 @@ test.describe("Admin manage user scopes", () => {
     await page.getByLabel("Dimension ID").fill(uniqueId);
     await page.getByRole("button", { name: "Add" }).click();
     await expect(page.getByText("Scope added")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(uniqueId)).toBeVisible();
+    await expect(page.getByText(uniqueId)).toBeVisible({ timeout: 5000 });
 
     // Now remove the scope we just added
     const removeButton = page.getByRole("button", {

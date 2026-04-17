@@ -18,7 +18,9 @@ export async function proxy(request: NextRequest) {
   }
 
   if (session && isAuthRoute) {
-    return NextResponse.redirect(new URL("/kiosks", request.url));
+    const userType = (session.user as { userType?: string }).userType;
+    const target = userType === "external" ? "/portal/analytics/portfolio" : "/kiosks";
+    return NextResponse.redirect(new URL(target, request.url));
   }
 
   // External-user gating: external users may only access /portal/**, auth
@@ -26,7 +28,7 @@ export async function proxy(request: NextRequest) {
   if (session && (session.user as { userType?: "internal" | "external" }).userType === "external") {
     const p = request.nextUrl.pathname;
     if (shouldGateExternalUser("external", p)) {
-      return NextResponse.redirect(new URL("/portal/coming-soon", request.url));
+      return NextResponse.redirect(new URL("/portal/analytics/portfolio", request.url));
     }
   }
 

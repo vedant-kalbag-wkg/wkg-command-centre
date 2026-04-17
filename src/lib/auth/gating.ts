@@ -7,7 +7,7 @@
  * auth redirect handles separately).
  *
  * Anything else is gated; middleware should redirect to
- * /portal/coming-soon.
+ * /portal/analytics/portfolio.
  *
  * Internal users are never gated by this helper.
  */
