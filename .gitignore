@@ -41,6 +41,7 @@ yarn-error.log*
 # tooling / agent state
 .claude/
 .planning/
+.worktrees/
 
 # vercel
 .vercel
