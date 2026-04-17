@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useAnalyticsFilterStore } from "@/lib/stores/analytics-filter-store";
 import { useTrendStore } from "@/lib/stores/trend-store";
 import { toLocalISODate } from "@/lib/analytics/formatters";
@@ -8,6 +8,9 @@ import { resolveWeatherLocation } from "@/lib/weather/region-coordinates";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { applyRollingAverage } from "@/lib/analytics/rolling-average";
+import type { RollingWindow } from "@/lib/analytics/rolling-average";
 import {
   fetchTrendSeriesData,
   fetchTrendSeriesDataYoY,
@@ -42,6 +45,8 @@ export default function TrendBuilderPage() {
   const setShowEvents = useTrendStore((s) => s.setShowEvents);
   const showYoY = useTrendStore((s) => s.showYoY);
   const setShowYoY = useTrendStore((s) => s.setShowYoY);
+  const rollingAverage = useTrendStore((s) => s.rollingAverage);
+  const setRollingAverage = useTrendStore((s) => s.setRollingAverage);
   const activeEventCategories = useTrendStore((s) => s.activeEventCategories);
   const toggleAppliedHidden = useTrendStore((s) => s.toggleAppliedHidden);
 
@@ -151,6 +156,16 @@ export default function TrendBuilderPage() {
     };
   }, [loadData]);
 
+  // Apply rolling average transformation client-side
+  const chartData = useMemo(() => {
+    if (!rollingAverage) return seriesData;
+    const transformed = new Map<string, TrendDataPoint[]>();
+    for (const [id, points] of seriesData) {
+      transformed.set(id, applyRollingAverage(points, rollingAverage));
+    }
+    return transformed;
+  }, [seriesData, rollingAverage]);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -174,6 +189,28 @@ export default function TrendBuilderPage() {
       {/* Controls bar */}
       <div className="flex flex-wrap items-center gap-4">
         <GranularitySelector value={granularity} onChange={setGranularity} />
+
+        <div className="flex items-center gap-1 rounded-md border p-0.5">
+          {([null, 7, 30] as RollingWindow[]).map((w) => {
+            const label = w === null ? "Raw" : w === 7 ? "7d Avg" : "30d Avg";
+            const isActive = rollingAverage === w;
+            return (
+              <Button
+                key={label}
+                variant={isActive ? "default" : "ghost"}
+                size="sm"
+                className={
+                  isActive
+                    ? "h-7 px-2 text-xs bg-[#00A6D3] hover:bg-[#00A6D3]/90"
+                    : "h-7 px-2 text-xs"
+                }
+                onClick={() => setRollingAverage(w)}
+              >
+                {label}
+              </Button>
+            );
+          })}
+        </div>
 
         <div className="flex items-center gap-2">
           <Switch
@@ -214,7 +251,7 @@ export default function TrendBuilderPage() {
         <Skeleton className="h-[380px] w-full rounded-lg" />
       ) : (
         <TrendChart
-          allData={seriesData}
+          allData={chartData}
           yoyData={yoyData}
           appliedSeries={appliedSeries}
           granularity={granularity}

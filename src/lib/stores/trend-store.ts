@@ -5,6 +5,7 @@ import type {
   SeriesFilters,
   TrendGranularity,
 } from "@/lib/analytics/types";
+import type { RollingWindow } from "@/lib/analytics/rolling-average";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -110,6 +111,7 @@ type TrendState = {
   showWeather: boolean;
   showEvents: boolean;
   showYoY: boolean;
+  rollingAverage: RollingWindow;
   activeEventCategories: string[];
 
   // Actions — pending series editing
@@ -130,6 +132,7 @@ type TrendState = {
   setShowWeather: (v: boolean) => void;
   setShowEvents: (v: boolean) => void;
   setShowYoY: (v: boolean) => void;
+  setRollingAverage: (v: RollingWindow) => void;
   toggleEventCategory: (name: string) => void;
 
   // Presets & saved views
@@ -158,6 +161,7 @@ export const useTrendStore = create<TrendState>((set, get) => {
     showWeather: false,
     showEvents: false,
     showYoY: false,
+    rollingAverage: null,
     activeEventCategories: EVENT_CATEGORIES.map((c) => c.name),
 
     addSeries: () =>
@@ -216,6 +220,7 @@ export const useTrendStore = create<TrendState>((set, get) => {
     setShowWeather: (v) => set({ showWeather: v }),
     setShowEvents: (v) => set({ showEvents: v }),
     setShowYoY: (v) => set({ showYoY: v }),
+    setRollingAverage: (v) => set({ rollingAverage: v }),
     toggleEventCategory: (name) =>
       set((state) => {
         const cats = state.activeEventCategories;
@@ -261,6 +266,7 @@ export const useTrendStore = create<TrendState>((set, get) => {
         showWeather: false,
         showEvents: false,
         showYoY: false,
+        rollingAverage: null,
         activeEventCategories: EVENT_CATEGORIES.map((c) => c.name),
       });
     },
