@@ -26,7 +26,7 @@ import type {
 } from "@/lib/analytics/types";
 
 export default function TrendBuilderPage() {
-  // Date range from shared trend filter store
+  // Date range from shared analytics filter store
   const dateRange = useAnalyticsFilterStore((s) => s.dateRange);
   const dateFrom = toLocalISODate(dateRange.from);
   const dateTo = toLocalISODate(dateRange.to);
