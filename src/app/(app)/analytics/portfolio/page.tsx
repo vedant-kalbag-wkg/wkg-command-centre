@@ -4,22 +4,27 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchPortfolioData, fetchThresholdConfig } from "./actions";
+import { fetchPortfolioData, fetchThresholdConfig, fetchPortfolioEvents } from "./actions";
+import { EVENT_CATEGORIES } from "@/lib/stores/trend-store";
 import { AnalyticsSummary } from "./analytics-summary";
 import { CategoryPerformance } from "./category-performance";
 import { TopProducts } from "./top-products";
 import { DailyTrends } from "./daily-trends";
 import { HourlyDistribution } from "./hourly-distribution";
 import { OutletTiers } from "./outlet-tiers";
-import type { PortfolioData } from "@/lib/analytics/types";
+import type { AnalyticsFilters, PortfolioData, BusinessEventDisplay } from "@/lib/analytics/types";
 import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 
 export default function PortfolioPage() {
   const filters = useAnalyticsFilters();
   const [data, setData] = useState<PortfolioData | null>(null);
   const [thresholdConfig, setThresholdConfig] = useState<ThresholdConfig>({ redMax: 500, greenMin: 1500 });
+  const [events, setEvents] = useState<BusinessEventDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // All event categories active by default for portfolio view
+  const activeEventCategories = EVENT_CATEGORIES.map((c) => c.name);
 
   // Serialize filters for effect dependency (stable reference comparison)
   const filtersJson = JSON.stringify(filters);
@@ -35,14 +40,16 @@ export default function PortfolioPage() {
     setError(null);
 
     try {
-      const parsed = JSON.parse(filtersJson);
-      const [result, thresholds] = await Promise.all([
+      const parsed = JSON.parse(filtersJson) as AnalyticsFilters;
+      const [result, thresholds, eventsResult] = await Promise.all([
         fetchPortfolioData(parsed),
         fetchThresholdConfig(),
+        fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo),
       ]);
       if (!controller.signal.aborted) {
         setData(result);
         setThresholdConfig(thresholds);
+        setEvents(eventsResult);
       }
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -128,7 +135,12 @@ export default function PortfolioPage() {
       </SectionAccordion>
 
       <SectionAccordion title="Daily Trends">
-        <DailyTrends data={portfolio.dailyTrends} loading={loading} />
+        <DailyTrends
+          data={portfolio.dailyTrends}
+          loading={loading}
+          events={events}
+          activeEventCategories={activeEventCategories}
+        />
       </SectionAccordion>
 
       <SectionAccordion title="Hourly Distribution">
