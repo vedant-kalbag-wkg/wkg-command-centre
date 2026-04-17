@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useTrendFilterStore } from "@/lib/stores/analytics-filter-store";
+import { useAnalyticsFilterStore } from "@/lib/stores/analytics-filter-store";
 import { useTrendStore } from "@/lib/stores/trend-store";
 import { toLocalISODate } from "@/lib/analytics/formatters";
 import { resolveWeatherLocation } from "@/lib/weather/region-coordinates";
@@ -27,7 +27,7 @@ import type {
 
 export default function TrendBuilderPage() {
   // Date range from shared trend filter store
-  const dateRange = useTrendFilterStore((s) => s.dateRange);
+  const dateRange = useAnalyticsFilterStore((s) => s.dateRange);
   const dateFrom = toLocalISODate(dateRange.from);
   const dateTo = toLocalISODate(dateRange.to);
 

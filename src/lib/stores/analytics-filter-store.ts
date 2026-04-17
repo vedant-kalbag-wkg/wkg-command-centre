@@ -102,12 +102,6 @@ type FilterState = {
   clearAllFilters: () => void;
 };
 
-type TrendFilterState = {
-  dateRange: FilterDateRange;
-  setDateRange: (range: FilterDateRange) => void;
-  applyPreset: (preset: DatePreset) => void;
-};
-
 // ─── Store Factory ────────────────────────────────────────────────────────────
 
 function createFullFilterStore() {
@@ -146,12 +140,6 @@ function createFullFilterStore() {
 
 export const useAnalyticsFilterStore = createFullFilterStore();
 export const usePivotFilterStore = createFullFilterStore();
-
-export const useTrendFilterStore = create<TrendFilterState>((set) => ({
-  dateRange: getCurrentMonthRange(),
-  setDateRange: (range) => set({ dateRange: range }),
-  applyPreset: (preset) => set({ dateRange: getPresetRange(preset) }),
-}));
 
 // ─── URL Sync Utilities ──────────────────────────────────────────────────────
 
