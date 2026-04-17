@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchPortfolioData, fetchThresholdConfig, fetchPortfolioEvents } from "./actions";
+import { fetchPortfolioData, fetchThresholdConfig, fetchPortfolioEvents, fetchHighPerformerPatterns } from "./actions";
 import { EVENT_CATEGORIES } from "@/lib/stores/trend-store";
 import { AnalyticsSummary } from "./analytics-summary";
 import { CategoryPerformance } from "./category-performance";
@@ -12,7 +12,8 @@ import { TopProducts } from "./top-products";
 import { DailyTrends } from "./daily-trends";
 import { HourlyDistribution } from "./hourly-distribution";
 import { OutletTiers } from "./outlet-tiers";
-import type { AnalyticsFilters, PortfolioData, BusinessEventDisplay } from "@/lib/analytics/types";
+import { HighPerformerPatterns } from "./high-performer-patterns";
+import type { AnalyticsFilters, PortfolioData, BusinessEventDisplay, HighPerformerPatterns as HighPerformerPatternsData } from "@/lib/analytics/types";
 import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 
 export default function PortfolioPage() {
@@ -20,6 +21,7 @@ export default function PortfolioPage() {
   const [data, setData] = useState<PortfolioData | null>(null);
   const [thresholdConfig, setThresholdConfig] = useState<ThresholdConfig>({ redMax: 500, greenMin: 1500 });
   const [events, setEvents] = useState<BusinessEventDisplay[]>([]);
+  const [highPerformerData, setHighPerformerData] = useState<HighPerformerPatternsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,15 +43,17 @@ export default function PortfolioPage() {
 
     try {
       const parsed = JSON.parse(filtersJson) as AnalyticsFilters;
-      const [result, thresholds, eventsResult] = await Promise.all([
+      const [result, thresholds, eventsResult, hpResult] = await Promise.all([
         fetchPortfolioData(parsed),
         fetchThresholdConfig(),
         fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo),
+        fetchHighPerformerPatterns(parsed),
       ]);
       if (!controller.signal.aborted) {
         setData(result);
         setThresholdConfig(thresholds);
         setEvents(eventsResult);
+        setHighPerformerData(hpResult);
       }
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -152,6 +156,10 @@ export default function PortfolioPage() {
 
       <SectionAccordion title="Outlet Tiers">
         <OutletTiers data={portfolio.outletTiers} loading={loading} thresholdConfig={thresholdConfig} />
+      </SectionAccordion>
+
+      <SectionAccordion title="Top Performer Patterns">
+        <HighPerformerPatterns data={highPerformerData} loading={loading} />
       </SectionAccordion>
     </div>
   );

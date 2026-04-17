@@ -4,10 +4,12 @@ import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { getPortfolioData } from "@/lib/analytics/queries/portfolio";
 import { getBusinessEvents } from "@/lib/analytics/queries/trend-series";
 import { getThresholds, type ThresholdConfig } from "@/lib/analytics/thresholds";
+import { getHighPerformerPatterns } from "@/lib/analytics/queries/high-performer-analysis";
 import type {
   AnalyticsFilters,
   PortfolioData,
   BusinessEventDisplay,
+  HighPerformerPatterns,
 } from "@/lib/analytics/types";
 
 export async function fetchPortfolioData(
@@ -32,4 +34,12 @@ export async function fetchPortfolioEvents(
   const userCtx = await getUserCtx();
   if (userCtx.userType === "external") return [];
   return getBusinessEvents(dateFrom, dateTo);
+}
+
+export async function fetchHighPerformerPatterns(
+  filters: AnalyticsFilters,
+): Promise<HighPerformerPatterns> {
+  const userCtx = await getUserCtx();
+  const thresholdConfig = await getThresholds();
+  return getHighPerformerPatterns(filters, userCtx, thresholdConfig);
 }

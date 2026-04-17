@@ -280,6 +280,19 @@ export type DimensionOptions = {
   locationGroups: { id: string; name: string }[]
 }
 
+// ─── High Performer Patterns ─────────────────────────────────────────────────
+
+export type HighPerformerPatterns = {
+  greenCount: number;
+  totalCount: number;
+  insights: string[];
+  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
+  regionDistribution: { name: string; count: number; percentage: number }[];
+  avgKioskCount: number | null;
+  avgRoomCount: number | null;
+  topProducts: { name: string; revenue: number }[];
+};
+
 // ─── Change Indicator ─────────────────────────────────────────────────────────
 
 export type ChangeDirection = "up" | "down" | "neutral"
