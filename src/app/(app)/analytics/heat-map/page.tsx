@@ -5,10 +5,10 @@ import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fetchHeatMapData, fetchThresholdConfig } from "./actions";
+import { fetchHeatMapData, fetchThresholdConfig, fetchActiveFlags } from "./actions";
 import { ScoreLegend } from "./score-legend";
 import { PerformanceTable } from "./performance-table";
-import type { HeatMapData } from "@/lib/analytics/types";
+import type { HeatMapData, LocationFlag } from "@/lib/analytics/types";
 import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 
 type ViewMode = "top" | "bottom" | "all";
@@ -17,6 +17,7 @@ export default function HeatMapPage() {
   const filters = useAnalyticsFilters();
   const [data, setData] = useState<HeatMapData | null>(null);
   const [thresholdConfig, setThresholdConfig] = useState<ThresholdConfig>({ redMax: 500, greenMin: 1500 });
+  const [flags, setFlags] = useState<LocationFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("top");
@@ -34,13 +35,15 @@ export default function HeatMapPage() {
 
     try {
       const parsed = JSON.parse(filtersJson);
-      const [result, thresholds] = await Promise.all([
+      const [result, thresholds, activeFlags] = await Promise.all([
         fetchHeatMapData(parsed),
         fetchThresholdConfig(),
+        fetchActiveFlags(),
       ]);
       if (!controller.signal.aborted) {
         setData(result);
         setThresholdConfig(thresholds);
+        setFlags(activeFlags);
       }
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -144,7 +147,7 @@ export default function HeatMapPage() {
             ))}
           </div>
         ) : (
-          <PerformanceTable data={viewData} title={viewTitle} thresholdConfig={thresholdConfig} />
+          <PerformanceTable data={viewData} title={viewTitle} thresholdConfig={thresholdConfig} flags={flags} onFlagCreated={loadData} />
         )}
       </SectionAccordion>
     </div>

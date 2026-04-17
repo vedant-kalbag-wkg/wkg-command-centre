@@ -17,16 +17,20 @@ import {
   trafficLightBgColor,
   type ThresholdConfig,
 } from "@/lib/analytics/thresholds";
-import type { OutletTierRow, OutletTier } from "@/lib/analytics/types";
+import type { OutletTierRow, OutletTier, LocationFlag } from "@/lib/analytics/types";
 import {
   calculateMaturityBucket,
   maturityBucketLabel,
 } from "@/lib/analytics/maturity";
+import { FlagBadge } from "@/components/analytics/flag-badge";
+import { FlagDialog } from "@/components/analytics/flag-dialog";
 
 interface OutletTiersProps {
   data: OutletTierRow[];
   loading?: boolean;
   thresholdConfig?: ThresholdConfig;
+  flags?: LocationFlag[];
+  onFlagCreated?: () => void;
 }
 
 const tierStyles: Record<OutletTier, string> = {
@@ -43,7 +47,13 @@ const trafficLightLabel: Record<string, string> = {
   green: "High",
 };
 
-export function OutletTiers({ data, loading = false, thresholdConfig }: OutletTiersProps) {
+export function OutletTiers({ data, loading = false, thresholdConfig, flags = [], onFlagCreated }: OutletTiersProps) {
+  const flagsByLocation = new Map<string, LocationFlag[]>();
+  for (const f of flags) {
+    const existing = flagsByLocation.get(f.locationId) ?? [];
+    existing.push(f);
+    flagsByLocation.set(f.locationId, existing);
+  }
   if (!loading && data.length === 0) {
     return <EmptyState message="No outlet data for selected filters" />;
   }
@@ -60,6 +70,7 @@ export function OutletTiers({ data, loading = false, thresholdConfig }: OutletTi
           <TableHead className="text-right">Share</TableHead>
           <TableHead>Tier</TableHead>
           {thresholdConfig && <TableHead className="text-center">Status</TableHead>}
+          <TableHead className="text-center">Flags</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -123,6 +134,18 @@ export function OutletTiers({ data, loading = false, thresholdConfig }: OutletTi
                 </TableCell>
               );
             })()}
+            <TableCell className="text-center">
+              <div className="flex items-center justify-center gap-1">
+                {(flagsByLocation.get(row.locationId) ?? []).map((f) => (
+                  <FlagBadge key={f.id} flagType={f.flagType} />
+                ))}
+                <FlagDialog
+                  locationId={row.locationId}
+                  locationName={row.hotelName}
+                  onFlagCreated={onFlagCreated}
+                />
+              </div>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>

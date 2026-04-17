@@ -710,6 +710,29 @@ export const weatherCache = pgTable(
   }),
 );
 
+// =============================================================================
+// Phase 1 M11.2 — Location performance flags
+// Allows admins to flag underperforming locations for triage (relocate, monitor,
+// or strategic_exception). Flags remain active until explicitly resolved.
+// =============================================================================
+
+export const locationFlags = pgTable("location_flags", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  locationId: uuid("location_id")
+    .notNull()
+    .references(() => locations.id, { onDelete: "cascade" }),
+  flagType: text("flag_type", { enum: ["relocate", "monitor", "strategic_exception"] }).notNull(),
+  reason: text("reason"),
+  actorId: text("actor_id")
+    .notNull()
+    .references(() => user.id),
+  actorName: text("actor_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: text("resolved_by").references(() => user.id),
+  resolutionNote: text("resolution_note"),
+});
+
 // eventLog — lightweight analytics usage tracking. userId is nullable to
 // support anonymous / system events (e.g. scheduled exports).
 export const eventLog = pgTable(

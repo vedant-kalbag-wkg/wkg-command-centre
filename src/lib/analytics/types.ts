@@ -60,6 +60,7 @@ export type HourlyDistributionRow = {
 }
 
 export type OutletTierRow = {
+  locationId: string
   outletCode: string
   hotelName: string
   liveDate: string | null
@@ -291,6 +292,21 @@ export type HighPerformerPatterns = {
   avgKioskCount: number | null;
   avgRoomCount: number | null;
   topProducts: { name: string; revenue: number }[];
+};
+
+// ─── Location Flag Types ─────────────────────────────────────────────────────
+
+export type FlagType = "relocate" | "monitor" | "strategic_exception";
+
+export type LocationFlag = {
+  id: string;
+  locationId: string;
+  flagType: FlagType;
+  reason: string | null;
+  actorName: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
 };
 
 // ─── Change Indicator ─────────────────────────────────────────────────────────

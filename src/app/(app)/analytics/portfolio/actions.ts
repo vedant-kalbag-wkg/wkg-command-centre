@@ -5,11 +5,13 @@ import { getPortfolioData } from "@/lib/analytics/queries/portfolio";
 import { getBusinessEvents } from "@/lib/analytics/queries/trend-series";
 import { getThresholds, type ThresholdConfig } from "@/lib/analytics/thresholds";
 import { getHighPerformerPatterns } from "@/lib/analytics/queries/high-performer-analysis";
+import { fetchLocationFlags } from "@/app/(app)/analytics/flags/actions";
 import type {
   AnalyticsFilters,
   PortfolioData,
   BusinessEventDisplay,
   HighPerformerPatterns,
+  LocationFlag,
 } from "@/lib/analytics/types";
 
 export async function fetchPortfolioData(
@@ -42,4 +44,8 @@ export async function fetchHighPerformerPatterns(
   const userCtx = await getUserCtx();
   const thresholdConfig = await getThresholds();
   return getHighPerformerPatterns(filters, userCtx, thresholdConfig);
+}
+
+export async function fetchActiveFlags(): Promise<LocationFlag[]> {
+  return fetchLocationFlags();
 }

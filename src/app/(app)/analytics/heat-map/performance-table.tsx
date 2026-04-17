@@ -15,7 +15,7 @@ import {
   formatNullValue,
 } from "@/lib/analytics/formatters";
 import { cn } from "@/lib/utils";
-import type { HeatMapHotel } from "@/lib/analytics/types";
+import type { HeatMapHotel, LocationFlag } from "@/lib/analytics/types";
 import {
   calculateMaturityBucket,
   maturityBucketLabel,
@@ -25,11 +25,15 @@ import {
   trafficLightBgColor,
   type ThresholdConfig,
 } from "@/lib/analytics/thresholds";
+import { FlagBadge } from "@/components/analytics/flag-badge";
+import { FlagDialog } from "@/components/analytics/flag-dialog";
 
 interface PerformanceTableProps {
   data: HeatMapHotel[];
   title: string;
   thresholdConfig?: ThresholdConfig;
+  flags?: LocationFlag[];
+  onFlagCreated?: () => void;
 }
 
 function scoreColorClass(score: number): string {
@@ -44,7 +48,13 @@ const trafficLightLabel: Record<string, string> = {
   green: "High",
 };
 
-export function PerformanceTable({ data, title, thresholdConfig }: PerformanceTableProps) {
+export function PerformanceTable({ data, title, thresholdConfig, flags = [], onFlagCreated }: PerformanceTableProps) {
+  const flagsByLocation = new Map<string, LocationFlag[]>();
+  for (const f of flags) {
+    const existing = flagsByLocation.get(f.locationId) ?? [];
+    existing.push(f);
+    flagsByLocation.set(f.locationId, existing);
+  }
   if (data.length === 0) {
     return <EmptyState message={`No ${title.toLowerCase()} data available`} />;
   }
@@ -72,6 +82,7 @@ export function PerformanceTable({ data, title, thresholdConfig }: PerformanceTa
               {thresholdConfig && (
                 <TableHead className="text-center w-16">Status</TableHead>
               )}
+              <TableHead className="text-center w-24">Flags</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -152,6 +163,18 @@ export function PerformanceTable({ data, title, thresholdConfig }: PerformanceTa
                     </TableCell>
                   );
                 })()}
+                <TableCell className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    {(flagsByLocation.get(row.locationId) ?? []).map((f) => (
+                      <FlagBadge key={f.id} flagType={f.flagType} />
+                    ))}
+                    <FlagDialog
+                      locationId={row.locationId}
+                      locationName={row.hotelName}
+                      onFlagCreated={onFlagCreated}
+                    />
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
