@@ -50,7 +50,7 @@ async function ensureExternalTestUser(): Promise<string> {
 
   await db
     .update(user)
-    .set({ userType: "external" })
+    .set({ userType: "external", banned: false })
     .where(eq(user.id, userId));
 
   await db

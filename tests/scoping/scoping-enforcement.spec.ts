@@ -76,7 +76,7 @@ async function ensureUser(
 
   await db
     .update(user)
-    .set({ userType: opts.userType })
+    .set({ userType: opts.userType, banned: false })
     .where(eq(user.id, userId));
 
   if (opts.scopes) {
