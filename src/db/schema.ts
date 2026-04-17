@@ -562,6 +562,7 @@ export const salesRecords = pgTable(
     locDateIdx: index("sales_loc_date_idx").on(t.locationId, t.transactionDate),
     prodDateIdx: index("sales_prod_date_idx").on(t.productId, t.transactionDate),
     provDateIdx: index("sales_prov_date_idx").on(t.providerId, t.transactionDate),
+    txnDateIdx: index("sales_txn_date_idx").on(t.transactionDate),
     uniq: unique().on(t.saleRef, t.transactionDate),
   }),
 );

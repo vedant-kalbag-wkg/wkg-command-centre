@@ -1,0 +1,1 @@
+CREATE INDEX "sales_txn_date_idx" ON "sales_records" USING btree ("transaction_date");
