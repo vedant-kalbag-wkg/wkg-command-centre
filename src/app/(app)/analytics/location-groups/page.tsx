@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  useAnalyticsFilterStore,
-  storeStateToAnalyticsFilters,
-} from "@/lib/stores/analytics-filter-store";
+import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchLocationGroupsList, fetchLocationGroupDetail } from "./actions";
@@ -16,7 +13,7 @@ import { HotelBreakdown } from "./hotel-breakdown";
 import type { LocationGroupData, LocationGroupDetail } from "@/lib/analytics/types";
 
 export default function LocationGroupsPage() {
-  const filters = useAnalyticsFilterStore(storeStateToAnalyticsFilters);
+  const filters = useAnalyticsFilters();
   const [groups, setGroups] = useState<LocationGroupData[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [detail, setDetail] = useState<LocationGroupDetail | null>(null);

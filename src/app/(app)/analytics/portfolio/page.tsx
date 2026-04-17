@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  useAnalyticsFilterStore,
-  storeStateToAnalyticsFilters,
-} from "@/lib/stores/analytics-filter-store";
+import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchPortfolioData } from "./actions";
@@ -17,7 +14,7 @@ import { OutletTiers } from "./outlet-tiers";
 import type { PortfolioData } from "@/lib/analytics/types";
 
 export default function PortfolioPage() {
-  const filters = useAnalyticsFilterStore(storeStateToAnalyticsFilters);
+  const filters = useAnalyticsFilters();
   const [data, setData] = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

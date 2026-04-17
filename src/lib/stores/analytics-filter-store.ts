@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { toLocalISODate } from "@/lib/analytics/formatters";
 import type { DatePreset, AnalyticsFilters } from "@/lib/analytics/types";
 
@@ -221,4 +222,16 @@ export function storeStateToAnalyticsFilters(state: FilterState): AnalyticsFilte
     locationGroupIds: state.locationGroupFilter.length > 0 ? state.locationGroupFilter : undefined,
     categoryIds: state.categoryFilter.length > 0 ? state.categoryFilter : undefined,
   };
+}
+
+export function useAnalyticsFilters(): AnalyticsFilters {
+  return useAnalyticsFilterStore(
+    useShallow((state) => storeStateToAnalyticsFilters(state)),
+  );
+}
+
+export function usePivotFilters(): AnalyticsFilters {
+  return usePivotFilterStore(
+    useShallow((state) => storeStateToAnalyticsFilters(state)),
+  );
 }

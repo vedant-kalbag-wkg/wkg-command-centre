@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  useAnalyticsFilterStore,
-  storeStateToAnalyticsFilters,
-} from "@/lib/stores/analytics-filter-store";
+import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,7 +13,7 @@ import type { HeatMapData } from "@/lib/analytics/types";
 type ViewMode = "top" | "bottom" | "all";
 
 export default function HeatMapPage() {
-  const filters = useAnalyticsFilterStore(storeStateToAnalyticsFilters);
+  const filters = useAnalyticsFilters();
   const [data, setData] = useState<HeatMapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

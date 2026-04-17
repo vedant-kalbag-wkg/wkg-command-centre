@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  useAnalyticsFilterStore,
-  storeStateToAnalyticsFilters,
-} from "@/lib/stores/analytics-filter-store";
+import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchRegionsList, fetchRegionDetail } from "./actions";
@@ -15,7 +12,7 @@ import { LocationGroupBreakdown } from "./location-group-breakdown";
 import type { RegionData, RegionDetail } from "@/lib/analytics/types";
 
 export default function RegionsPage() {
-  const filters = useAnalyticsFilterStore(storeStateToAnalyticsFilters);
+  const filters = useAnalyticsFilters();
   const [regionsList, setRegionsList] = useState<RegionData[]>([]);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [detail, setDetail] = useState<RegionDetail | null>(null);

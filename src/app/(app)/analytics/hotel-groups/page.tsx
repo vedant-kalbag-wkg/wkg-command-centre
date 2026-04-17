@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  useAnalyticsFilterStore,
-  storeStateToAnalyticsFilters,
-} from "@/lib/stores/analytics-filter-store";
+import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchHotelGroupsList, fetchHotelGroupDetail } from "./actions";
@@ -15,7 +12,7 @@ import { TemporalCharts } from "./temporal-charts";
 import type { HotelGroupData, HotelGroupDetail } from "@/lib/analytics/types";
 
 export default function HotelGroupsPage() {
-  const filters = useAnalyticsFilterStore(storeStateToAnalyticsFilters);
+  const filters = useAnalyticsFilters();
   const [groups, setGroups] = useState<HotelGroupData[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [detail, setDetail] = useState<HotelGroupDetail | null>(null);

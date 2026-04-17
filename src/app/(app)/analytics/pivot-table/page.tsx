@@ -10,7 +10,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { usePivotFilterStore, storeStateToAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { usePivotFilters } from "@/lib/stores/analytics-filter-store";
 import { usePivotStore, AVAILABLE_FIELDS, type FieldDefinition } from "@/lib/stores/pivot-store";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FieldList } from "./field-list";
@@ -36,8 +36,7 @@ export default function PivotTablePage() {
   const addValue = usePivotStore((s) => s.addValue);
 
   // Filters from pivot filter store
-  const filterState = usePivotFilterStore();
-  const filters = storeStateToAnalyticsFilters(filterState);
+  const filters = usePivotFilters();
 
   // DnD sensors
   const sensors = useSensors(
