@@ -62,7 +62,7 @@ test.describe("Admin manage user scopes", () => {
     await page.getByLabel("Dimension ID").fill(uniqueId);
     await page.getByRole("button", { name: "Add" }).click();
     await expect(page.getByText("Scope added")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(uniqueId)).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("td").filter({ hasText: uniqueId })).toBeVisible({ timeout: 10000 });
 
     // Now remove the scope we just added
     const removeButton = page.getByRole("button", {

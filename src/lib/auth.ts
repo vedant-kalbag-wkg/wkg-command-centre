@@ -3,7 +3,7 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { admin } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "@/db";
-import { sendPasswordResetEmail } from "@/lib/email";
+import { sendPasswordResetEmail, sendInviteEmail, sendExternalInviteEmail } from "@/lib/email";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg" }),
@@ -11,7 +11,16 @@ export const auth = betterAuth({
     enabled: true,
     disableSignUp: true, // LOCKED DECISION: invite-only, no public registration
     sendResetPassword: async ({ user, url }) => {
-      await sendPasswordResetEmail({ to: user.email, resetUrl: url });
+      const isInvite = url.includes("invite=1");
+      const userType = (user as Record<string, unknown>).userType as string | undefined;
+
+      if (isInvite && userType === "external") {
+        await sendExternalInviteEmail({ to: user.email, setPasswordUrl: url });
+      } else if (isInvite) {
+        await sendInviteEmail({ to: user.email, resetUrl: url });
+      } else {
+        await sendPasswordResetEmail({ to: user.email, resetUrl: url });
+      }
     },
   },
   session: {

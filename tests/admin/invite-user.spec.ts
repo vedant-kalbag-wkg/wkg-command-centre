@@ -71,4 +71,80 @@ test.describe("Admin invite user", () => {
       page.getByText("Please enter a valid email address")
     ).toBeVisible({ timeout: 5000 });
   });
+
+  /* ── External-invite tests ─────────────────────────────── */
+
+  test("internal invite does not show scope builder", async ({ page }) => {
+    await page.getByRole("button", { name: "Invite user" }).click();
+
+    // Verify user type select exists and defaults to Internal
+    await expect(page.getByLabel("User type")).toBeVisible();
+
+    // Scope section should NOT be visible for internal
+    await expect(page.getByText("Scopes")).not.toBeVisible();
+  });
+
+  test("external invite shows scope builder", async ({ page }) => {
+    await page.getByRole("button", { name: "Invite user" }).click();
+
+    // Switch to External
+    await page.getByLabel("User type").click();
+    await page.getByRole("option", { name: /External/ }).click();
+
+    // Scope section should appear
+    await expect(page.getByText("Scopes")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByLabel("Dimension type")).toBeVisible();
+    await expect(page.getByLabel("Dimension ID")).toBeVisible();
+  });
+
+  test("external invite requires at least one scope", async ({ page }) => {
+    await page.getByRole("button", { name: "Invite user" }).click();
+
+    const testEmail = `test-ext-noscope-${Date.now()}@test.com`;
+    await page.getByLabel("Email address").fill(testEmail);
+
+    // Switch to External
+    await page.getByLabel("User type").click();
+    await page.getByRole("option", { name: /External/ }).click();
+
+    // Try to submit without scopes
+    await page.getByRole("button", { name: "Send invite" }).click();
+
+    // Verify validation error
+    await expect(
+      page.getByText("External users require at least one scope")
+    ).toBeVisible({ timeout: 5000 });
+  });
+
+  test("admin can invite an external user with scopes", async ({ page }) => {
+    const testEmail = `test-external-${Date.now()}@test.com`;
+
+    await page.getByRole("button", { name: "Invite user" }).click();
+    await page.getByLabel("Email address").fill(testEmail);
+
+    // Switch to External
+    await page.getByLabel("User type").click();
+    await page.getByRole("option", { name: /External/ }).click();
+
+    // Add a scope — the dimension type defaults to "Hotel group"
+    // Fill dimension ID
+    await page.getByLabel("Dimension ID").fill("test-hotel-group-001");
+    await page.getByRole("button", { name: "Add" }).click();
+
+    // Verify scope pill appears
+    await expect(page.getByText("test-hotel-group-001")).toBeVisible();
+
+    // Submit
+    await page.getByRole("button", { name: "Send invite" }).click();
+
+    // Verify success toast
+    await expect(
+      page.getByText(`Invite sent to ${testEmail}`)
+    ).toBeVisible({ timeout: 10000 });
+
+    // Verify user appears in table
+    await expect(
+      page.getByRole("cell", { name: testEmail })
+    ).toBeVisible({ timeout: 5000 });
+  });
 });

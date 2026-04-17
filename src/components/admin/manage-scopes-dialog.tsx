@@ -39,21 +39,13 @@ import type {
   UserScopeRow,
 } from "@/app/(app)/settings/users/[id]/scopes-internal";
 import type { UserListItem } from "@/app/(app)/settings/users/actions";
+import { DIMENSION_OPTIONS } from "@/lib/scoping/dimension-options";
 
 interface ManageScopesDialogProps {
   user: UserListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-const DIMENSION_OPTIONS: { value: DimensionType; label: string }[] = [
-  { value: "hotel_group", label: "Hotel group" },
-  { value: "location", label: "Location" },
-  { value: "region", label: "Region" },
-  { value: "product", label: "Product" },
-  { value: "provider", label: "Provider" },
-  { value: "location_group", label: "Location group" },
-];
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-GB", {
