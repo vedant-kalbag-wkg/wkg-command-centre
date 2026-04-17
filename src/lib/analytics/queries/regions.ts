@@ -68,30 +68,52 @@ export async function getRegionsList(
 ): Promise<RegionData[]> {
   const whereClause = await buildRegionWhere(filters, userCtx);
 
-  const rows = await db.execute<{
-    region_id: string;
-    region_name: string;
-    revenue: string;
-    transactions: string;
-  }>(sql`
-    SELECT
-      ${regions.id} AS region_id,
-      ${regions.name} AS region_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
-    FROM ${baseFromWithRegions()}
-    ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${regions.id}, ${regions.name}
-    ORDER BY revenue DESC
-  `);
+  const [rows, countRows] = await Promise.all([
+    db.execute<{
+      region_id: string;
+      region_name: string;
+      revenue: string;
+      transactions: string;
+    }>(sql`
+      SELECT
+        ${regions.id} AS region_id,
+        ${regions.name} AS region_name,
+        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COUNT(*)::text AS transactions
+      FROM ${baseFromWithRegions()}
+      ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      GROUP BY ${regions.id}, ${regions.name}
+      ORDER BY revenue DESC
+    `),
+    db.execute<{
+      region_id: string;
+      hotel_group_count: string;
+      location_group_count: string;
+    }>(sql`
+      SELECT
+        ${locationRegionMemberships.regionId} AS region_id,
+        COUNT(DISTINCT ${locationHotelGroupMemberships.hotelGroupId})::text AS hotel_group_count,
+        COUNT(DISTINCT ${locationGroupMemberships.locationGroupId})::text AS location_group_count
+      FROM ${locationRegionMemberships}
+        LEFT JOIN ${locationHotelGroupMemberships}
+          ON ${locationRegionMemberships.locationId} = ${locationHotelGroupMemberships.locationId}
+        LEFT JOIN ${locationGroupMemberships}
+          ON ${locationRegionMemberships.locationId} = ${locationGroupMemberships.locationId}
+      GROUP BY ${locationRegionMemberships.regionId}
+    `),
+  ]);
+
+  const countMap = new Map(
+    countRows.map((r) => [r.region_id, { hg: Number(r.hotel_group_count), lg: Number(r.location_group_count) }]),
+  );
 
   return rows.map((row) => ({
     id: row.region_id,
     name: row.region_name,
     revenue: Number(row.revenue),
     transactions: Number(row.transactions),
-    hotelGroupCount: 0,
-    locationGroupCount: 0,
+    hotelGroupCount: countMap.get(row.region_id)?.hg ?? 0,
+    locationGroupCount: countMap.get(row.region_id)?.lg ?? 0,
   }));
 }
 
