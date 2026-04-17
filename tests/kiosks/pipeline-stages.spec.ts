@@ -87,53 +87,29 @@ test.describe("Pipeline Stages (KIOSK-04)", () => {
     // At least one stage should have a "Default" badge already (seeded: "Prospect")
     await expect(page.getByText("Default")).toBeVisible();
 
-    // Find the first stage row that does NOT have the "Default" badge
-    // by trying each row's kebab menu and checking if "Set as default" is enabled
-    const allRows = page.locator('[class*="flex items-center gap-2 py-2"]');
-    const rowCount = await allRows.count();
+    // Find a non-default stage directly — "On Hold" is seeded and never default
+    const targetRow = page
+      .locator('[class*="flex items-center gap-2 py-2"]')
+      .filter({ hasText: "On Hold" })
+      .filter({ hasNot: page.getByText("Default") });
 
-    let success = false;
-    for (let i = 0; i < rowCount; i++) {
-      const row = allRows.nth(i);
+    await expect(targetRow).toBeVisible();
 
-      // Check if this row already has "Default" badge — if so, skip
-      const hasDefaultBadge = await row.getByText("Default").isVisible().catch(() => false);
-      if (hasDefaultBadge) continue;
+    // Open kebab menu once on the target row
+    await targetRow.locator("button").last().click({ force: true });
 
-      // Try to click the kebab button
-      const buttons = row.locator("button");
-      const btnCount = await buttons.count();
-      if (btnCount === 0) continue;
+    // Wait for menu to stabilize and click "Set as default"
+    const menuItem = page.getByRole("menuitem", { name: /set as default/i });
+    await menuItem.waitFor({ state: "visible" });
+    await menuItem.click();
 
-      await buttons.last().click({ force: true });
-
-      // Check if "Set as default" is enabled in the menu
-      const menuItems = page.getByRole("menuitem", { name: /set as default/i });
-      const visibleCount = await menuItems.count();
-      if (visibleCount === 0) {
-        await page.keyboard.press("Escape");
-        continue;
-      }
-
-      const menuItem = menuItems.first();
-      const isEnabled = await menuItem.isEnabled().catch(() => false);
-      if (!isEnabled) {
-        await page.keyboard.press("Escape");
-        continue;
-      }
-
-      // Click "Set as default"
-      await menuItem.click();
-      success = true;
-      break;
-    }
-
-    // Wait for update to propagate
-    await page.waitForTimeout(300);
-
-    // "Default" badge should be visible regardless (was there before or we just set it)
-    await expect(page.getByText("Default")).toBeVisible();
-    expect(success || true).toBe(true); // Pass even if all were already the default
+    // "Default" badge should now appear on the "On Hold" row
+    await expect(
+      page
+        .locator('[class*="flex items-center gap-2 py-2"]')
+        .filter({ hasText: "On Hold" })
+        .getByText("Default")
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("KIOSK-04: admin can reorder pipeline stages via drag", async ({ page }) => {
