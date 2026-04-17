@@ -7,6 +7,7 @@ import {
   buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
+  buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { getPreviousPeriodDates, calculatePercentile, classifyOutletTier } from "@/lib/analytics/metrics";
@@ -40,11 +41,13 @@ async function buildPortfolioWhere(
 
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
+  const maturityCondition = buildMaturityCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     exclusionCondition,
+    maturityCondition,
     ...dimensionConditions,
   ]);
 }
@@ -249,23 +252,26 @@ export async function getOutletTiers(
   const rawRows = await db.execute<{
     outlet_code: string;
     hotel_name: string;
+    live_date: string | null;
     revenue: string;
     transactions: string;
   }>(sql`
     SELECT
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
+      ${locations.liveDate}::text AS live_date,
       COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${locations.outletCode}, ${locations.name}
+    GROUP BY ${locations.outletCode}, ${locations.name}, ${locations.liveDate}
     ORDER BY revenue DESC
   `);
 
   const parsed = rawRows.map((row) => ({
     outletCode: row.outlet_code,
     hotelName: row.hotel_name,
+    liveDate: row.live_date,
     revenue: Number(row.revenue),
     transactions: Number(row.transactions),
   }));
@@ -279,6 +285,7 @@ export async function getOutletTiers(
     return {
       outletCode: row.outletCode,
       hotelName: row.hotelName,
+      liveDate: row.liveDate,
       revenue: row.revenue,
       transactions: row.transactions,
       percentile,

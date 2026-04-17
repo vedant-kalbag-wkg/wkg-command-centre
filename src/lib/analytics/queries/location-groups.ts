@@ -12,6 +12,7 @@ import {
   buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
+  buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import {
@@ -42,11 +43,13 @@ async function buildLocationGroupWhere(
 
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
+  const maturityCondition = buildMaturityCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     exclusionCondition,
+    maturityCondition,
     ...dimensionConditions,
   ]);
 }

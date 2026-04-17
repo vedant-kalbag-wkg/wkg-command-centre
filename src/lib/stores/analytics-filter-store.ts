@@ -10,7 +10,8 @@ type FilterDimensionKey =
   | "regionFilter"
   | "productFilter"
   | "hotelGroupFilter"
-  | "locationGroupFilter";
+  | "locationGroupFilter"
+  | "maturityFilter";
 
 type FilterDateRange = {
   from: Date;
@@ -94,6 +95,7 @@ type FilterState = {
   productFilter: string[];
   hotelGroupFilter: string[];
   locationGroupFilter: string[];
+  maturityFilter: string[];
 
   setDateRange: (range: FilterDateRange) => void;
   applyPreset: (preset: DatePreset) => void;
@@ -112,6 +114,7 @@ function createFullFilterStore() {
     productFilter: [],
     hotelGroupFilter: [],
     locationGroupFilter: [],
+    maturityFilter: [],
 
     setDateRange: (range) => set({ dateRange: range }),
     applyPreset: (preset) => set({ dateRange: getPresetRange(preset) }),
@@ -123,6 +126,7 @@ function createFullFilterStore() {
         productFilter: [],
         hotelGroupFilter: [],
         locationGroupFilter: [],
+        maturityFilter: [],
       }),
     clearAllFilters: () =>
       set({
@@ -132,6 +136,7 @@ function createFullFilterStore() {
         productFilter: [],
         hotelGroupFilter: [],
         locationGroupFilter: [],
+        maturityFilter: [],
       }),
   }));
 }
@@ -153,14 +158,16 @@ export function filtersToSearchParams(state: FilterState): URLSearchParams {
   if (state.productFilter.length > 0) params.set("products", state.productFilter.join(","));
   if (state.hotelGroupFilter.length > 0) params.set("hgroups", state.hotelGroupFilter.join(","));
   if (state.locationGroupFilter.length > 0) params.set("lgroups", state.locationGroupFilter.join(","));
+  if (state.maturityFilter.length > 0) params.set("maturity", state.maturityFilter.join(","));
 
   return params;
 }
 
-export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<FilterState, "dateRange" | "hotelFilter" | "regionFilter" | "productFilter" | "hotelGroupFilter" | "locationGroupFilter">> | null {
+export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<FilterState, "dateRange" | "hotelFilter" | "regionFilter" | "productFilter" | "hotelGroupFilter" | "locationGroupFilter" | "maturityFilter">> | null {
   const hasFilterParams =
     params.has("from") || params.has("hotels") || params.has("regions") ||
-    params.has("products") || params.has("hgroups") || params.has("lgroups");
+    params.has("products") || params.has("hgroups") || params.has("lgroups") ||
+    params.has("maturity");
   if (!hasFilterParams) return null;
 
   const result: Record<string, unknown> = {};
@@ -186,6 +193,9 @@ export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<Fil
   const lgroups = params.get("lgroups");
   if (lgroups) result.locationGroupFilter = lgroups.split(",");
 
+  const maturity = params.get("maturity");
+  if (maturity) result.maturityFilter = maturity.split(",");
+
   return result as ReturnType<typeof searchParamsToFilters>;
 }
 
@@ -198,6 +208,7 @@ export function storeStateToAnalyticsFilters(state: FilterState): AnalyticsFilte
     productIds: state.productFilter.length > 0 ? state.productFilter : undefined,
     hotelGroupIds: state.hotelGroupFilter.length > 0 ? state.hotelGroupFilter : undefined,
     locationGroupIds: state.locationGroupFilter.length > 0 ? state.locationGroupFilter : undefined,
+    maturityBuckets: state.maturityFilter.length > 0 ? state.maturityFilter : undefined,
   };
 }
 

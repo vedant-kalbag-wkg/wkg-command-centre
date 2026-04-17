@@ -16,6 +16,7 @@ export type AnalyticsFilters = {
   productIds?: string[]
   hotelGroupIds?: string[]
   locationGroupIds?: string[]
+  maturityBuckets?: string[]
 }
 
 // ─── Portfolio Types ──────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ export type HourlyDistributionRow = {
 export type OutletTierRow = {
   outletCode: string
   hotelName: string
+  liveDate: string | null
   revenue: number
   transactions: number
   percentile: number
@@ -87,6 +89,7 @@ export type HeatMapHotel = {
   locationId: string
   outletCode: string
   hotelName: string
+  liveDate: string | null
   revenue: number
   transactions: number
   revenuePerRoom: number | null

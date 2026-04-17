@@ -13,6 +13,7 @@ import { MultiSelectFilter } from "./multi-select-filter";
 import { DateRangePicker } from "./date-range-picker";
 import { Button } from "@/components/ui/button";
 import type { DimensionOptions } from "@/lib/analytics/types";
+import { MATURITY_BUCKETS } from "@/lib/analytics/maturity";
 
 export function AnalyticsFilterBar({
   fetchOptions = getDimensionOptions,
@@ -129,6 +130,14 @@ export function AnalyticsFilterBar({
         selected={store.locationGroupFilter}
         onChange={(values) => store.setFilter("locationGroupFilter", values)}
         placeholder="Search location groups..."
+      />
+
+      <MultiSelectFilter
+        label="Maturity"
+        options={MATURITY_BUCKETS.map((b) => ({ value: b.value, label: b.label }))}
+        selected={store.maturityFilter}
+        onChange={(values) => store.setFilter("maturityFilter", values)}
+        placeholder="Filter by maturity..."
       />
 
       <div className="ml-auto flex items-center gap-1.5">

@@ -17,6 +17,10 @@ import {
 import { cn } from "@/lib/utils";
 import type { HeatMapHotel } from "@/lib/analytics/types";
 import {
+  calculateMaturityBucket,
+  maturityBucketLabel,
+} from "@/lib/analytics/maturity";
+import {
   classifyTrafficLight,
   trafficLightBgColor,
   type ThresholdConfig,
@@ -58,6 +62,7 @@ export function PerformanceTable({ data, title, thresholdConfig }: PerformanceTa
               <TableHead className="sticky left-12 z-10 bg-background min-w-[180px]">
                 Hotel
               </TableHead>
+              <TableHead>Maturity</TableHead>
               <TableHead className="text-right">Revenue</TableHead>
               <TableHead className="text-right">Transactions</TableHead>
               <TableHead className="text-right">Rev / Room</TableHead>
@@ -84,6 +89,20 @@ export function PerformanceTable({ data, title, thresholdConfig }: PerformanceTa
                       </span>
                     )}
                   </div>
+                </TableCell>
+                <TableCell>
+                  {(() => {
+                    const bucket = calculateMaturityBucket(
+                      row.liveDate ? new Date(row.liveDate) : null,
+                    );
+                    return bucket ? (
+                      <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                        {maturityBucketLabel(bucket)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{"\u2014"}</span>
+                    );
+                  })()}
                 </TableCell>
                 <TableCell className="text-right">
                   {formatCurrency(row.revenue)}

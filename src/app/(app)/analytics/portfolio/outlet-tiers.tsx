@@ -18,6 +18,10 @@ import {
   type ThresholdConfig,
 } from "@/lib/analytics/thresholds";
 import type { OutletTierRow, OutletTier } from "@/lib/analytics/types";
+import {
+  calculateMaturityBucket,
+  maturityBucketLabel,
+} from "@/lib/analytics/maturity";
 
 interface OutletTiersProps {
   data: OutletTierRow[];
@@ -50,6 +54,7 @@ export function OutletTiers({ data, loading = false, thresholdConfig }: OutletTi
         <TableRow>
           <TableHead>Outlet Code</TableHead>
           <TableHead>Hotel Name</TableHead>
+          <TableHead>Maturity</TableHead>
           <TableHead className="text-right">Revenue</TableHead>
           <TableHead className="text-right">Transactions</TableHead>
           <TableHead className="text-right">Share</TableHead>
@@ -64,6 +69,20 @@ export function OutletTiers({ data, loading = false, thresholdConfig }: OutletTi
               {row.outletCode || "\u2014"}
             </TableCell>
             <TableCell className="font-medium">{row.hotelName}</TableCell>
+            <TableCell>
+              {(() => {
+                const bucket = calculateMaturityBucket(
+                  row.liveDate ? new Date(row.liveDate) : null,
+                );
+                return bucket ? (
+                  <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                    {maturityBucketLabel(bucket)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{"\u2014"}</span>
+                );
+              })()}
+            </TableCell>
             <TableCell className="text-right">
               {formatCurrency(row.revenue)}
             </TableCell>
