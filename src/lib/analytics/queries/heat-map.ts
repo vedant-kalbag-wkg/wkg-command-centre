@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { salesRecords, locations } from "@/db/schema";
-import { sql, type SQL } from "drizzle-orm";
+import { salesRecords, locations, kioskAssignments } from "@/db/schema";
+import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
@@ -98,6 +98,25 @@ export async function getHeatMapData(
     GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
   `);
 
+  // Kiosk count: scoped to locations from the sales query results
+  const locationIds = rows.map((r) => r.location_id);
+  const kioskCountRows = locationIds.length > 0
+    ? await db.execute<{
+        location_id: string;
+        kiosk_count: string;
+      }>(sql`
+        SELECT
+          ${kioskAssignments.locationId} AS location_id,
+          COUNT(DISTINCT ${kioskAssignments.kioskId})::text AS kiosk_count
+        FROM ${kioskAssignments}
+        WHERE ${inArray(kioskAssignments.locationId, locationIds)}
+          AND ${kioskAssignments.assignedAt} <= ${filters.dateTo}::timestamptz
+          AND (${kioskAssignments.unassignedAt} IS NULL
+               OR ${kioskAssignments.unassignedAt} > ${filters.dateFrom}::timestamptz)
+        GROUP BY ${kioskAssignments.locationId}
+      `)
+    : [];
+
   if (rows.length === 0) {
     return {
       topPerformers: [],
@@ -107,12 +126,17 @@ export async function getHeatMapData(
     };
   }
 
+  // Build kiosk count lookup: locationId -> count of distinct kiosks
+  const kioskCountMap = new Map<string, number>(
+    kioskCountRows.map((r) => [r.location_id, Number(r.kiosk_count)]),
+  );
+
   // 2. Calculate derived metrics per hotel
   const rawHotels = rows.map((row) => {
     const revenue = Number(row.revenue);
     const transactions = Number(row.transactions);
     const numRooms = row.num_rooms ? Number(row.num_rooms) : null;
-    const kiosks: number | null = null; // kiosk count not readily available
+    const kiosks = kioskCountMap.get(row.location_id) ?? null;
 
     return {
       locationId: row.location_id,
@@ -133,16 +157,19 @@ export async function getHeatMapData(
   const tpkValues = rawHotels.map((h) => h.txnPerKiosk).filter((v): v is number => v !== null);
   const abvValues = rawHotels.map((h) => h.avgBasketValue);
 
+  const minOf = (arr: number[]) => arr.reduce((a, b) => Math.min(a, b), Infinity);
+  const maxOf = (arr: number[]) => arr.reduce((a, b) => Math.max(a, b), -Infinity);
+
   const ranges = {
-    revenue: { min: Math.min(...revenueValues), max: Math.max(...revenueValues) },
-    transactions: { min: Math.min(...txnValues), max: Math.max(...txnValues) },
+    revenue: { min: minOf(revenueValues), max: maxOf(revenueValues) },
+    transactions: { min: minOf(txnValues), max: maxOf(txnValues) },
     revenuePerRoom: rprValues.length > 0
-      ? { min: Math.min(...rprValues), max: Math.max(...rprValues) }
+      ? { min: minOf(rprValues), max: maxOf(rprValues) }
       : null,
     txnPerKiosk: tpkValues.length > 0
-      ? { min: Math.min(...tpkValues), max: Math.max(...tpkValues) }
+      ? { min: minOf(tpkValues), max: maxOf(tpkValues) }
       : null,
-    basketValue: { min: Math.min(...abvValues), max: Math.max(...abvValues) },
+    basketValue: { min: minOf(abvValues), max: maxOf(abvValues) },
   };
 
   // 4. Calculate composite scores

@@ -64,17 +64,6 @@ function buildSeriesDimensionFilters(filters: SeriesFilters): SQL[] {
       )`,
     );
   }
-  // categoryIds filter: products table `name` is used as category identifier
-  // (same pattern as buildDimensionFilters in shared.ts — products table has
-  // no separate category column; the product name IS the category).
-  if (filters.categoryIds?.length) {
-    conditions.push(
-      sql`${salesRecords.productId} IN (
-        SELECT id FROM products WHERE name = ANY(${filters.categoryIds})
-      )`,
-    );
-  }
-
   return conditions;
 }
 

@@ -24,12 +24,14 @@ test.describe("Kanban View (KANBAN-01, KANBAN-02, KANBAN-03)", () => {
     await page.goto("/kiosks");
     await page.getByRole("tab", { name: /kanban/i }).click();
 
+    // Wait for kanban board to render
+    await expect(page.getByText("Group by:")).toBeVisible({ timeout: 10000 });
+
     // At least one stage column header should be visible
-    // Check for stage names that were seeded
     const possibleStages = ["Prospect", "On Hold", "Delivered to Region", "Configured", "Live"];
     let foundStage = false;
     for (const stageName of possibleStages) {
-      const el = page.getByText(stageName, { exact: true });
+      const el = page.getByText(stageName, { exact: true }).first();
       if (await el.isVisible().catch(() => false)) {
         foundStage = true;
         break;

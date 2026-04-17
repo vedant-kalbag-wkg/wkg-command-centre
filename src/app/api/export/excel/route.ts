@@ -34,9 +34,6 @@ function parseFilters(params: URLSearchParams): AnalyticsFilters {
   const locationGroupIds = params.get("locationGroupIds");
   if (locationGroupIds) filters.locationGroupIds = locationGroupIds.split(",");
 
-  const categoryIds = params.get("categoryIds");
-  if (categoryIds) filters.categoryIds = categoryIds.split(",");
-
   return filters;
 }
 

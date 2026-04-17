@@ -19,9 +19,6 @@ export async function getDimensionOptions(): Promise<DimensionOptions> {
     db.select({ id: locationGroups.id, name: locationGroups.name }).from(locationGroups),
   ]);
 
-  // Products table doesn't have a category column — categories are product names themselves
-  const categories = [...new Set(prods.map((p) => p.name))];
-
   return {
     locations: locs.map((l) => ({
       id: l.id,
@@ -32,6 +29,5 @@ export async function getDimensionOptions(): Promise<DimensionOptions> {
     hotelGroups: hGroups.map((g) => ({ id: g.id, name: g.name })),
     regions: regs.map((r) => ({ id: r.id, name: r.name })),
     locationGroups: lGroups.map((g) => ({ id: g.id, name: g.name })),
-    categories,
   };
 }

@@ -34,7 +34,7 @@ test.describe("Portfolio Overview", () => {
     await expect(page.getByText("Outlet Tiers")).toBeVisible();
   });
 
-  test("filter bar shows 6 dimension filter buttons", async ({ page }) => {
+  test("filter bar shows 5 dimension filter buttons", async ({ page }) => {
     await signInAsAdmin(page);
     await page.goto("/analytics/portfolio");
 
@@ -54,9 +54,6 @@ test.describe("Portfolio Overview", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Location Groups", exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Categories", exact: true }),
     ).toBeVisible();
   });
 });

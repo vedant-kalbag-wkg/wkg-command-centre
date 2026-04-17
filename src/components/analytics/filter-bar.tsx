@@ -77,11 +77,6 @@ export function AnalyticsFilterBar() {
     label: g.name,
   }));
 
-  const categoryOptions = (options?.categories ?? []).map((c) => ({
-    value: c,
-    label: c,
-  }));
-
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
       <SlidersHorizontal className="size-4 text-muted-foreground" />
@@ -130,14 +125,6 @@ export function AnalyticsFilterBar() {
         selected={store.locationGroupFilter}
         onChange={(values) => store.setFilter("locationGroupFilter", values)}
         placeholder="Search location groups..."
-      />
-
-      <MultiSelectFilter
-        label="Categories"
-        options={categoryOptions}
-        selected={store.categoryFilter}
-        onChange={(values) => store.setFilter("categoryFilter", values)}
-        placeholder="Search categories..."
       />
 
       <div className="ml-auto flex items-center gap-1.5">

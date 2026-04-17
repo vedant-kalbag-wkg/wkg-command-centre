@@ -50,6 +50,9 @@ test.describe("Location Kiosks Tab (LOC-05)", () => {
     await page.getByText(locationName).click();
     await page.getByRole("button", { name: "Assign venue" }).click();
 
+    // Wait for the assign action to complete (toast confirms DB write)
+    await expect(page.getByText("Kiosk assigned")).toBeVisible({ timeout: 10000 });
+
     // Navigate back to location and check Kiosks tab
     await page.goto(locationUrl);
     await page.getByRole("tab", { name: "Kiosks" }).click();

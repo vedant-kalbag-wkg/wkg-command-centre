@@ -13,15 +13,27 @@ test.describe("Pipeline Stages (KIOSK-04)", () => {
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByText("Manage Pipeline Stages")).toBeVisible();
 
+    // Count existing stages before adding
+    const rows = page.locator('[class*="flex items-center gap-2 py-2"]');
+    const countBefore = await rows.count();
+
     // Click Add stage button
     await page.getByRole("button", { name: /add stage/i }).click();
 
-    // A new stage "New Stage" should appear
-    await expect(page.getByText("New Stage")).toBeVisible();
+    // One more stage row should appear
+    await expect(rows).toHaveCount(countBefore + 1, { timeout: 5000 });
 
-    // Cleanup: Delete the newly added stage by renaming + deleting via kebab menu
-    // (hover over "New Stage" row to show kebab, then delete)
-    // Note: cleanup is best-effort in tests
+    // Cleanup: delete the newly added stage via its kebab menu
+    const newRow = rows.last();
+    await newRow.locator("button").last().click({ force: true });
+    const deleteItem = page.getByRole("menuitem", { name: /delete/i });
+    if (await deleteItem.isVisible().catch(() => false)) {
+      await deleteItem.click();
+      const confirmBtn = page.getByRole("button", { name: /delete/i }).last();
+      if (await confirmBtn.isVisible().catch(() => false)) {
+        await confirmBtn.click();
+      }
+    }
   });
 
   test("KIOSK-04: admin can rename a pipeline stage", async ({ page }) => {
@@ -84,56 +96,46 @@ test.describe("Pipeline Stages (KIOSK-04)", () => {
 
     await expect(page.getByRole("dialog")).toBeVisible();
 
-    // At least one stage should have a "Default" badge already (seeded: "Prospect")
+    // At least one stage should have a "Default" badge already
     await expect(page.getByText("Default")).toBeVisible();
 
-    // Find the first stage row that does NOT have the "Default" badge
-    // by trying each row's kebab menu and checking if "Set as default" is enabled
+    // Find any non-default stage row (exclude "New Stage" leftovers)
     const allRows = page.locator('[class*="flex items-center gap-2 py-2"]');
     const rowCount = await allRows.count();
 
-    let success = false;
+    let targetIdx = -1;
     for (let i = 0; i < rowCount; i++) {
       const row = allRows.nth(i);
-
-      // Check if this row already has "Default" badge — if so, skip
-      const hasDefaultBadge = await row.getByText("Default").isVisible().catch(() => false);
-      if (hasDefaultBadge) continue;
-
-      // Try to click the kebab button
-      const buttons = row.locator("button");
-      const btnCount = await buttons.count();
-      if (btnCount === 0) continue;
-
-      await buttons.last().click({ force: true });
-
-      // Check if "Set as default" is enabled in the menu
-      const menuItems = page.getByRole("menuitem", { name: /set as default/i });
-      const visibleCount = await menuItems.count();
-      if (visibleCount === 0) {
-        await page.keyboard.press("Escape");
-        continue;
-      }
-
-      const menuItem = menuItems.first();
-      const isEnabled = await menuItem.isEnabled().catch(() => false);
-      if (!isEnabled) {
-        await page.keyboard.press("Escape");
-        continue;
-      }
-
-      // Click "Set as default"
-      await menuItem.click();
-      success = true;
+      const text = await row.textContent();
+      if (!text) continue;
+      if (text.includes("Default")) continue;
+      if (text.includes("New Stage")) continue;
+      targetIdx = i;
       break;
     }
 
-    // Wait for update to propagate
-    await page.waitForTimeout(300);
+    if (targetIdx === -1) {
+      test.skip(true, "All stages are already default or New Stage — cannot test");
+      return;
+    }
 
-    // "Default" badge should be visible regardless (was there before or we just set it)
-    await expect(page.getByText("Default")).toBeVisible();
-    expect(success || true).toBe(true); // Pass even if all were already the default
+    const targetRow = allRows.nth(targetIdx);
+    const targetName = await targetRow.locator('[class*="cursor-pointer"]').first().textContent();
+
+    // Open kebab menu on the target row
+    await targetRow.locator("button").last().click({ force: true });
+
+    // Wait for menu to stabilize and click "Set as default"
+    const menuItem = page.getByRole("menuitem", { name: /set as default/i });
+    await menuItem.waitFor({ state: "visible" });
+    await menuItem.click();
+
+    // "Default" badge should now appear on the target row
+    await expect(
+      allRows
+        .filter({ hasText: targetName! })
+        .getByText("Default")
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("KIOSK-04: admin can reorder pipeline stages via drag", async ({ page }) => {
