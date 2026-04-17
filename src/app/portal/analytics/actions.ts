@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { db } from "@/db";
 import { eq, inArray, isNull } from "drizzle-orm";
 import {
@@ -18,10 +17,8 @@ import {
 import type { DimensionOptions } from "@/lib/analytics/types";
 
 export async function getScopedDimensionOptions(): Promise<DimensionOptions> {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) throw new Error("Not authenticated");
-
-  const userId = session.user.id;
+  const userCtx = await getUserCtx();
+  const userId = userCtx.id;
   const scopes = await db
     .select({
       dimensionType: userScopes.dimensionType,
