@@ -1,0 +1,333 @@
+import { describe, it, expect } from "vitest";
+import {
+  ALLOWED_COLUMNS,
+  DERIVED_GROUP_COLUMNS,
+  validatePivotConfig,
+  buildPivotSQL,
+  formatPivotResults,
+  buildPivotData,
+} from "./pivot-engine";
+import type { PivotConfig, PivotValueConfig } from "./types";
+
+// ─── ALLOWED_COLUMNS ────────────────────────────────────────────────────────
+
+describe("ALLOWED_COLUMNS", () => {
+  it("resolves known columns", () => {
+    expect(ALLOWED_COLUMNS.get("product_name")).toBe("p.name");
+    expect(ALLOWED_COLUMNS.get("outlet_code")).toBe("l.outlet_code");
+    expect(ALLOWED_COLUMNS.get("hotel_name")).toBe("l.name");
+    expect(ALLOWED_COLUMNS.get("gross_amount")).toBe("sr.gross_amount::numeric");
+  });
+
+  it("rejects unknown columns", () => {
+    expect(ALLOWED_COLUMNS.get("unknown_field")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("category_name")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("__proto__")).toBeUndefined();
+  });
+});
+
+describe("DERIVED_GROUP_COLUMNS", () => {
+  it("resolves derived columns", () => {
+    expect(DERIVED_GROUP_COLUMNS.get("sale_month")).toContain("TO_CHAR");
+    expect(DERIVED_GROUP_COLUMNS.get("sale_year")).toContain("EXTRACT");
+    expect(DERIVED_GROUP_COLUMNS.get("sale_hour")).toContain("transaction_time");
+  });
+});
+
+// ─── validatePivotConfig ────────────────────────────────────────────────────
+
+describe("validatePivotConfig", () => {
+  const validConfig: PivotConfig = {
+    rowFields: ["product_name"],
+    columnFields: ["sale_month"],
+    values: [{ field: "gross_amount", aggregation: "sum" }],
+  };
+
+  it("accepts a valid config", () => {
+    expect(validatePivotConfig(validConfig)).toEqual([]);
+  });
+
+  it("rejects missing values", () => {
+    const errors = validatePivotConfig({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [],
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].field).toBe("values");
+    expect(errors[0].message).toContain("required");
+  });
+
+  it("rejects unknown row field", () => {
+    const errors = validatePivotConfig({
+      rowFields: ["bogus_field"],
+      columnFields: [],
+      values: [{ field: "gross_amount", aggregation: "sum" }],
+    });
+    expect(errors.some((e) => e.message.includes("bogus_field"))).toBe(true);
+  });
+
+  it("rejects unknown column field", () => {
+    const errors = validatePivotConfig({
+      rowFields: [],
+      columnFields: ["no_such_col"],
+      values: [{ field: "gross_amount", aggregation: "sum" }],
+    });
+    expect(errors.some((e) => e.message.includes("no_such_col"))).toBe(true);
+  });
+
+  it("rejects unknown value field", () => {
+    const errors = validatePivotConfig({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "bad_metric", aggregation: "sum" }],
+    });
+    expect(errors.some((e) => e.message.includes("bad_metric"))).toBe(true);
+  });
+
+  it("rejects invalid aggregation", () => {
+    const errors = validatePivotConfig({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "gross_amount", aggregation: "median" as never }],
+    });
+    expect(errors.some((e) => e.message.includes("median"))).toBe(true);
+  });
+
+  it("rejects field in both rows and columns", () => {
+    const errors = validatePivotConfig({
+      rowFields: ["product_name"],
+      columnFields: ["product_name"],
+      values: [{ field: "gross_amount", aggregation: "sum" }],
+    });
+    expect(
+      errors.some((e) => e.message.includes("both rows and columns")),
+    ).toBe(true);
+  });
+
+  it("accepts derived fields (sale_month, sale_year, sale_hour)", () => {
+    const errors = validatePivotConfig({
+      rowFields: ["sale_month"],
+      columnFields: ["sale_year"],
+      values: [{ field: "quantity", aggregation: "sum" }],
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects metric columns used as dimensions", () => {
+    const errors = validatePivotConfig({
+      rowFields: ["gross_amount"],
+      columnFields: [],
+      values: [{ field: "gross_amount", aggregation: "sum" }],
+    });
+    expect(errors.some((e) => e.field === "rowFields")).toBe(true);
+  });
+});
+
+// ─── buildPivotSQL ──────────────────────────────────────────────────────────
+
+describe("buildPivotSQL", () => {
+  it("builds SQL with row + column + value", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: ["sale_month"],
+      values: [{ field: "gross_amount", aggregation: "sum" }],
+    });
+
+    expect(sql).toContain("SELECT");
+    expect(sql).toContain('l.name AS "hotel_name"');
+    expect(sql).toContain("SUM(COALESCE(sr.gross_amount::numeric, 0))");
+    expect(sql).toContain("INNER JOIN locations l");
+    expect(sql).toContain("INNER JOIN products p");
+    expect(sql).toContain("GROUP BY");
+    expect(sql).toContain("LIMIT");
+  });
+
+  it("includes WHERE clause when provided", () => {
+    const sql = buildPivotSQL(
+      {
+        rowFields: ["product_name"],
+        columnFields: [],
+        values: [{ field: "quantity", aggregation: "count" }],
+      },
+      "sr.transaction_date >= '2025-01-01'",
+    );
+    expect(sql).toContain("WHERE sr.transaction_date >= '2025-01-01'");
+  });
+
+  it("uses COUNT for count aggregation", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "quantity", aggregation: "count" }],
+    });
+    expect(sql).toContain("COUNT(sr.quantity)::numeric");
+  });
+
+  it("handles derived column in group by", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["sale_month"],
+      columnFields: [],
+      values: [{ field: "gross_amount", aggregation: "avg" }],
+    });
+    expect(sql).toContain("TO_CHAR(sr.transaction_date, 'Mon YYYY')");
+  });
+});
+
+// ─── buildPivotData ─────────────────────────────────────────────────────────
+
+describe("buildPivotData", () => {
+  const values: PivotValueConfig[] = [
+    { field: "gross_amount", aggregation: "sum" },
+  ];
+
+  it("builds flat rows when no column fields", () => {
+    const rawRows = [
+      { hotel_name: "Hotel A", sum_gross_amount: 1000 },
+      { hotel_name: "Hotel B", sum_gross_amount: 2000 },
+    ];
+    const result = buildPivotData(rawRows, ["hotel_name"], [], values);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].dimensions.hotel_name).toBe("Hotel A");
+    expect(result[0].cells["sum_gross_amount"].value).toBe(1000);
+    expect(result[1].dimensions.hotel_name).toBe("Hotel B");
+  });
+
+  it("builds crosstab when column fields present", () => {
+    const rawRows = [
+      { hotel_name: "Hotel A", sale_month: "Jan 2025", sum_gross_amount: 500 },
+      { hotel_name: "Hotel A", sale_month: "Feb 2025", sum_gross_amount: 700 },
+      { hotel_name: "Hotel B", sale_month: "Jan 2025", sum_gross_amount: 300 },
+    ];
+    const result = buildPivotData(
+      rawRows,
+      ["hotel_name"],
+      ["sale_month"],
+      values,
+    );
+
+    expect(result).toHaveLength(2);
+
+    const hotelA = result.find((r) => r.dimensions.hotel_name === "Hotel A")!;
+    expect(hotelA.cells["Jan 2025"].value).toBe(500);
+    expect(hotelA.cells["Feb 2025"].value).toBe(700);
+
+    const hotelB = result.find((r) => r.dimensions.hotel_name === "Hotel B")!;
+    expect(hotelB.cells["Jan 2025"].value).toBe(300);
+    expect(hotelB.cells["Feb 2025"]).toBeUndefined();
+  });
+
+  it("handles empty rows", () => {
+    const result = buildPivotData([], ["hotel_name"], [], values);
+    expect(result).toEqual([]);
+  });
+});
+
+// ─── formatPivotResults ─────────────────────────────────────────────────────
+
+describe("formatPivotResults", () => {
+  const config: PivotConfig = {
+    rowFields: ["hotel_name"],
+    columnFields: [],
+    values: [{ field: "gross_amount", aggregation: "sum" }],
+  };
+
+  it("formats flat results with headers and grand totals", () => {
+    const rawRows = [
+      { hotel_name: "Hotel A", sum_gross_amount: 1000 },
+      { hotel_name: "Hotel B", sum_gross_amount: 2500 },
+    ];
+    const result = formatPivotResults(rawRows, config);
+
+    expect(result.headers).toContain("Hotel");
+    expect(result.headers).toContain("Sum of gross amount");
+    expect(result.rows).toHaveLength(2);
+    expect(result.rowCount).toBe(2);
+    expect(result.truncated).toBe(false);
+  });
+
+  it("calculates sum grand total", () => {
+    const rawRows = [
+      { hotel_name: "A", sum_gross_amount: 1000 },
+      { hotel_name: "B", sum_gross_amount: 3000 },
+    ];
+    const result = formatPivotResults(rawRows, config);
+    expect(result.grandTotals["sum_gross_amount"].value).toBe(4000);
+  });
+
+  it("calculates avg grand total", () => {
+    const avgConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "gross_amount", aggregation: "avg" }],
+    };
+    const rawRows = [
+      { hotel_name: "A", avg_gross_amount: 100 },
+      { hotel_name: "B", avg_gross_amount: 200 },
+    ];
+    const result = formatPivotResults(rawRows, avgConfig);
+    expect(result.grandTotals["avg_gross_amount"].value).toBe(150);
+  });
+
+  it("calculates count grand total", () => {
+    const countConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "quantity", aggregation: "count" }],
+    };
+    const rawRows = [
+      { hotel_name: "A", count_quantity: 10 },
+      { hotel_name: "B", count_quantity: 15 },
+    ];
+    const result = formatPivotResults(rawRows, countConfig);
+    expect(result.grandTotals["count_quantity"].value).toBe(25);
+  });
+
+  it("calculates min grand total", () => {
+    const minConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "gross_amount", aggregation: "min" }],
+    };
+    const rawRows = [
+      { hotel_name: "A", min_gross_amount: 500 },
+      { hotel_name: "B", min_gross_amount: 200 },
+    ];
+    const result = formatPivotResults(rawRows, minConfig);
+    expect(result.grandTotals["min_gross_amount"].value).toBe(200);
+  });
+
+  it("calculates max grand total", () => {
+    const maxConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "gross_amount", aggregation: "max" }],
+    };
+    const rawRows = [
+      { hotel_name: "A", max_gross_amount: 500 },
+      { hotel_name: "B", max_gross_amount: 800 },
+    ];
+    const result = formatPivotResults(rawRows, maxConfig);
+    expect(result.grandTotals["max_gross_amount"].value).toBe(800);
+  });
+
+  it("handles empty results", () => {
+    const result = formatPivotResults([], config);
+    expect(result.rows).toEqual([]);
+    expect(result.rowCount).toBe(0);
+    expect(result.truncated).toBe(false);
+    expect(result.grandTotals["sum_gross_amount"].value).toBe(0);
+  });
+
+  it("marks truncated when over limit", () => {
+    // Build more than 10_000 rows
+    const rawRows = Array.from({ length: 10_002 }, (_, i) => ({
+      hotel_name: `Hotel ${i}`,
+      sum_gross_amount: i * 10,
+    }));
+    const result = formatPivotResults(rawRows, config);
+    expect(result.truncated).toBe(true);
+    expect(result.rows).toHaveLength(10_000);
+  });
+});
