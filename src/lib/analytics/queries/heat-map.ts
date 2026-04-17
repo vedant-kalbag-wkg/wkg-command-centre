@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { salesRecords, locations } from "@/db/schema";
+import { salesRecords, locations, kioskAssignments } from "@/db/schema";
 import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
@@ -74,8 +74,8 @@ export async function getHeatMapData(
 ): Promise<HeatMapData> {
   const whereClause = await buildHeatMapWhere(filters, userCtx);
 
-  // 1. Query sales grouped by location
-  const rows = await db.execute<{
+  // 1. Query sales grouped by location AND kiosk counts per location (parallel)
+  const salesQuery = db.execute<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -98,6 +98,23 @@ export async function getHeatMapData(
     GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
   `);
 
+  // Kiosk count: distinct kiosks assigned to each location during the filter period
+  const kioskCountQuery = db.execute<{
+    location_id: string;
+    kiosk_count: string;
+  }>(sql`
+    SELECT
+      ${kioskAssignments.locationId} AS location_id,
+      COUNT(DISTINCT ${kioskAssignments.kioskId})::text AS kiosk_count
+    FROM ${kioskAssignments}
+    WHERE ${kioskAssignments.assignedAt} <= ${filters.dateTo}::timestamptz
+      AND (${kioskAssignments.unassignedAt} IS NULL
+           OR ${kioskAssignments.unassignedAt} > ${filters.dateFrom}::timestamptz)
+    GROUP BY ${kioskAssignments.locationId}
+  `);
+
+  const [rows, kioskCountRows] = await Promise.all([salesQuery, kioskCountQuery]);
+
   if (rows.length === 0) {
     return {
       topPerformers: [],
@@ -107,12 +124,17 @@ export async function getHeatMapData(
     };
   }
 
+  // Build kiosk count lookup: locationId -> count of distinct kiosks
+  const kioskCountMap = new Map<string, number>(
+    kioskCountRows.map((r) => [r.location_id, Number(r.kiosk_count)]),
+  );
+
   // 2. Calculate derived metrics per hotel
   const rawHotels = rows.map((row) => {
     const revenue = Number(row.revenue);
     const transactions = Number(row.transactions);
     const numRooms = row.num_rooms ? Number(row.num_rooms) : null;
-    const kiosks: number | null = null; // kiosk count not readily available
+    const kiosks = kioskCountMap.get(row.location_id) ?? null;
 
     return {
       locationId: row.location_id,
