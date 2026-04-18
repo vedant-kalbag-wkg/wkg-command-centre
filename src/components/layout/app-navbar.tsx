@@ -28,7 +28,6 @@ import {
   Ban,
   CalendarRange,
   Shield,
-  Database,
   Upload,
   ScrollText,
   Users,
@@ -99,16 +98,19 @@ const analyticsItems: NavItem[] = [
   { label: "Actions", href: "/analytics/actions-dashboard", icon: ClipboardList },
 ];
 
-const adminItems: NavItem[] = [
-  { label: "Settings", href: "/settings", icon: Settings },
+const analyticsAdminItems: NavItem[] = [
+  { label: "Business Events", href: "/settings/business-events", icon: CalendarRange },
   { label: "Analytics Presets", href: "/settings/analytics-presets", icon: Filter },
   { label: "Outlet Exclusions", href: "/settings/outlet-exclusions", icon: Ban },
-  { label: "Business Events", href: "/settings/business-events", icon: CalendarRange },
-  { label: "Data Quality", href: "/settings/data-quality", icon: Shield },
   { label: "Thresholds", href: "/settings/thresholds", icon: Gauge },
-  { label: "Data Import", href: "/settings/data-import/sales", icon: Upload },
-  { label: "Audit Log", href: "/settings/audit-log", icon: ScrollText },
+];
+
+const systemAdminItems: NavItem[] = [
+  { label: "Settings", href: "/settings", icon: Settings },
   { label: "Users", href: "/settings/users", icon: Users },
+  { label: "Data Import", href: "/settings/data-import/sales", icon: Upload },
+  { label: "Data Quality", href: "/settings/data-quality", icon: Shield },
+  { label: "Audit Log", href: "/settings/audit-log", icon: ScrollText },
 ];
 
 // ============================================================
@@ -141,13 +143,18 @@ function isGroupActive(items: NavItem[], pathname: string): boolean {
 function NavDropdown({
   label,
   items,
+  extraItems,
+  extraLabel,
   pathname,
 }: {
   label: string;
   items: NavItem[];
+  extraItems?: NavItem[];
+  extraLabel?: string;
   pathname: string;
 }) {
-  const active = isGroupActive(items, pathname);
+  const allItems = extraItems ? [...items, ...extraItems] : items;
+  const active = isGroupActive(allItems, pathname);
 
   return (
     <div className="relative group">
@@ -181,6 +188,33 @@ function NavDropdown({
               </Link>
             );
           })}
+          {extraItems && extraItems.length > 0 && (
+            <>
+              <div className="my-1 border-t" />
+              {extraLabel && (
+                <p className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {extraLabel}
+                </p>
+              )}
+              {extraItems.map((item) => {
+                const Icon = item.icon;
+                const itemActive = isItemActive(item.href, pathname);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors",
+                      itemActive && "bg-accent text-[#00A6D3] font-medium",
+                    )}
+                  >
+                    <Icon className="size-4 text-muted-foreground" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -216,12 +250,15 @@ function UserMenu({
   userName,
   userEmail,
   userRole,
+  isAdmin,
 }: {
   userName: string;
   userEmail: string;
   userRole: string;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const handleSignOut = async () => {
     await signOut();
@@ -251,6 +288,28 @@ function UserMenu({
             <RoleBadge role={userRole} />
           </div>
         </DropdownMenuLabel>
+        {isAdmin && (
+          <>
+            <DropdownMenuSeparator />
+            {systemAdminItems.map((item) => {
+              const Icon = item.icon;
+              const active = isItemActive(item.href, pathname);
+              return (
+                <DropdownMenuItem
+                  key={item.href}
+                  render={<Link href={item.href} />}
+                  className={cn(
+                    "cursor-pointer",
+                    active && "text-[#00A6D3] font-medium",
+                  )}
+                >
+                  <Icon className="mr-2 h-4 w-4" />
+                  {item.label}
+                </DropdownMenuItem>
+              );
+            })}
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={handleSignOut}
@@ -348,15 +407,10 @@ export function AppNavbar({ user }: AppNavbarProps) {
             <NavDropdown
               label="Analytics"
               items={analyticsItems}
+              extraItems={isAdmin ? analyticsAdminItems : undefined}
+              extraLabel="Configure"
               pathname={pathname}
             />
-            {isAdmin && (
-              <NavDropdown
-                label="Admin"
-                items={adminItems}
-                pathname={pathname}
-              />
-            )}
           </nav>
         </div>
 
@@ -367,6 +421,7 @@ export function AppNavbar({ user }: AppNavbarProps) {
               userName={user.name}
               userEmail={user.email}
               userRole={user.role}
+              isAdmin={isAdmin}
             />
           )}
 
@@ -407,8 +462,8 @@ export function AppNavbar({ user }: AppNavbarProps) {
                 />
                 {isAdmin && (
                   <MobileNavSection
-                    title="Admin"
-                    items={adminItems}
+                    title="Configure"
+                    items={analyticsAdminItems}
                     pathname={pathname}
                     onNavigate={() => setMobileOpen(false)}
                   />
@@ -430,6 +485,14 @@ export function AppNavbar({ user }: AppNavbarProps) {
                         <RoleBadge role={user.role} />
                       </div>
                     </div>
+                    {isAdmin && (
+                      <MobileNavSection
+                        title="Admin"
+                        items={systemAdminItems}
+                        pathname={pathname}
+                        onNavigate={() => setMobileOpen(false)}
+                      />
+                    )}
                     <button
                       onClick={handleMobileSignOut}
                       className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-accent rounded-md transition-colors w-full"

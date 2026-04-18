@@ -108,7 +108,7 @@ type FilterState = {
 
 function createFullFilterStore() {
   return create<FilterState>((set) => ({
-    dateRange: getCurrentMonthRange(),
+    dateRange: getPresetRange("last-year"),
     hotelFilter: [],
     regionFilter: [],
     productFilter: [],
@@ -130,7 +130,7 @@ function createFullFilterStore() {
       }),
     clearAllFilters: () =>
       set({
-        dateRange: getCurrentMonthRange(),
+        dateRange: getPresetRange("last-year"),
         hotelFilter: [],
         regionFilter: [],
         productFilter: [],

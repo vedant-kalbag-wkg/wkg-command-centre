@@ -12,7 +12,10 @@
     "db:seed:sales-demo": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-sales-demo.ts",
     "db:seed:kiosks": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-kiosks.ts",
     "db:seed:markets": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-markets.ts",
-    "db:migrate:supabase": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/migrate-from-supabase.ts"
+    "db:migrate:supabase": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/migrate-from-supabase.ts",
+    "db:import:monday": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-from-monday.ts",
+    "db:enrich:locations": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/enrich-locations-from-monday.ts",
+    "db:import:location-products": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-location-products-from-monday.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1012.0",
