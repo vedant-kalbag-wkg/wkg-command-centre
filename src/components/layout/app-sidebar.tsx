@@ -19,6 +19,7 @@ import {
   Filter,
   Ban,
   CalendarRange,
+  Percent,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,6 +54,7 @@ const analyticsItems = [
   { title: "Regions", href: "/analytics/regions", icon: Globe },
   { title: "Location Groups", href: "/analytics/location-groups", icon: MapPin },
   { title: "Pivot Table", href: "/analytics/pivot-table", icon: Table2 },
+  { title: "Commission", href: "/analytics/commission", icon: Percent },
 ];
 
 const adminSettingsItems = [
