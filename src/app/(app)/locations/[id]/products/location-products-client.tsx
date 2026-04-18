@@ -14,7 +14,20 @@ import {
   type LocationProductItem,
   type ProviderSelectItem,
   type CommissionTier,
+  type VersionedTierConfig,
 } from "./actions";
+
+// ---------------------------------------------------------------------------
+// Helpers — extract current tiers from versioned config
+// ---------------------------------------------------------------------------
+
+/** Return the tiers from the latest effectiveFrom entry, or [] if none. */
+function currentTiers(configs: VersionedTierConfig[]): CommissionTier[] {
+  if (!configs || configs.length === 0) return [];
+  // Sort descending by effectiveFrom to get the latest
+  const sorted = [...configs].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return sorted[0].tiers;
+}
 
 // ---------------------------------------------------------------------------
 // Availability badge
@@ -172,7 +185,7 @@ function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
 interface ProductRowProps {
   item: LocationProductItem;
   allProviders: ProviderSelectItem[];
-  onUpdate: (id: string, data: Partial<{ availability: string; providerId: string | null; commissionTiers: CommissionTier[] }>) => Promise<void>;
+  onUpdate: (id: string, data: Partial<{ availability: string; providerId: string | null; commissionTiers: VersionedTierConfig[] }>) => Promise<void>;
 }
 
 function ProductRow({ item, allProviders, onUpdate }: ProductRowProps) {
@@ -192,7 +205,16 @@ function ProductRow({ item, allProviders, onUpdate }: ProductRowProps) {
   };
 
   const handleSaveTiers = async (tiers: CommissionTier[]) => {
-    await onUpdate(item.id, { commissionTiers: tiers });
+    // Preserve existing version history and append a new version with today's date
+    const newVersion: VersionedTierConfig = {
+      effectiveFrom: new Date().toISOString().slice(0, 10),
+      tiers,
+    };
+    // Keep prior versions, replace any with the same effectiveFrom date
+    const prior = (item.commissionTiers ?? []).filter(
+      (v) => v.effectiveFrom !== newVersion.effectiveFrom,
+    );
+    await onUpdate(item.id, { commissionTiers: [...prior, newVersion] });
     setShowTierEditor(false);
   };
 
@@ -234,7 +256,7 @@ function ProductRow({ item, allProviders, onUpdate }: ProductRowProps) {
       <td className="py-3 pr-4">
         {showTierEditor ? (
           <TierEditor
-            tiers={item.commissionTiers}
+            tiers={currentTiers(item.commissionTiers)}
             onSave={handleSaveTiers}
             onCancel={() => setShowTierEditor(false)}
           />
@@ -243,7 +265,7 @@ function ProductRow({ item, allProviders, onUpdate }: ProductRowProps) {
             onClick={() => setShowTierEditor(true)}
             className="flex items-center gap-1 text-left hover:opacity-70"
           >
-            <TierChips tiers={item.commissionTiers} />
+            <TierChips tiers={currentTiers(item.commissionTiers)} />
             <span className="ml-1 text-[11px] text-wk-azure">
               {showTierEditor ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             </span>
@@ -291,7 +313,7 @@ export function LocationProductsClient({ locationId }: LocationProductsClientPro
 
   const handleUpdate = async (
     id: string,
-    data: Partial<{ availability: string; providerId: string | null; commissionTiers: CommissionTier[] }>
+    data: Partial<{ availability: string; providerId: string | null; commissionTiers: VersionedTierConfig[] }>
   ) => {
     const result = await updateLocationProduct(id, data);
     if ("error" in result) {

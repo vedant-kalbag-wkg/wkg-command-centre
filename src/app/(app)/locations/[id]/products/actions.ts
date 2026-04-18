@@ -21,6 +21,11 @@ export type CommissionTier = {
   rate: number;
 };
 
+export type VersionedTierConfig = {
+  effectiveFrom: string;
+  tiers: CommissionTier[];
+};
+
 export type LocationProductItem = {
   id: string;
   productId: string;
@@ -28,7 +33,7 @@ export type LocationProductItem = {
   providerId: string | null;
   providerName: string | null;
   availability: string;
-  commissionTiers: CommissionTier[];
+  commissionTiers: VersionedTierConfig[];
 };
 
 export type ProductSelectItem = {
@@ -53,10 +58,15 @@ const commissionTierSchema = z.object({
   rate: z.number(),
 });
 
+const versionedTierConfigSchema = z.object({
+  effectiveFrom: z.string(),
+  tiers: z.array(commissionTierSchema),
+});
+
 const updateLocationProductSchema = z.object({
   availability: availabilitySchema.optional(),
   providerId: z.string().nullable().optional(),
-  commissionTiers: z.array(commissionTierSchema).optional(),
+  commissionTiers: z.array(versionedTierConfigSchema).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -89,7 +99,7 @@ export async function listLocationProducts(
     providerId: row.providerId ?? null,
     providerName: row.providerName ?? null,
     availability: row.availability,
-    commissionTiers: (row.commissionTiers as CommissionTier[]) ?? [],
+    commissionTiers: (row.commissionTiers as VersionedTierConfig[]) ?? [],
   }));
 }
 
@@ -126,7 +136,7 @@ export async function updateLocationProduct(
   data: {
     availability?: string;
     providerId?: string | null;
-    commissionTiers?: CommissionTier[];
+    commissionTiers?: VersionedTierConfig[];
   }
 ): Promise<{ success: true } | { error: string }> {
   try {
