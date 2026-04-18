@@ -113,6 +113,7 @@ type TrendState = {
   showYoY: boolean;
   rollingAverage: RollingWindow;
   activeEventCategories: string[];
+  builderPanelOpen: boolean;
 
   // Actions — pending series editing
   addSeries: () => void;
@@ -134,6 +135,9 @@ type TrendState = {
   setShowYoY: (v: boolean) => void;
   setRollingAverage: (v: RollingWindow) => void;
   toggleEventCategory: (name: string) => void;
+
+  // Builder panel toggle
+  toggleBuilderPanel: () => void;
 
   // Presets & saved views
   loadPreset: (presetIndex: number) => void;
@@ -163,6 +167,7 @@ export const useTrendStore = create<TrendState>((set, get) => {
     showYoY: false,
     rollingAverage: null,
     activeEventCategories: EVENT_CATEGORIES.map((c) => c.name),
+    builderPanelOpen: true,
 
     addSeries: () =>
       set((state) => {
@@ -221,6 +226,9 @@ export const useTrendStore = create<TrendState>((set, get) => {
     setShowEvents: (v) => set({ showEvents: v }),
     setShowYoY: (v) => set({ showYoY: v }),
     setRollingAverage: (v) => set({ rollingAverage: v }),
+    toggleBuilderPanel: () =>
+      set((state) => ({ builderPanelOpen: !state.builderPanelOpen })),
+
     toggleEventCategory: (name) =>
       set((state) => {
         const cats = state.activeEventCategories;

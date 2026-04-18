@@ -66,7 +66,7 @@ export function PivotResultTable({ data }: PivotResultTableProps) {
 
           <TableBody>
             {data.rows.map((row, rowIdx) => (
-              <TableRow key={rowIdx}>
+              <TableRow key={rowIdx} className="hover:bg-gray-50 transition-colors">
                 {dimensionKeys.map((key) => (
                   <TableCell
                     key={key}
@@ -88,7 +88,7 @@ export function PivotResultTable({ data }: PivotResultTableProps) {
                   return (
                     <TableCell
                       key={key}
-                      className={`whitespace-nowrap text-right text-xs tabular-nums ${
+                      className={`whitespace-nowrap text-right text-xs tabular-nums border-l border-gray-100 ${
                         isChange ? changeColor : ""
                       }`}
                     >
@@ -99,13 +99,13 @@ export function PivotResultTable({ data }: PivotResultTableProps) {
               </TableRow>
             ))}
 
-            {/* Grand Totals Row */}
-            <TableRow className="border-t-2 bg-muted/30 font-semibold">
+            {/* Totals Row */}
+            <TableRow className="border-t-2 bg-muted/30 font-semibold sticky bottom-0">
               <TableCell
                 colSpan={dimensionKeys.length}
                 className="text-xs"
               >
-                Grand Total
+                Total
               </TableCell>
               {cellKeys.map((key) => {
                 // Match grand total by the base key (strip column prefix for crosstab)
@@ -113,7 +113,7 @@ export function PivotResultTable({ data }: PivotResultTableProps) {
                 return (
                   <TableCell
                     key={key}
-                    className="whitespace-nowrap text-right text-xs tabular-nums"
+                    className="whitespace-nowrap text-right text-xs tabular-nums border-l border-gray-100"
                   >
                     {gt?.formatted ?? "—"}
                   </TableCell>
