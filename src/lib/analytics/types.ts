@@ -367,6 +367,33 @@ export type ComparisonEntity = {
   avgBasket: number
 }
 
+// ─── Maturity Analysis Types ────────────────────────────────────────────────
+
+export type MaturityBucketMetrics = {
+  bucket: string;
+  locationCount: number;
+  avgRevenue: number;
+  totalRevenue: number;
+};
+
+export type RevenueRampPoint = {
+  monthsSinceInstall: number;
+  avgRevenue: number;
+  locationCount: number;
+};
+
+export type InstallCohort = {
+  installMonth: string;
+  locationCount: number;
+  avgMonthlyRevenue: number;
+};
+
+export type MaturityAnalysis = {
+  bucketMetrics: MaturityBucketMetrics[];
+  rampCurve: RevenueRampPoint[];
+  installCohorts: InstallCohort[];
+};
+
 // ─── Change Indicator ─────────────────────────────────────────────────────────
 
 export type ChangeDirection = "up" | "down" | "neutral"

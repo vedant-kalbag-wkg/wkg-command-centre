@@ -30,3 +30,27 @@ const MATURITY_LABEL_MAP: Record<MaturityBucket, string> = {
 export function maturityBucketLabel(bucket: MaturityBucket): string {
   return MATURITY_LABEL_MAP[bucket];
 }
+
+// ─── Detailed Maturity Buckets (for maturity analysis page) ─────────────────
+
+export type DetailedMaturityBucket = "0-30d" | "31-60d" | "61-90d" | "90+d";
+
+export const DETAILED_MATURITY_BUCKETS: { value: DetailedMaturityBucket; label: string }[] = [
+  { value: "0-30d", label: "0-30 Days" },
+  { value: "31-60d", label: "31-60 Days" },
+  { value: "61-90d", label: "61-90 Days" },
+  { value: "90+d", label: "90+ Days" },
+];
+
+export function calculateDetailedMaturityBucket(
+  liveDate: Date | null,
+  referenceDate: Date = new Date(),
+): DetailedMaturityBucket | null {
+  if (!liveDate) return null;
+  const diffMs = referenceDate.getTime() - liveDate.getTime();
+  const days = diffMs / (24 * 60 * 60 * 1000);
+  if (days <= 30) return "0-30d";
+  if (days <= 60) return "31-60d";
+  if (days <= 90) return "61-90d";
+  return "90+d";
+}
