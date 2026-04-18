@@ -34,9 +34,10 @@ const filters: AnalyticsFilters = {
 };
 
 const userCtx: UserCtx = {
-  userId: "test-user",
+  id: "test-user",
+  userType: "internal",
   role: "admin",
-} as UserCtx;
+};
 
 /** Two hotels: Hotel A has more revenue, Hotel B has more transactions */
 const salesRows = [

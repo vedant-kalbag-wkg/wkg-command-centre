@@ -37,11 +37,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # tooling / agent state
 .claude/
 .planning/
 .worktrees/
+
+# auth credentials
+auth.json
 
 # vercel
 .vercel

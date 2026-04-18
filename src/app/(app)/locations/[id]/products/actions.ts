@@ -10,6 +10,9 @@ import {
   locations,
 } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
+import { recalculateCommissions } from "@/lib/commission/processor";
+import { writeAuditLog } from "@/lib/audit";
+import { getUserCtx } from "@/lib/auth/get-user-ctx";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,6 +24,11 @@ export type CommissionTier = {
   rate: number;
 };
 
+export type VersionedTierConfig = {
+  effectiveFrom: string;
+  tiers: CommissionTier[];
+};
+
 export type LocationProductItem = {
   id: string;
   productId: string;
@@ -28,7 +36,7 @@ export type LocationProductItem = {
   providerId: string | null;
   providerName: string | null;
   availability: string;
-  commissionTiers: CommissionTier[];
+  commissionTiers: VersionedTierConfig[];
 };
 
 export type ProductSelectItem = {
@@ -53,10 +61,15 @@ const commissionTierSchema = z.object({
   rate: z.number(),
 });
 
+const versionedTierConfigSchema = z.object({
+  effectiveFrom: z.string(),
+  tiers: z.array(commissionTierSchema),
+});
+
 const updateLocationProductSchema = z.object({
   availability: availabilitySchema.optional(),
   providerId: z.string().nullable().optional(),
-  commissionTiers: z.array(commissionTierSchema).optional(),
+  commissionTiers: z.array(versionedTierConfigSchema).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -66,6 +79,8 @@ const updateLocationProductSchema = z.object({
 export async function listLocationProducts(
   locationId: string
 ): Promise<LocationProductItem[]> {
+  await requireRole("admin", "member");
+
   const rows = await db
     .select({
       id: locationProducts.id,
@@ -89,7 +104,7 @@ export async function listLocationProducts(
     providerId: row.providerId ?? null,
     providerName: row.providerName ?? null,
     availability: row.availability,
-    commissionTiers: (row.commissionTiers as CommissionTier[]) ?? [],
+    commissionTiers: (row.commissionTiers as VersionedTierConfig[]) ?? [],
   }));
 }
 
@@ -126,7 +141,7 @@ export async function updateLocationProduct(
   data: {
     availability?: string;
     providerId?: string | null;
-    commissionTiers?: CommissionTier[];
+    commissionTiers?: VersionedTierConfig[];
   }
 ): Promise<{ success: true } | { error: string }> {
   try {
@@ -214,6 +229,54 @@ export async function addProduct(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to add product";
+    return { error: message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// recalculateLocationProductCommission (admin-only)
+// ---------------------------------------------------------------------------
+
+export async function recalculateLocationProductCommission(
+  locationProductId: string,
+  month: string,
+): Promise<{ reversed: number; recalculated: number } | { error: string }> {
+  try {
+    const session = await requireRole("admin");
+    const userCtx = await getUserCtx();
+
+    const result = await recalculateCommissions(locationProductId, month);
+
+    // Fetch location product name for audit
+    const [lp] = await db
+      .select({
+        locationName: locations.name,
+        productName: products.name,
+      })
+      .from(locationProducts)
+      .innerJoin(locations, eq(locationProducts.locationId, locations.id))
+      .innerJoin(products, eq(locationProducts.productId, products.id))
+      .where(eq(locationProducts.id, locationProductId))
+      .limit(1);
+
+    await writeAuditLog({
+      actorId: userCtx.id,
+      actorName: session.user.name ?? userCtx.id,
+      entityType: "commission_ledger",
+      entityId: locationProductId,
+      entityName: lp
+        ? `${lp.locationName} - ${lp.productName}`
+        : locationProductId,
+      action: "recalculate",
+      field: "month",
+      oldValue: month,
+      newValue: `reversed=${result.reversed}, recalculated=${result.recalculated}`,
+    });
+
+    return result;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to recalculate";
     return { error: message };
   }
 }

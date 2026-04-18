@@ -23,6 +23,7 @@ import {
   ArrowLeftRight,
   ClipboardList,
   Timer,
+  Percent,
 } from "lucide-react";
 import {
   Sidebar,
@@ -60,6 +61,7 @@ const analyticsItems = [
   { title: "Pivot Table", href: "/analytics/pivot-table", icon: Table2 },
   { title: "Experiments", href: "/analytics/experiments", icon: FlaskConical },
   { title: "Compare", href: "/analytics/compare", icon: ArrowLeftRight },
+  { title: "Commission", href: "/analytics/commission", icon: Percent },
   { title: "Actions", href: "/analytics/actions-dashboard", icon: ClipboardList },
 ];
 

@@ -3,7 +3,8 @@
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { getPortfolioData } from "@/lib/analytics/queries/portfolio";
 import { getBusinessEvents } from "@/lib/analytics/queries/trend-series";
-import { getThresholds, type ThresholdConfig } from "@/lib/analytics/thresholds";
+import { getThresholds } from "@/lib/analytics/thresholds-server";
+import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 import { getHighPerformerPatterns } from "@/lib/analytics/queries/high-performer-analysis";
 import { fetchLocationFlags } from "@/app/(app)/analytics/flags/actions";
 import type {

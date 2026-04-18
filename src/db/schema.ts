@@ -321,10 +321,39 @@ export const locationProducts = pgTable("location_products", {
   productId: uuid("product_id").notNull().references(() => products.id),
   providerId: uuid("provider_id").references(() => providers.id),
   availability: text("availability").notNull().default("unavailable"),
-  commissionTiers: jsonb("commission_tiers").$type<Array<{ minRevenue: number; maxRevenue: number | null; rate: number }>>(),
+  commissionTiers: jsonb("commission_tiers").$type<Array<{
+    effectiveFrom: string;
+    tiers: Array<{ minRevenue: number; maxRevenue: number | null; rate: number }>;
+  }>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Commission ledger — per-sale commission calculation records with tier breakdown
+export const commissionLedger = pgTable(
+  "commission_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    salesRecordId: uuid("sales_record_id")
+      .notNull()
+      .references(() => salesRecords.id, { onDelete: "cascade" }),
+    locationProductId: uuid("location_product_id")
+      .references(() => locationProducts.id, { onDelete: "set null" }),
+    grossAmount: numeric("gross_amount", { precision: 12, scale: 2 }).notNull(),
+    commissionableAmount: numeric("commissionable_amount", { precision: 12, scale: 2 }).notNull(),
+    commissionAmount: numeric("commission_amount", { precision: 12, scale: 2 }).notNull(),
+    tierBreakdown: jsonb("tier_breakdown")
+      .$type<Array<{ tierRate: number; revenueInTier: number; commission: number }>>()
+      .notNull(),
+    tierVersionEffectiveFrom: text("tier_version_effective_from").notNull(),
+    calculatedAt: timestamp("calculated_at", { withTimezone: true }).defaultNow().notNull(),
+    isReversal: boolean("is_reversal").notNull().default(false),
+  },
+  (t) => ({
+    bySalesRecord: index("cl_sales_record_idx").on(t.salesRecordId),
+    byLocationProductReversal: index("cl_location_product_idx").on(t.locationProductId, t.isReversal),
+  }),
+);
 
 // Phase 4.1 note: appSettings already declared above (line ~88).
 
