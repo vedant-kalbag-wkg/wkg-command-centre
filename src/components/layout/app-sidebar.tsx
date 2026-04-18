@@ -19,6 +19,10 @@ import {
   Filter,
   Ban,
   CalendarRange,
+  FlaskConical,
+  ArrowLeftRight,
+  ClipboardList,
+  Timer,
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,7 +56,11 @@ const analyticsItems = [
   { title: "Hotel Groups", href: "/analytics/hotel-groups", icon: Building2 },
   { title: "Regions", href: "/analytics/regions", icon: Globe },
   { title: "Location Groups", href: "/analytics/location-groups", icon: MapPin },
+  { title: "Maturity", href: "/analytics/maturity", icon: Timer },
   { title: "Pivot Table", href: "/analytics/pivot-table", icon: Table2 },
+  { title: "Experiments", href: "/analytics/experiments", icon: FlaskConical },
+  { title: "Compare", href: "/analytics/compare", icon: ArrowLeftRight },
+  { title: "Actions", href: "/analytics/actions-dashboard", icon: ClipboardList },
 ];
 
 const adminSettingsItems = [

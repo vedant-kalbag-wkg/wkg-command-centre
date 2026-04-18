@@ -75,6 +75,7 @@ function mergeSeriesData(
 
 interface TrendChartProps {
   allData: Map<string, TrendDataPoint[]>;
+  yoyData?: Map<string, TrendDataPoint[]>;
   appliedSeries: SeriesConfig[];
   granularity: TrendGranularity;
   dateFrom: string;
@@ -88,6 +89,7 @@ interface TrendChartProps {
 
 export function TrendChart({
   allData,
+  yoyData,
   appliedSeries,
   granularity,
   dateFrom,
@@ -111,6 +113,25 @@ export function TrendChart({
       : granularity;
 
   const chartData = mergeSeriesData(allData, visibleSeries, resolvedGranularity);
+
+  // Merge YoY data into chart rows with _yoy suffix keys
+  const hasYoY = yoyData && yoyData.size > 0;
+  if (hasYoY) {
+    // Build a separate merged dataset for YoY series
+    const yoyMerged = mergeSeriesData(yoyData, visibleSeries, resolvedGranularity);
+    const yoyByDate = new Map(yoyMerged.map((row) => [row.date, row]));
+
+    for (const row of chartData) {
+      const yoyRow = yoyByDate.get(row.date);
+      if (yoyRow) {
+        for (const series of visibleSeries) {
+          if (yoyRow[series.id] !== undefined) {
+            row[`${series.id}_yoy`] = yoyRow[series.id];
+          }
+        }
+      }
+    }
+  }
 
   if (!loading && chartData.length === 0) {
     return <EmptyState message="No data for selected filters and date range" />;
@@ -166,11 +187,15 @@ export function TrendChart({
           formatter={(value, name) => {
             const v = Number(value);
             const n = String(name);
-            const series = appliedSeries.find((s) => s.id === n);
+            // Handle YoY series naming
+            const isYoY = n.endsWith("_yoy");
+            const baseId = isYoY ? n.replace(/_yoy$/, "") : n;
+            const series = appliedSeries.find((s) => s.id === baseId);
             const formatted = series && isCurrencyMetric(series.metric)
               ? formatCurrency(v)
               : formatNumber(v);
-            return [formatted, series?.label ?? n];
+            const label = series?.label ?? baseId;
+            return [formatted, isYoY ? `${label} (YoY)` : label];
           }}
           labelFormatter={(label) => {
             const d = new Date(String(label));
@@ -181,12 +206,20 @@ export function TrendChart({
         <Legend
           onClick={(e) => {
             if (onToggleHidden && e.dataKey) {
-              onToggleHidden(String(e.dataKey));
+              const dk = String(e.dataKey);
+              // Don't toggle YoY lines directly — they follow their parent
+              if (!dk.endsWith("_yoy")) {
+                onToggleHidden(dk);
+              }
             }
           }}
           formatter={(value) => {
-            const series = appliedSeries.find((s) => s.id === value);
-            return series?.label ?? value;
+            const v = String(value);
+            const isYoY = v.endsWith("_yoy");
+            const baseId = isYoY ? v.replace(/_yoy$/, "") : v;
+            const series = appliedSeries.find((s) => s.id === baseId);
+            const label = series?.label ?? baseId;
+            return isYoY ? `${label} (YoY)` : label;
           }}
         />
 
@@ -212,6 +245,25 @@ export function TrendChart({
             connectNulls
           />
         ))}
+
+        {/* YoY overlay lines (dashed, lower opacity) */}
+        {hasYoY &&
+          visibleSeries.map((series) => (
+            <Line
+              key={`${series.id}_yoy`}
+              yAxisId={isCurrencyMetric(series.metric) ? "currency" : "count"}
+              type="monotone"
+              dataKey={`${series.id}_yoy`}
+              stroke={series.color}
+              strokeWidth={1.5}
+              strokeDasharray="5 3"
+              strokeOpacity={0.4}
+              dot={false}
+              name={`${series.id}_yoy`}
+              connectNulls
+              legendType="none"
+            />
+          ))}
       </LineChart>
     </ChartWrapper>
   );

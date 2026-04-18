@@ -16,6 +16,7 @@ export type AnalyticsFilters = {
   productIds?: string[]
   hotelGroupIds?: string[]
   locationGroupIds?: string[]
+  maturityBuckets?: string[]
 }
 
 // ─── Portfolio Types ──────────────────────────────────────────────────────────
@@ -59,8 +60,10 @@ export type HourlyDistributionRow = {
 }
 
 export type OutletTierRow = {
+  locationId: string
   outletCode: string
   hotelName: string
+  liveDate: string | null
   revenue: number
   transactions: number
   percentile: number
@@ -70,9 +73,12 @@ export type OutletTierRow = {
 
 export type OutletTier = "Premium" | "Standard" | "Developing" | "Emerging"
 
+export type ComparisonMode = "mom" | "yoy"
+
 export type PortfolioData = {
   summary: PortfolioSummary
   previousSummary: PortfolioSummary | null
+  comparisonMode?: ComparisonMode
   categoryPerformance: CategoryPerformanceRow[]
   topProducts: TopProductRow[]
   dailyTrends: DailyTrendRow[]
@@ -87,6 +93,7 @@ export type HeatMapHotel = {
   locationId: string
   outletCode: string
   hotelName: string
+  liveDate: string | null
   revenue: number
   transactions: number
   revenuePerRoom: number | null
@@ -212,6 +219,8 @@ export type RegionData = {
   transactions: number
   hotelGroupCount: number
   locationGroupCount: number
+  marketId: string | null
+  marketName: string | null
 }
 
 export type RegionDetail = {
@@ -274,6 +283,134 @@ export type DimensionOptions = {
   regions: { id: string; name: string }[]
   locationGroups: { id: string; name: string }[]
 }
+
+// ─── High Performer Patterns ─────────────────────────────────────────────────
+
+export type HighPerformerPatterns = {
+  greenCount: number;
+  totalCount: number;
+  insights: string[];
+  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
+  regionDistribution: { name: string; count: number; percentage: number }[];
+  avgKioskCount: number | null;
+  avgRoomCount: number | null;
+  topProducts: { name: string; revenue: number }[];
+};
+
+// ─── Location Flag Types ─────────────────────────────────────────────────────
+
+export type FlagType = "relocate" | "monitor" | "strategic_exception";
+
+export type LocationFlag = {
+  id: string;
+  locationId: string;
+  flagType: FlagType;
+  reason: string | null;
+  actorName: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
+};
+
+// ─── Experiment Cohort Types ─────────────────────────────────────────────────
+
+export type ExperimentCohort = {
+  id: string;
+  name: string;
+  description: string | null;
+  locationIds: string[];
+  controlType: "rest_of_portfolio" | "named_control";
+  controlLocationIds: string[] | null;
+  interventionDate: string | null;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type CohortComparison = {
+  cohortMetrics: { revenue: number; transactions: number; avgRevenue: number };
+  controlMetrics: { revenue: number; transactions: number; avgRevenue: number };
+  delta: { revenue: number; transactions: number; avgRevenue: number };
+};
+
+// ─── Action Item Types ──────────────────────────────────────────────────────
+
+export type ActionItemType = "investigation" | "relocation" | "training" | "equipment_change";
+export type ActionItemStatus = "open" | "in_progress" | "resolved" | "cancelled";
+
+export type ActionItem = {
+  id: string;
+  sourceType: "flag" | "manual" | "data_quality";
+  sourceId: string | null;
+  locationId: string | null;
+  locationName: string | null;
+  actionType: ActionItemType;
+  title: string;
+  description: string | null;
+  ownerName: string | null;
+  ownerId: string | null;
+  dueDate: string | null;
+  status: ActionItemStatus;
+  outcomeNotes: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+};
+
+// ─── Temporal Comparison Types ───────────────────────────────────────────────
+
+export type PeriodMetrics = {
+  revenue: number;
+  transactions: number;
+  avgRevenue: number;
+  periodLabel: string;
+  dateFrom: string;
+  dateTo: string;
+};
+
+export type TemporalComparison = {
+  pre: PeriodMetrics;
+  during: PeriodMetrics;
+  yoyPre: PeriodMetrics;
+  yoyDuring: PeriodMetrics;
+};
+
+// ─── Comparison Types ────────────────────────────────────────────────────────
+
+export type ComparisonEntityType = "location" | "hotel_group" | "region"
+
+export type ComparisonEntity = {
+  entityId: string
+  entityName: string
+  revenue: number
+  transactions: number
+  avgBasket: number
+}
+
+// ─── Maturity Analysis Types ────────────────────────────────────────────────
+
+export type MaturityBucketMetrics = {
+  bucket: string;
+  locationCount: number;
+  avgRevenue: number;
+  totalRevenue: number;
+};
+
+export type RevenueRampPoint = {
+  monthsSinceInstall: number;
+  avgRevenue: number;
+  locationCount: number;
+};
+
+export type InstallCohort = {
+  installMonth: string;
+  locationCount: number;
+  avgMonthlyRevenue: number;
+};
+
+export type MaturityAnalysis = {
+  bucketMetrics: MaturityBucketMetrics[];
+  rampCurve: RevenueRampPoint[];
+  installCohorts: InstallCohort[];
+};
 
 // ─── Change Indicator ─────────────────────────────────────────────────────────
 

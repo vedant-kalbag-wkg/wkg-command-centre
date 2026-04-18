@@ -6,7 +6,7 @@ import { requireRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
 import { inArray } from "drizzle-orm";
 
-const ALLOWED_LOCATION_BULK_FIELDS = ["hotelGroup", "sourcedBy"] as const;
+const ALLOWED_LOCATION_BULK_FIELDS = ["hotelGroup", "sourcedBy", "operatingGroupId"] as const;
 
 type AllowedLocationBulkField = (typeof ALLOWED_LOCATION_BULK_FIELDS)[number];
 

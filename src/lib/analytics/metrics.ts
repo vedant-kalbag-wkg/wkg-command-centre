@@ -25,6 +25,26 @@ export function getPreviousPeriodDates(
   };
 }
 
+// ─── Comparison Dates ────────────────────────────────────────────────────────
+
+export function getComparisonDates(
+  dateFrom: string,
+  dateTo: string,
+  mode: "mom" | "yoy",
+): { prevFrom: string; prevTo: string } {
+  if (mode === "yoy") {
+    const from = new Date(dateFrom);
+    const to = new Date(dateTo);
+    from.setFullYear(from.getFullYear() - 1);
+    to.setFullYear(to.getFullYear() - 1);
+    return {
+      prevFrom: from.toISOString().split("T")[0],
+      prevTo: to.toISOString().split("T")[0],
+    };
+  }
+  return getPreviousPeriodDates(dateFrom, dateTo);
+}
+
 // ─── Composite Score ──────────────────────────────────────────────────────────
 
 type WeightedMetric = {

@@ -154,6 +154,7 @@ export const locations = pgTable("locations", {
   // mirror that on locations so CSV rows can FK-resolve to locations.id.
   outletCode: text("outlet_code").unique(),
   hotelGroup: text("hotel_group"),
+  operatingGroupId: uuid("operating_group_id").references(() => hotelGroups.id, { onDelete: "set null" }),
   sourcedBy: text("sourced_by"),
   bankingDetails: jsonb("banking_details"),
   contractValue: numeric("contract_value"),
@@ -393,6 +394,16 @@ export const userScopes = pgTable(
 // input / unnormalised data.
 // =============================================================================
 
+// Markets — top-level geographic grouping (e.g. UK & Ireland, Continental Europe).
+// Regions belong to a market, enabling hierarchical geo drill-down.
+export const markets = pgTable("markets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  code: text("code"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").references(() => user.id),
+});
+
 // Hotel groups — hierarchical grouping of hotel locations (e.g. Dalata Hotels).
 // Supports nesting via self-referential parentGroupId.
 export const hotelGroups = pgTable("hotel_groups", {
@@ -411,6 +422,7 @@ export const regions = pgTable("regions", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
   code: text("code"),
+  marketId: uuid("market_id").references(() => markets.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   createdBy: text("created_by").references(() => user.id),
 });
@@ -697,6 +709,72 @@ export const weatherCache = pgTable(
     byCachedAt: index("weather_cache_cached_idx").on(t.cachedAt),
   }),
 );
+
+// =============================================================================
+// Phase 1 M11.2 — Location performance flags
+// Allows admins to flag underperforming locations for triage (relocate, monitor,
+// or strategic_exception). Flags remain active until explicitly resolved.
+// =============================================================================
+
+export const locationFlags = pgTable("location_flags", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  locationId: uuid("location_id")
+    .notNull()
+    .references(() => locations.id, { onDelete: "cascade" }),
+  flagType: text("flag_type", { enum: ["relocate", "monitor", "strategic_exception"] }).notNull(),
+  reason: text("reason"),
+  actorId: text("actor_id")
+    .notNull()
+    .references(() => user.id),
+  actorName: text("actor_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: text("resolved_by").references(() => user.id),
+  resolutionNote: text("resolution_note"),
+});
+
+// =============================================================================
+// Phase 1 M12.2 — Experiment cohorts
+// Allows users to define location cohorts, compare metrics against a control
+// group (rest of portfolio or named locations), and overlay intervention dates.
+// =============================================================================
+
+export const experimentCohorts = pgTable("experiment_cohorts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  description: text("description"),
+  locationIds: jsonb("location_ids").$type<string[]>().notNull(),
+  controlType: text("control_type", { enum: ["rest_of_portfolio", "named_control"] }).notNull().default("rest_of_portfolio"),
+  controlLocationIds: jsonb("control_location_ids").$type<string[]>(),
+  interventionDate: date("intervention_date"),
+  createdBy: text("created_by").notNull().references(() => user.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// =============================================================================
+// Phase 1 M13.2 — Insight-to-action workflow
+// Action items derived from performance flags, data-quality issues, or manual
+// creation. Tracks investigation, relocation, training, and equipment changes.
+// =============================================================================
+
+export const actionItems = pgTable("action_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceType: text("source_type", { enum: ["flag", "manual", "data_quality"] }).notNull(),
+  sourceId: text("source_id"),
+  locationId: uuid("location_id").references(() => locations.id, { onDelete: "set null" }),
+  actionType: text("action_type", { enum: ["investigation", "relocation", "training", "equipment_change"] }).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  ownerId: text("owner_id").references(() => user.id, { onDelete: "set null" }),
+  dueDate: date("due_date"),
+  status: text("status", { enum: ["open", "in_progress", "resolved", "cancelled"] }).notNull().default("open"),
+  outcomeNotes: text("outcome_notes"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdBy: text("created_by").notNull().references(() => user.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
 
 // eventLog — lightweight analytics usage tracking. userId is nullable to
 // support anonymous / system events (e.g. scheduled exports).
