@@ -313,6 +313,18 @@ export async function _commitImportForActor(
     db,
   );
 
+  // Calculate commissions for committed records (best-effort, does not block import)
+  try {
+    const { calculateCommissionsForRecords } = await import("@/lib/commission/processor");
+    const committedIds = await db
+      .select({ id: salesRecords.id })
+      .from(salesRecords)
+      .where(eq(salesRecords.importId, importId));
+    await calculateCommissionsForRecords(committedIds.map((r: { id: string }) => r.id));
+  } catch (err) {
+    console.error("Commission calculation failed (non-blocking):", err);
+  }
+
   return { committedRows };
 }
 
