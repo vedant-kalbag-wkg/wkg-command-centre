@@ -3,14 +3,16 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, ChevronDown, ChevronUp, Calendar, History } from "lucide-react";
+import { Plus, ChevronDown, ChevronUp, Calendar, History, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useSession } from "@/lib/auth-client";
 import {
   listLocationProducts,
   listAllProviders,
   updateLocationProduct,
   addProduct,
+  recalculateLocationProductCommission,
   type LocationProductItem,
   type ProviderSelectItem,
   type CommissionTier,
@@ -237,13 +239,21 @@ function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
 interface ProductRowProps {
   item: LocationProductItem;
   allProviders: ProviderSelectItem[];
+  isAdmin?: boolean;
   onUpdate: (id: string, data: Partial<{ availability: string; providerId: string | null; commissionTiers: VersionedTierConfig[] }>) => Promise<void>;
 }
 
-function ProductRow({ item, allProviders, onUpdate }: ProductRowProps) {
+function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) {
   const [showTierEditor, setShowTierEditor] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showRecalc, setShowRecalc] = useState(false);
+  const [recalcMonth, setRecalcMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [recalcResult, setRecalcResult] = useState<{ reversed: number; recalculated: number } | null>(null);
   const [isUpdating, startUpdateTransition] = useTransition();
+  const [isRecalculating, startRecalcTransition] = useTransition();
 
   const handleAvailabilityChange = (value: string) => {
     startUpdateTransition(async () => {
@@ -266,6 +276,19 @@ function ProductRow({ item, allProviders, onUpdate }: ProductRowProps) {
     );
     await onUpdate(item.id, { commissionTiers: [...prior, newVersion] });
     setShowTierEditor(false);
+  };
+
+  const handleRecalculate = () => {
+    startRecalcTransition(async () => {
+      setRecalcResult(null);
+      const result = await recalculateLocationProductCommission(item.id, recalcMonth);
+      if ("error" in result) {
+        toast.error(result.error);
+      } else {
+        setRecalcResult(result);
+        toast.success(`Recalculated: ${result.recalculated} records`);
+      }
+    });
   };
 
   return (
@@ -372,6 +395,54 @@ function ProductRow({ item, allProviders, onUpdate }: ProductRowProps) {
               )}
             </div>
           )}
+
+          {/* Recalculate button (admin-only) */}
+          {isAdmin && (
+            <div>
+              {showRecalc ? (
+                <div className="flex items-center gap-2 rounded-md border border-wk-mid-grey p-2">
+                  <Input
+                    type="month"
+                    value={recalcMonth}
+                    onChange={(e) => {
+                      setRecalcMonth(e.target.value);
+                      setRecalcResult(null);
+                    }}
+                    className="h-7 w-36 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-7 bg-wk-azure text-white text-[12px] hover:bg-wk-azure/90"
+                    onClick={handleRecalculate}
+                    disabled={isRecalculating}
+                  >
+                    {isRecalculating ? "Running..." : "Run"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[12px]"
+                    onClick={() => { setShowRecalc(false); setRecalcResult(null); }}
+                  >
+                    Cancel
+                  </Button>
+                  {recalcResult && (
+                    <span className="text-[11px] text-green-700">
+                      {recalcResult.reversed} reversed, {recalcResult.recalculated} recalculated
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowRecalc(true)}
+                  className="flex items-center gap-1 text-[11px] text-wk-azure hover:text-wk-azure/80"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span>Recalculate</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </td>
     </tr>
@@ -388,6 +459,8 @@ interface LocationProductsClientProps {
 
 export function LocationProductsClient({ locationId }: LocationProductsClientProps) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "admin";
   const [locationProductItems, setLocationProductItems] = useState<LocationProductItem[]>([]);
   const [allProviders, setAllProviders] = useState<ProviderSelectItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -490,6 +563,7 @@ export function LocationProductsClient({ locationId }: LocationProductsClientPro
                   key={item.id}
                   item={item}
                   allProviders={allProviders}
+                  isAdmin={isAdmin}
                   onUpdate={handleUpdate}
                 />
               ))}

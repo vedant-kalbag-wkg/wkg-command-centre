@@ -10,6 +10,9 @@ import {
   locations,
 } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
+import { recalculateCommissions } from "@/lib/commission/processor";
+import { writeAuditLog } from "@/lib/audit";
+import { getUserCtx } from "@/lib/auth/get-user-ctx";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -224,6 +227,54 @@ export async function addProduct(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to add product";
+    return { error: message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// recalculateLocationProductCommission (admin-only)
+// ---------------------------------------------------------------------------
+
+export async function recalculateLocationProductCommission(
+  locationProductId: string,
+  month: string,
+): Promise<{ reversed: number; recalculated: number } | { error: string }> {
+  try {
+    const session = await requireRole("admin");
+    const userCtx = await getUserCtx();
+
+    const result = await recalculateCommissions(locationProductId, month);
+
+    // Fetch location product name for audit
+    const [lp] = await db
+      .select({
+        locationName: locations.name,
+        productName: products.name,
+      })
+      .from(locationProducts)
+      .innerJoin(locations, eq(locationProducts.locationId, locations.id))
+      .innerJoin(products, eq(locationProducts.productId, products.id))
+      .where(eq(locationProducts.id, locationProductId))
+      .limit(1);
+
+    await writeAuditLog({
+      actorId: userCtx.id,
+      actorName: session.user.name ?? userCtx.id,
+      entityType: "commission_ledger",
+      entityId: locationProductId,
+      entityName: lp
+        ? `${lp.locationName} - ${lp.productName}`
+        : locationProductId,
+      action: "recalculate",
+      field: "month",
+      oldValue: month,
+      newValue: `reversed=${result.reversed}, recalculated=${result.recalculated}`,
+    });
+
+    return result;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to recalculate";
     return { error: message };
   }
 }
