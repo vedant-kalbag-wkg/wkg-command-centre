@@ -2,7 +2,8 @@
 
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { getHeatMapData } from "@/lib/analytics/queries/heat-map";
-import { getThresholds, type ThresholdConfig } from "@/lib/analytics/thresholds";
+import { getThresholds } from "@/lib/analytics/thresholds-server";
+import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 import { fetchLocationFlags } from "@/app/(app)/analytics/flags/actions";
 import type { AnalyticsFilters, HeatMapData, LocationFlag } from "@/lib/analytics/types";
 

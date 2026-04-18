@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { appSettings } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
-import { getThresholds, type ThresholdConfig } from "@/lib/analytics/thresholds";
+import { getThresholds } from "@/lib/analytics/thresholds-server";
+import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 
 export async function fetchThresholds(): Promise<ThresholdConfig> {
   await requireRole("admin");
