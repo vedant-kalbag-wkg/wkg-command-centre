@@ -1,14 +1,15 @@
 import { auth } from "@/lib/auth";
 
 async function seed() {
-  // Create initial admin user for testing
+  const email = process.env.ADMIN_EMAIL ?? "admin@weknow.co";
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) {
+    throw new Error("ADMIN_PASSWORD env var is required. Set it before running seed.");
+  }
+  const name = process.env.ADMIN_NAME ?? "Admin User";
+
   const result = await auth.api.createUser({
-    body: {
-      email: "admin@weknow.co",
-      password: "Admin123!",
-      name: "Admin User",
-      role: "admin",
-    },
+    body: { email, password, name, role: "admin" },
   });
   console.log("Seed admin created:", result.user.email);
 }

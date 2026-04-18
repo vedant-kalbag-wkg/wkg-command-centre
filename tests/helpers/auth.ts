@@ -14,8 +14,8 @@ import { type Page } from "@playwright/test";
  * and rely on admin-created member/viewer accounts being available.
  */
 export const TEST_ADMIN = {
-  email: "admin@weknow.co",
-  password: "Admin123!",
+  email: process.env.TEST_ADMIN_EMAIL ?? "admin@weknow.co",
+  password: process.env.TEST_ADMIN_PASSWORD ?? "TestAdmin123!",
   name: "Admin User",
   role: "admin",
 } as const;
