@@ -13,9 +13,10 @@ import {
   buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
+  buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
-import { getPreviousPeriodDates } from "@/lib/analytics/metrics";
+import { getComparisonDates } from "@/lib/analytics/metrics";
 import {
   validatePivotConfig,
   buildPivotSQL,
@@ -47,11 +48,13 @@ async function buildPivotWhereString(
 
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
+  const maturityCondition = buildMaturityCondition(filters);
 
   const combined = combineConditions([
     dateCondition,
     scopeCondition,
     exclusionCondition,
+    maturityCondition,
     ...dimensionConditions,
   ]);
 
@@ -187,14 +190,48 @@ async function addPeriodComparison(
     const prevCells = prevRowMap.get(key);
 
     const changeCells: Record<string, PivotCell> = {};
-    for (const cellKey of Object.keys(row.cells)) {
-      const cur = row.cells[cellKey].value;
-      const prev = prevCells?.[cellKey]?.value ?? 0;
-      const change = prev !== 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
-      changeCells[`${cellKey}_change`] = {
-        value: change,
-        formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
-      };
+
+    if (prevCells) {
+      const curKeys = Object.keys(row.cells);
+      const prevKeys = Object.keys(prevCells);
+
+      for (let i = 0; i < curKeys.length; i++) {
+        const cellKey = curKeys[i];
+        const cur = row.cells[cellKey].value;
+
+        // Try exact key match first, then positional match
+        const prevCell =
+          prevCells[cellKey] ??
+          (prevKeys[i] ? prevCells[prevKeys[i]] : undefined);
+
+        if (prevCell != null && prevCell.value !== 0) {
+          const change = ((cur - prevCell.value) / prevCell.value) * 100;
+          changeCells[`${cellKey}_change`] = {
+            value: change,
+            formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
+          };
+        } else if (prevCell != null && prevCell.value === 0) {
+          // Previous was zero — can't calculate meaningful %
+          changeCells[`${cellKey}_change`] = {
+            value: cur > 0 ? 100 : 0,
+            formatted: cur > 0 ? "New" : "—",
+          };
+        } else {
+          // No comparison data available
+          changeCells[`${cellKey}_change`] = {
+            value: 0,
+            formatted: "—",
+          };
+        }
+      }
+    } else {
+      // No matching row in previous period at all
+      for (const cellKey of Object.keys(row.cells)) {
+        changeCells[`${cellKey}_change`] = {
+          value: 0,
+          formatted: "—",
+        };
+      }
     }
 
     return {
@@ -210,15 +247,34 @@ async function addPeriodComparison(
 
   // Add change grand totals
   const changeGrandTotals: Record<string, PivotCell> = {};
-  for (const [key, cell] of Object.entries(currentResult.grandTotals)) {
-    const prevCell = prevResult.grandTotals[key];
-    const prev = prevCell?.value ?? 0;
-    const change =
-      prev !== 0 ? ((cell.value - prev) / prev) * 100 : cell.value > 0 ? 100 : 0;
-    changeGrandTotals[`${key}_change`] = {
-      value: change,
-      formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
-    };
+  const curTotalKeys = Object.keys(currentResult.grandTotals);
+  const prevTotalKeys = Object.keys(prevResult.grandTotals);
+
+  for (let i = 0; i < curTotalKeys.length; i++) {
+    const key = curTotalKeys[i];
+    const cell = currentResult.grandTotals[key];
+    // Try exact key match first, then positional match
+    const prevCell =
+      prevResult.grandTotals[key] ??
+      (prevTotalKeys[i] ? prevResult.grandTotals[prevTotalKeys[i]] : undefined);
+
+    if (prevCell != null && prevCell.value !== 0) {
+      const change = ((cell.value - prevCell.value) / prevCell.value) * 100;
+      changeGrandTotals[`${key}_change`] = {
+        value: change,
+        formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
+      };
+    } else if (prevCell != null && prevCell.value === 0) {
+      changeGrandTotals[`${key}_change`] = {
+        value: cell.value > 0 ? 100 : 0,
+        formatted: cell.value > 0 ? "New" : "—",
+      };
+    } else {
+      changeGrandTotals[`${key}_change`] = {
+        value: 0,
+        formatted: "—",
+      };
+    }
   }
 
   return {
@@ -230,23 +286,3 @@ async function addPeriodComparison(
   };
 }
 
-function getComparisonDates(
-  dateFrom: string,
-  dateTo: string,
-  mode: "mom" | "yoy",
-): { prevFrom: string; prevTo: string } {
-  if (mode === "yoy") {
-    // Year-over-year: same dates, one year earlier
-    const from = new Date(dateFrom);
-    const to = new Date(dateTo);
-    from.setFullYear(from.getFullYear() - 1);
-    to.setFullYear(to.getFullYear() - 1);
-    return {
-      prevFrom: from.toISOString().split("T")[0],
-      prevTo: to.toISOString().split("T")[0],
-    };
-  }
-
-  // Month-over-month: same duration, immediately preceding
-  return getPreviousPeriodDates(dateFrom, dateTo);
-}

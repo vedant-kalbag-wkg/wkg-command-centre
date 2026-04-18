@@ -25,22 +25,23 @@ export function EventAnnotations({
     <>
       {filtered.map((event) => {
         if (event.endDate) {
-          // Range event
+          // Range event — subtle fill so chart data remains readable
           return (
             <ReferenceArea
               key={event.id}
               x1={event.startDate}
               x2={event.endDate}
               fill={event.categoryColor}
-              fillOpacity={0.08}
+              fillOpacity={0.05}
               stroke={event.categoryColor}
-              strokeOpacity={0.3}
+              strokeOpacity={0.25}
               strokeDasharray="3 3"
               label={{
                 value: event.title,
                 position: "insideTopLeft",
                 fontSize: 10,
                 fill: event.categoryColor,
+                fontWeight: 500,
               }}
             />
           );
@@ -59,7 +60,9 @@ export function EventAnnotations({
               position: "insideTopRight",
               fontSize: 10,
               fill: event.categoryColor,
+              fontWeight: 500,
               angle: -90,
+              dy: -4,
             }}
           />
         );

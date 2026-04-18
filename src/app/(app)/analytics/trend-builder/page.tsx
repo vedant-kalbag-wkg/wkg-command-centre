@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useTrendFilterStore } from "@/lib/stores/analytics-filter-store";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useAnalyticsFilterStore } from "@/lib/stores/analytics-filter-store";
 import { useTrendStore } from "@/lib/stores/trend-store";
 import { toLocalISODate } from "@/lib/analytics/formatters";
 import { resolveWeatherLocation } from "@/lib/weather/region-coordinates";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { applyRollingAverage } from "@/lib/analytics/rolling-average";
+import type { RollingWindow } from "@/lib/analytics/rolling-average";
 import {
   fetchTrendSeriesData,
+  fetchTrendSeriesDataYoY,
   fetchWeatherData,
   fetchBusinessEvents,
 } from "./actions";
@@ -26,8 +30,8 @@ import type {
 } from "@/lib/analytics/types";
 
 export default function TrendBuilderPage() {
-  // Date range from shared trend filter store
-  const dateRange = useTrendFilterStore((s) => s.dateRange);
+  // Date range from shared analytics filter store
+  const dateRange = useAnalyticsFilterStore((s) => s.dateRange);
   const dateFrom = toLocalISODate(dateRange.from);
   const dateTo = toLocalISODate(dateRange.to);
 
@@ -39,11 +43,18 @@ export default function TrendBuilderPage() {
   const setShowWeather = useTrendStore((s) => s.setShowWeather);
   const showEvents = useTrendStore((s) => s.showEvents);
   const setShowEvents = useTrendStore((s) => s.setShowEvents);
+  const showYoY = useTrendStore((s) => s.showYoY);
+  const setShowYoY = useTrendStore((s) => s.setShowYoY);
+  const rollingAverage = useTrendStore((s) => s.rollingAverage);
+  const setRollingAverage = useTrendStore((s) => s.setRollingAverage);
   const activeEventCategories = useTrendStore((s) => s.activeEventCategories);
   const toggleAppliedHidden = useTrendStore((s) => s.toggleAppliedHidden);
 
   // Data state
   const [seriesData, setSeriesData] = useState<Map<string, TrendDataPoint[]>>(
+    new Map(),
+  );
+  const [yoyData, setYoyData] = useState<Map<string, TrendDataPoint[]>>(
     new Map(),
   );
   const [weatherData, setWeatherData] = useState<DailyWeather[]>([]);
@@ -87,6 +98,19 @@ export default function TrendBuilderPage() {
         return [s.id, data] as const;
       });
 
+      // Fetch YoY series in parallel when enabled
+      const yoyPromises = showYoY
+        ? parsed.map(async (s) => {
+            const data = await fetchTrendSeriesDataYoY(
+              s.metric,
+              s.filters,
+              dateFrom,
+              dateTo,
+            );
+            return [s.id, data] as const;
+          })
+        : [];
+
       // Fetch weather + events in parallel with series
       const weatherPromise = showWeather
         ? (() => {
@@ -99,14 +123,16 @@ export default function TrendBuilderPage() {
         ? fetchBusinessEvents(dateFrom, dateTo)
         : Promise.resolve([]);
 
-      const [seriesResults, weatherResult, eventsResult] = await Promise.all([
+      const [seriesResults, yoyResults, weatherResult, eventsResult] = await Promise.all([
         Promise.all(seriesPromises),
+        Promise.all(yoyPromises),
         weatherPromise,
         eventsPromise,
       ]);
 
       if (!controller.signal.aborted) {
         setSeriesData(new Map(seriesResults));
+        setYoyData(showYoY ? new Map(yoyResults) : new Map());
         setWeatherData(weatherResult);
         setEvents(eventsResult);
       }
@@ -121,7 +147,7 @@ export default function TrendBuilderPage() {
         setLoading(false);
       }
     }
-  }, [seriesJson, dateFrom, dateTo, showWeather, showEvents]);
+  }, [seriesJson, dateFrom, dateTo, showWeather, showEvents, showYoY]);
 
   useEffect(() => {
     loadData();
@@ -129,6 +155,16 @@ export default function TrendBuilderPage() {
       abortRef.current?.abort();
     };
   }, [loadData]);
+
+  // Apply rolling average transformation client-side
+  const chartData = useMemo(() => {
+    if (!rollingAverage) return seriesData;
+    const transformed = new Map<string, TrendDataPoint[]>();
+    for (const [id, points] of seriesData) {
+      transformed.set(id, applyRollingAverage(points, rollingAverage));
+    }
+    return transformed;
+  }, [seriesData, rollingAverage]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -154,6 +190,28 @@ export default function TrendBuilderPage() {
       <div className="flex flex-wrap items-center gap-4">
         <GranularitySelector value={granularity} onChange={setGranularity} />
 
+        <div className="flex items-center gap-1 rounded-md border p-0.5">
+          {([null, 7, 30] as RollingWindow[]).map((w) => {
+            const label = w === null ? "Raw" : w === 7 ? "7d Avg" : "30d Avg";
+            const isActive = rollingAverage === w;
+            return (
+              <Button
+                key={label}
+                variant={isActive ? "default" : "ghost"}
+                size="sm"
+                className={
+                  isActive
+                    ? "h-7 px-2 text-xs bg-[#00A6D3] hover:bg-[#00A6D3]/90"
+                    : "h-7 px-2 text-xs"
+                }
+                onClick={() => setRollingAverage(w)}
+              >
+                {label}
+              </Button>
+            );
+          })}
+        </div>
+
         <div className="flex items-center gap-2">
           <Switch
             id="show-weather"
@@ -175,6 +233,17 @@ export default function TrendBuilderPage() {
             Events
           </Label>
         </div>
+
+        <div className="flex items-center gap-2">
+          <Switch
+            id="show-yoy"
+            checked={showYoY}
+            onCheckedChange={setShowYoY}
+          />
+          <Label htmlFor="show-yoy" className="text-xs">
+            YoY Overlay
+          </Label>
+        </div>
       </div>
 
       {/* Main chart */}
@@ -182,7 +251,8 @@ export default function TrendBuilderPage() {
         <Skeleton className="h-[380px] w-full rounded-lg" />
       ) : (
         <TrendChart
-          allData={seriesData}
+          allData={chartData}
+          yoyData={yoyData}
           appliedSeries={appliedSeries}
           granularity={granularity}
           dateFrom={dateFrom}

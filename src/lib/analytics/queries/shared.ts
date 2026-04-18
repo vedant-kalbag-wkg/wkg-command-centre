@@ -71,6 +71,41 @@ export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
   return conditions;
 }
 
+export function buildMaturityCondition(filters: AnalyticsFilters): SQL | undefined {
+  if (!filters.maturityBuckets?.length) return undefined;
+
+  const bucketConditions: SQL[] = [];
+
+  for (const bucket of filters.maturityBuckets) {
+    switch (bucket) {
+      case "0-1mo":
+        bucketConditions.push(
+          sql`${locations.liveDate} >= (NOW() - INTERVAL '1 month')`,
+        );
+        break;
+      case "1-3mo":
+        bucketConditions.push(
+          sql`(${locations.liveDate} >= (NOW() - INTERVAL '3 months') AND ${locations.liveDate} < (NOW() - INTERVAL '1 month'))`,
+        );
+        break;
+      case "3-6mo":
+        bucketConditions.push(
+          sql`(${locations.liveDate} >= (NOW() - INTERVAL '6 months') AND ${locations.liveDate} < (NOW() - INTERVAL '3 months'))`,
+        );
+        break;
+      case "6+mo":
+        bucketConditions.push(
+          sql`${locations.liveDate} < (NOW() - INTERVAL '6 months')`,
+        );
+        break;
+    }
+  }
+
+  if (bucketConditions.length === 0) return undefined;
+  if (bucketConditions.length === 1) return bucketConditions[0];
+  return sql`(${sql.join(bucketConditions, sql` OR `)})`;
+}
+
 export function combineConditions(conditions: (SQL | undefined)[]): SQL | undefined {
   const valid = conditions.filter((c): c is SQL => c !== undefined);
   if (valid.length === 0) return undefined;

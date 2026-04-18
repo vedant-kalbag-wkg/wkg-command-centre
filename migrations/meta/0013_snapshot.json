@@ -1,5 +1,5 @@
 {
-  "id": "a2fd2b97-d6dc-40fe-b248-43e59e305f66",
+  "id": "15b2d3b1-7c98-4061-8144-054dd3df6692",
   "prevId": "a7fbe0a2-876c-4573-b5b1-131ed1464407",
   "version": "7",
   "dialect": "postgresql",
@@ -522,109 +522,6 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.commission_ledger": {
-      "name": "commission_ledger",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "sales_record_id": {
-          "name": "sales_record_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "location_product_id": {
-          "name": "location_product_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "gross_amount": {
-          "name": "gross_amount",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "commissionable_amount": {
-          "name": "commissionable_amount",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "commission_amount": {
-          "name": "commission_amount",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tier_breakdown": {
-          "name": "tier_breakdown",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tier_version_effective_from": {
-          "name": "tier_version_effective_from",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "calculated_at": {
-          "name": "calculated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "is_reversal": {
-          "name": "is_reversal",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "commission_ledger_sales_record_id_sales_records_id_fk": {
-          "name": "commission_ledger_sales_record_id_sales_records_id_fk",
-          "tableFrom": "commission_ledger",
-          "tableTo": "sales_records",
-          "columnsFrom": [
-            "sales_record_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "commission_ledger_location_product_id_location_products_id_fk": {
-          "name": "commission_ledger_location_product_id_location_products_id_fk",
-          "tableFrom": "commission_ledger",
-          "tableTo": "location_products",
-          "columnsFrom": [
-            "location_product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -2061,6 +1958,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "operating_group_id": {
+          "name": "operating_group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sourced_by": {
           "name": "sourced_by",
           "type": "text",
@@ -2222,6 +2125,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "locations_operating_group_id_hotel_groups_id_fk": {
+          "name": "locations_operating_group_id_hotel_groups_id_fk",
+          "tableFrom": "locations",
+          "tableTo": "hotel_groups",
+          "columnsFrom": [
+            "operating_group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "locations_internal_poc_id_user_id_fk": {
           "name": "locations_internal_poc_id_user_id_fk",
           "tableFrom": "locations",
@@ -2243,6 +2159,73 @@
           "nullsNotDistinct": false,
           "columns": [
             "outlet_code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.markets": {
+      "name": "markets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "markets_created_by_user_id_fk": {
+          "name": "markets_created_by_user_id_fk",
+          "tableFrom": "markets",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "markets_name_unique": {
+          "name": "markets_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
           ]
         }
       },
@@ -2606,6 +2589,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "market_id": {
+          "name": "market_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -2622,6 +2611,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "regions_market_id_markets_id_fk": {
+          "name": "regions_market_id_markets_id_fk",
+          "tableFrom": "regions",
+          "tableTo": "markets",
+          "columnsFrom": [
+            "market_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "regions_created_by_user_id_fk": {
           "name": "regions_created_by_user_id_fk",
           "tableFrom": "regions",

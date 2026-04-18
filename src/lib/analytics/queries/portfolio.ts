@@ -7,11 +7,13 @@ import {
   buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
+  buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
-import { getPreviousPeriodDates, calculatePercentile, classifyOutletTier } from "@/lib/analytics/metrics";
+import { getComparisonDates, calculatePercentile, classifyOutletTier } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
+  ComparisonMode,
   PortfolioSummary,
   CategoryPerformanceRow,
   TopProductRow,
@@ -40,11 +42,13 @@ async function buildPortfolioWhere(
 
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
+  const maturityCondition = buildMaturityCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     exclusionCondition,
+    maturityCondition,
     ...dimensionConditions,
   ]);
 }
@@ -247,25 +251,31 @@ export async function getOutletTiers(
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
   const rawRows = await db.execute<{
+    location_id: string;
     outlet_code: string;
     hotel_name: string;
+    live_date: string | null;
     revenue: string;
     transactions: string;
   }>(sql`
     SELECT
+      ${locations.id} AS location_id,
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
+      ${locations.liveDate}::text AS live_date,
       COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${locations.outletCode}, ${locations.name}
+    GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.liveDate}
     ORDER BY revenue DESC
   `);
 
   const parsed = rawRows.map((row) => ({
+    locationId: row.location_id,
     outletCode: row.outlet_code,
     hotelName: row.hotel_name,
+    liveDate: row.live_date,
     revenue: Number(row.revenue),
     transactions: Number(row.transactions),
   }));
@@ -277,8 +287,10 @@ export async function getOutletTiers(
   return parsed.map((row) => {
     const percentile = calculatePercentile(row.revenue, allRevenues);
     return {
+      locationId: row.locationId,
       outletCode: row.outletCode,
       hotelName: row.hotelName,
+      liveDate: row.liveDate,
       revenue: row.revenue,
       transactions: row.transactions,
       percentile,
@@ -293,8 +305,9 @@ export async function getOutletTiers(
 export async function getPortfolioData(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
+  comparison: ComparisonMode = "mom",
 ): Promise<PortfolioData> {
-  const { prevFrom, prevTo } = getPreviousPeriodDates(filters.dateFrom, filters.dateTo);
+  const { prevFrom, prevTo } = getComparisonDates(filters.dateFrom, filters.dateTo, comparison);
   const previousFilters: AnalyticsFilters = {
     ...filters,
     dateFrom: prevFrom,
@@ -322,6 +335,7 @@ export async function getPortfolioData(
   return {
     summary,
     previousSummary,
+    comparisonMode: comparison,
     categoryPerformance,
     topProducts,
     dailyTrends,

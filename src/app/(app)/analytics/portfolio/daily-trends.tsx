@@ -11,15 +11,23 @@ import {
 } from "recharts";
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
 import { EmptyState } from "@/components/analytics/empty-state";
+import { EventAnnotations } from "@/app/(app)/analytics/trend-builder/event-annotations";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
-import type { DailyTrendRow } from "@/lib/analytics/types";
+import type { DailyTrendRow, BusinessEventDisplay } from "@/lib/analytics/types";
 
 interface DailyTrendsProps {
   data: DailyTrendRow[];
   loading?: boolean;
+  events?: BusinessEventDisplay[];
+  activeEventCategories?: string[];
 }
 
-export function DailyTrends({ data, loading = false }: DailyTrendsProps) {
+export function DailyTrends({
+  data,
+  loading = false,
+  events = [],
+  activeEventCategories = [],
+}: DailyTrendsProps) {
   if (!loading && data.length === 0) {
     return <EmptyState message="No trend data for selected filters" />;
   }
@@ -79,6 +87,12 @@ export function DailyTrends({ data, loading = false }: DailyTrendsProps) {
           dot={false}
           name="Transactions"
         />
+        {events.length > 0 && activeEventCategories.length > 0 && (
+          <EventAnnotations
+            events={events}
+            activeCategories={activeEventCategories}
+          />
+        )}
       </LineChart>
     </ChartWrapper>
   );

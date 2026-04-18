@@ -16,6 +16,7 @@ vi.mock("@/lib/analytics/queries/shared", () => ({
   buildExclusionCondition: vi.fn().mockResolvedValue(undefined),
   buildDateCondition: vi.fn().mockReturnValue(undefined),
   buildDimensionFilters: vi.fn().mockReturnValue([]),
+  buildMaturityCondition: vi.fn().mockReturnValue(undefined),
   combineConditions: vi.fn().mockReturnValue(undefined),
 }));
 
@@ -44,6 +45,7 @@ const salesRows = [
     outlet_code: "HA",
     hotel_name: "Hotel Alpha",
     num_rooms: "100",
+    live_date: "2025-01-15T00:00:00.000Z",
     revenue: "50000",
     transactions: "200",
     quantity: "400",
@@ -53,6 +55,7 @@ const salesRows = [
     outlet_code: "HB",
     hotel_name: "Hotel Beta",
     num_rooms: "80",
+    live_date: null,
     revenue: "30000",
     transactions: "400",
     quantity: "600",

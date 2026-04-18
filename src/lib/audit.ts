@@ -10,7 +10,7 @@ export async function writeAuditLog(
   entry: {
     actorId: string;
     actorName: string;
-    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation" | "commission_ledger";
+    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation" | "app_setting" | "location_flag" | "experiment_cohort" | "action_item" | "commission_ledger";
     entityId: string;
     entityName: string;
     action:
@@ -26,6 +26,8 @@ export async function writeAuditLog(
       | "cancel"
       | "start_impersonation"
       | "stop_impersonation"
+      | "flag"
+      | "resolve"
       | "recalculate";
     field?: string;
     oldValue?: string;

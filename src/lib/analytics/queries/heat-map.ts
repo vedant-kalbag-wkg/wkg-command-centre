@@ -7,6 +7,7 @@ import {
   buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
+  buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import {
@@ -49,11 +50,13 @@ async function buildHeatMapWhere(
 
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
+  const maturityCondition = buildMaturityCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     exclusionCondition,
+    maturityCondition,
     ...dimensionConditions,
   ]);
 }
@@ -80,6 +83,7 @@ export async function getHeatMapData(
     outlet_code: string;
     hotel_name: string;
     num_rooms: string | null;
+    live_date: string | null;
     revenue: string;
     transactions: string;
     quantity: string;
@@ -89,13 +93,14 @@ export async function getHeatMapData(
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
       ${locations.numRooms}::text AS num_rooms,
+      ${locations.liveDate}::text AS live_date,
       COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
       COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
+    GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}, ${locations.liveDate}
   `);
 
   // Kiosk count: scoped to locations from the sales query results
@@ -142,6 +147,7 @@ export async function getHeatMapData(
       locationId: row.location_id,
       outletCode: row.outlet_code,
       hotelName: row.hotel_name,
+      liveDate: row.live_date,
       revenue,
       transactions,
       revenuePerRoom: calculateRevenuePerRoom(revenue, numRooms),
@@ -196,6 +202,7 @@ export async function getHeatMapData(
       locationId: hotel.locationId,
       outletCode: hotel.outletCode,
       hotelName: hotel.hotelName,
+      liveDate: hotel.liveDate,
       revenue: hotel.revenue,
       transactions: hotel.transactions,
       revenuePerRoom: hotel.revenuePerRoom,
