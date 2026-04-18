@@ -11,7 +11,7 @@ import {
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
-import { getComparisonDates, calculatePercentile, classifyOutletTier } from "@/lib/analytics/metrics";
+import { getComparisonDates, classifyOutletTier } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
   ComparisonMode,
@@ -270,6 +270,7 @@ export async function getOutletTiers(
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}
     ORDER BY revenue DESC
+    LIMIT 200
   `);
 
   const parsed = rawRows.map((row) => ({
@@ -281,12 +282,12 @@ export async function getOutletTiers(
     transactions: Number(row.transactions),
   }));
 
-  // Calculate total revenue for share percentages
   const totalRevenue = parsed.reduce((sum, r) => sum + r.revenue, 0);
-  const allRevenues = parsed.map((r) => r.revenue);
+  const sortedRevenues = parsed.map((r) => r.revenue).sort((a, b) => a - b);
 
   return parsed.map((row) => {
-    const percentile = calculatePercentile(row.revenue, allRevenues);
+    const rank = binarySearchRank(row.revenue, sortedRevenues);
+    const percentile = sortedRevenues.length > 0 ? (rank / sortedRevenues.length) * 100 : 0;
     return {
       locationId: row.locationId,
       outletCode: row.outletCode,
@@ -299,6 +300,17 @@ export async function getOutletTiers(
       tier: classifyOutletTier(percentile),
     };
   });
+}
+
+function binarySearchRank(value: number, sorted: number[]): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid] <= value) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 // ─── 7. Orchestrator ─────────────────────────────────────────────────────────
@@ -326,11 +338,11 @@ export async function getPortfolioData(
   ] = await Promise.all([
     getPortfolioSummary(filters, userCtx),
     getPortfolioSummary(previousFilters, userCtx).catch(() => null),
-    getCategoryPerformance(filters, userCtx),
-    getTopProducts(filters, userCtx),
-    getDailyTrends(filters, userCtx),
-    getHourlyDistribution(filters, userCtx),
-    getOutletTiers(filters, userCtx),
+    getCategoryPerformance(filters, userCtx).catch(() => []),
+    getTopProducts(filters, userCtx).catch(() => []),
+    getDailyTrends(filters, userCtx).catch(() => []),
+    getHourlyDistribution(filters, userCtx).catch(() => []),
+    getOutletTiers(filters, userCtx).catch(() => []),
   ]);
 
   return {
