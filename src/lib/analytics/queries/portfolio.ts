@@ -9,6 +9,7 @@ import {
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
+  kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
 import { getComparisonDates, calculatePercentile, classifyOutletTier } from "@/lib/analytics/metrics";
 import type {
@@ -262,12 +263,12 @@ export async function getOutletTiers(
       ${locations.id} AS location_id,
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
-      ${locations.liveDate}::text AS live_date,
+      ${kioskLiveDateSubquery}::text AS live_date,
       COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.liveDate}
+    GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}
     ORDER BY revenue DESC
   `);
 

@@ -9,6 +9,7 @@ import {
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
+  kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
 import type {
   AnalyticsFilters,
@@ -58,7 +59,7 @@ export async function getRevenueByMaturityBucket(
 ): Promise<MaturityBucketMetrics[]> {
   const whereClause = await buildMaturityWhere(filters, userCtx);
 
-  const liveDateCondition = sql`${locations.liveDate} IS NOT NULL`;
+  const liveDateCondition = sql`${kioskLiveDateSubquery} IS NOT NULL`;
   const fullWhere = whereClause
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
@@ -71,9 +72,9 @@ export async function getRevenueByMaturityBucket(
   }>(sql`
     SELECT
       CASE
-        WHEN EXTRACT(EPOCH FROM (NOW() - ${locations.liveDate})) / 86400 <= 30 THEN '0-30d'
-        WHEN EXTRACT(EPOCH FROM (NOW() - ${locations.liveDate})) / 86400 <= 60 THEN '31-60d'
-        WHEN EXTRACT(EPOCH FROM (NOW() - ${locations.liveDate})) / 86400 <= 90 THEN '61-90d'
+        WHEN EXTRACT(EPOCH FROM (NOW() - ${kioskLiveDateSubquery})) / 86400 <= 30 THEN '0-30d'
+        WHEN EXTRACT(EPOCH FROM (NOW() - ${kioskLiveDateSubquery})) / 86400 <= 60 THEN '31-60d'
+        WHEN EXTRACT(EPOCH FROM (NOW() - ${kioskLiveDateSubquery})) / 86400 <= 90 THEN '61-90d'
         ELSE '90+d'
       END AS bucket,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
@@ -124,7 +125,7 @@ export async function getRevenueRampCurve(
 ): Promise<RevenueRampPoint[]> {
   const whereClause = await buildMaturityWhere(filters, userCtx);
 
-  const liveDateCondition = sql`${locations.liveDate} IS NOT NULL`;
+  const liveDateCondition = sql`${kioskLiveDateSubquery} IS NOT NULL`;
   const fullWhere = whereClause
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
@@ -136,14 +137,14 @@ export async function getRevenueRampCurve(
   }>(sql`
     SELECT
       LEAST(
-        FLOOR(EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${locations.liveDate})) / (30.44 * 86400)),
+        FLOOR(EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400)),
         6
       )::int AS months_since,
       COALESCE(SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_revenue,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count
     FROM ${baseFrom()}
     WHERE ${fullWhere}
-      AND ${salesRecords.transactionDate}::timestamp >= ${locations.liveDate}
+      AND ${salesRecords.transactionDate}::timestamp >= ${kioskLiveDateSubquery}
     GROUP BY months_since
     ORDER BY months_since
   `);
@@ -177,7 +178,7 @@ export async function getInstallCohorts(
 ): Promise<InstallCohort[]> {
   const whereClause = await buildMaturityWhere(filters, userCtx);
 
-  const liveDateCondition = sql`${locations.liveDate} IS NOT NULL`;
+  const liveDateCondition = sql`${kioskLiveDateSubquery} IS NOT NULL`;
   const fullWhere = whereClause
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
@@ -188,7 +189,7 @@ export async function getInstallCohorts(
     avg_monthly_revenue: string;
   }>(sql`
     SELECT
-      TO_CHAR(${locations.liveDate}, 'YYYY-MM') AS install_month,
+      TO_CHAR(${kioskLiveDateSubquery}, 'YYYY-MM') AS install_month,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
       COALESCE(SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_monthly_revenue
     FROM ${baseFrom()}
