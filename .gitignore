@@ -44,6 +44,9 @@ yarn-error.log*
 .planning/
 .worktrees/
 
+# auth credentials
+auth.json
+
 # vercel
 .vercel
 

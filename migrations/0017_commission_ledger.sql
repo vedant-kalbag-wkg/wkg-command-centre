@@ -13,6 +13,8 @@ CREATE TABLE "commission_ledger" (
 --> statement-breakpoint
 ALTER TABLE "commission_ledger" ADD CONSTRAINT "commission_ledger_sales_record_id_sales_records_id_fk" FOREIGN KEY ("sales_record_id") REFERENCES "public"."sales_records"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "commission_ledger" ADD CONSTRAINT "commission_ledger_location_product_id_location_products_id_fk" FOREIGN KEY ("location_product_id") REFERENCES "public"."location_products"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX cl_sales_record_idx ON commission_ledger (sales_record_id);--> statement-breakpoint
+CREATE INDEX cl_location_product_idx ON commission_ledger (location_product_id, is_reversal);--> statement-breakpoint
 -- Wrap existing flat tier arrays into versioned format
 UPDATE location_products
 SET commission_tiers = jsonb_build_array(

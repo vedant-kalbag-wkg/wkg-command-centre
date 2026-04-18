@@ -92,16 +92,19 @@ function TierChips({ tiers }: { tiers: CommissionTier[] }) {
   }
   return (
     <div className="flex flex-wrap gap-1">
-      {tiers.map((tier, i) => (
-        <span
-          key={i}
-          className="inline-flex items-center rounded bg-wk-light-grey px-1.5 py-0.5 text-[11px] text-wk-night-grey"
-        >
-          {tier.maxRevenue !== null
-            ? `<${tier.maxRevenue.toLocaleString()}: ${tier.rate}%`
-            : `>${tier.minRevenue.toLocaleString()}: ${tier.rate}%`}
-        </span>
-      ))}
+      {tiers.map((tier, i) => {
+        const displayRate = tier.rate * 100;
+        return (
+          <span
+            key={i}
+            className="inline-flex items-center rounded bg-wk-light-grey px-1.5 py-0.5 text-[11px] text-wk-night-grey"
+          >
+            {tier.maxRevenue !== null
+              ? `<${tier.maxRevenue.toLocaleString()}: ${displayRate}%`
+              : `>${tier.minRevenue.toLocaleString()}: ${displayRate}%`}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -117,8 +120,11 @@ interface TierEditorProps {
 }
 
 function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
+  // Display rates as whole percentages (e.g. 5 for 5%); engine stores as decimals (0.05)
   const [editedTiers, setEditedTiers] = useState<CommissionTier[]>(
-    tiers.length > 0 ? [...tiers] : [{ minRevenue: 0, maxRevenue: null, rate: 0 }]
+    tiers.length > 0
+      ? tiers.map((t) => ({ ...t, rate: t.rate * 100 }))
+      : [{ minRevenue: 0, maxRevenue: null, rate: 0 }]
   );
   const [effectiveFrom, setEffectiveFrom] = useState(todayStr());
 
@@ -222,7 +228,12 @@ function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
           <Button
             size="sm"
             className="h-7 bg-wk-azure text-white text-[12px] hover:bg-wk-azure/90"
-            onClick={() => onSave(editedTiers, effectiveFrom)}
+            onClick={() =>
+              onSave(
+                editedTiers.map((t) => ({ ...t, rate: t.rate / 100 })),
+                effectiveFrom,
+              )
+            }
           >
             Save
           </Button>

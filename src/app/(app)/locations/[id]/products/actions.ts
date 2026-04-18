@@ -79,6 +79,8 @@ const updateLocationProductSchema = z.object({
 export async function listLocationProducts(
   locationId: string
 ): Promise<LocationProductItem[]> {
+  await requireRole("admin", "member");
+
   const rows = await db
     .select({
       id: locationProducts.id,

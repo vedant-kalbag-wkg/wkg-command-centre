@@ -8,7 +8,7 @@
  *   - recalculateCommissions(lpId, month)  — reverse + recalculate for a month
  */
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   commissionLedger,
@@ -81,15 +81,30 @@ export async function calculateCommissionsForRecords(
     .from(salesRecords)
     .where(inArray(salesRecords.id, salesRecordIds));
 
-  // 2. Fetch all locationProducts with commissionTiers
-  const allLPs = await db
-    .select({
-      id: locationProducts.id,
-      locationId: locationProducts.locationId,
-      productId: locationProducts.productId,
-      commissionTiers: locationProducts.commissionTiers,
-    })
-    .from(locationProducts);
+  // 2. Fetch only the locationProducts matching the sales records' (locationId, productId) pairs
+  const uniquePairs = new Map<string, { locationId: string; productId: string }>();
+  for (const rec of records) {
+    const key = `${rec.locationId}|${rec.productId}`;
+    if (!uniquePairs.has(key)) {
+      uniquePairs.set(key, { locationId: rec.locationId, productId: rec.productId });
+    }
+  }
+
+  const pairFilters = Array.from(uniquePairs.values()).map((p) =>
+    and(eq(locationProducts.locationId, p.locationId), eq(locationProducts.productId, p.productId)),
+  );
+
+  const allLPs = pairFilters.length > 0
+    ? await db
+        .select({
+          id: locationProducts.id,
+          locationId: locationProducts.locationId,
+          productId: locationProducts.productId,
+          commissionTiers: locationProducts.commissionTiers,
+        })
+        .from(locationProducts)
+        .where(or(...pairFilters))
+    : [];
 
   // 3. Build lookup map: "locationId|productId" -> { id, tiers }
   const lpMap = new Map<
@@ -248,51 +263,89 @@ export async function recalculateCommissions(
   const mStart = monthStart(month);
   const mEnd = monthEnd(month);
 
-  // 1. Find existing non-reversal ledger entries for this locationProduct in this month
-  const existing = await db
-    .select()
-    .from(commissionLedger)
-    .where(
-      and(
-        eq(commissionLedger.locationProductId, locationProductId),
-        eq(commissionLedger.isReversal, false),
-        sql`${commissionLedger.calculatedAt} >= ${mStart}::date`,
-        sql`${commissionLedger.calculatedAt} < ${mEnd}::date`,
-      ),
-    );
+  // Resolve locationId + productId from the locationProduct row
+  const [lp] = await db
+    .select({
+      locationId: locationProducts.locationId,
+      productId: locationProducts.productId,
+    })
+    .from(locationProducts)
+    .where(eq(locationProducts.id, locationProductId))
+    .limit(1);
 
-  if (existing.length === 0) {
+  if (!lp) {
     return { reversed: 0, recalculated: 0 };
   }
 
-  // 2. Create reversal entries
-  const reversals = existing.map((entry) => ({
-    salesRecordId: entry.salesRecordId,
-    locationProductId: entry.locationProductId,
-    grossAmount: entry.grossAmount,
-    commissionableAmount: entry.commissionableAmount,
-    commissionAmount: (
-      -Math.abs(Number(entry.commissionAmount))
-    ).toFixed(2),
-    tierBreakdown: entry.tierBreakdown,
-    tierVersionEffectiveFrom: entry.tierVersionEffectiveFrom,
-    isReversal: true,
-  }));
+  // Wrap everything in a transaction so reversal + recalculation is atomic (C2)
+  return await db.transaction(async (tx) => {
+    // C1 + C3: Find existing non-reversal ledger entries by joining to
+    // salesRecords and filtering on transactionDate (not calculatedAt)
+    const existing = await tx
+      .select({
+        id: commissionLedger.id,
+        salesRecordId: commissionLedger.salesRecordId,
+        locationProductId: commissionLedger.locationProductId,
+        grossAmount: commissionLedger.grossAmount,
+        commissionableAmount: commissionLedger.commissionableAmount,
+        commissionAmount: commissionLedger.commissionAmount,
+        tierBreakdown: commissionLedger.tierBreakdown,
+        tierVersionEffectiveFrom: commissionLedger.tierVersionEffectiveFrom,
+      })
+      .from(commissionLedger)
+      .innerJoin(salesRecords, eq(commissionLedger.salesRecordId, salesRecords.id))
+      .where(
+        and(
+          eq(commissionLedger.locationProductId, locationProductId),
+          eq(commissionLedger.isReversal, false),
+          sql`${salesRecords.transactionDate} >= ${mStart}::date`,
+          sql`${salesRecords.transactionDate} < ${mEnd}::date`,
+        ),
+      );
 
-  const CHUNK = 500;
-  for (let i = 0; i < reversals.length; i += CHUNK) {
-    await db.insert(commissionLedger).values(reversals.slice(i, i + CHUNK));
-  }
+    // Create reversal entries for all existing ledger rows
+    const reversals = existing.map((entry) => ({
+      salesRecordId: entry.salesRecordId,
+      locationProductId: entry.locationProductId,
+      grossAmount: entry.grossAmount,
+      commissionableAmount: entry.commissionableAmount,
+      commissionAmount: (
+        -Math.abs(Number(entry.commissionAmount))
+      ).toFixed(2),
+      tierBreakdown: entry.tierBreakdown,
+      tierVersionEffectiveFrom: entry.tierVersionEffectiveFrom,
+      isReversal: true,
+    }));
 
-  // 3. Get the original salesRecordIds
-  const salesRecordIdSet = new Set(existing.map((e) => e.salesRecordId));
-  const salesRecordIdArr = Array.from(salesRecordIdSet);
+    const CHUNK = 500;
+    for (let i = 0; i < reversals.length; i += CHUNK) {
+      await tx.insert(commissionLedger).values(reversals.slice(i, i + CHUNK));
+    }
 
-  // 4. Recalculate
-  const result = await calculateCommissionsForRecords(salesRecordIdArr);
+    // C3: Find ALL salesRecords for this location x product x month
+    // (not just the ones that already had ledger entries)
+    const allMonthRecords = await tx
+      .select({ id: salesRecords.id })
+      .from(salesRecords)
+      .where(
+        and(
+          eq(salesRecords.locationId, lp.locationId),
+          eq(salesRecords.productId, lp.productId),
+          sql`${salesRecords.transactionDate} >= ${mStart}::date`,
+          sql`${salesRecords.transactionDate} < ${mEnd}::date`,
+        ),
+      );
 
-  return {
-    reversed: reversals.length,
-    recalculated: result.calculated,
-  };
+    const allRecordIds = allMonthRecords.map((r) => r.id);
+
+    // Recalculate for ALL records in the month
+    const result = allRecordIds.length > 0
+      ? await calculateCommissionsForRecords(allRecordIds)
+      : { processed: 0, calculated: 0, skipped: 0 };
+
+    return {
+      reversed: reversals.length,
+      recalculated: result.calculated,
+    };
+  });
 }
