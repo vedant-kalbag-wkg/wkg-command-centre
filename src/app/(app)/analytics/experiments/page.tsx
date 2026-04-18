@@ -13,8 +13,14 @@ import {
   createCohort,
   deleteCohort,
   fetchCohortComparison,
+  fetchTemporalComparison,
 } from "./actions";
-import type { ExperimentCohort, CohortComparison } from "@/lib/analytics/types";
+import type {
+  ExperimentCohort,
+  CohortComparison,
+  TemporalComparison,
+  PeriodMetrics,
+} from "@/lib/analytics/types";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-GB", {
@@ -85,6 +91,68 @@ function MetricCard({
   );
 }
 
+function pctChange(current: number, previous: number): string | null {
+  if (previous === 0) return null;
+  const pct = ((current - previous) / previous) * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
+function TemporalCard({
+  period,
+  changeFrom,
+}: {
+  period: PeriodMetrics;
+  changeFrom?: PeriodMetrics;
+}) {
+  const revChange = changeFrom ? pctChange(period.revenue, changeFrom.revenue) : null;
+  const txnChange = changeFrom ? pctChange(period.transactions, changeFrom.transactions) : null;
+
+  return (
+    <Card size="sm">
+      <CardHeader className="pb-1">
+        <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {period.periodLabel}
+        </CardTitle>
+        <p className="text-[10px] text-muted-foreground">
+          {period.dateFrom} to {period.dateTo}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-1.5">
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs text-muted-foreground">Revenue</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-sm font-semibold">{formatCurrency(period.revenue)}</span>
+            {revChange && (
+              <span
+                className={`text-xs font-medium ${
+                  revChange.startsWith("+") ? "text-emerald-600" : "text-red-600"
+                }`}
+              >
+                {revChange}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs text-muted-foreground">Transactions</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-sm font-semibold">{period.transactions.toLocaleString("en-GB")}</span>
+            {txnChange && (
+              <span
+                className={`text-xs font-medium ${
+                  txnChange.startsWith("+") ? "text-emerald-600" : "text-red-600"
+                }`}
+              >
+                {txnChange}
+              </span>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ExperimentsPage() {
   const filters = useAnalyticsFilters();
   const filtersJson = JSON.stringify(filters);
@@ -93,8 +161,10 @@ export default function ExperimentsPage() {
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [comparison, setComparison] = useState<CohortComparison | null>(null);
+  const [temporal, setTemporal] = useState<TemporalComparison | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [compLoading, setCompLoading] = useState(false);
+  const [temporalLoading, setTemporalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedCohort = cohorts.find((c) => c.id === selectedId) ?? null;
@@ -148,6 +218,29 @@ export default function ExperimentsPage() {
   useEffect(() => {
     loadComparison();
   }, [loadComparison]);
+
+  // Load temporal comparison when cohort changes (only if it has interventionDate)
+  const loadTemporal = useCallback(async () => {
+    if (!selectedId || !selectedCohort?.interventionDate) {
+      setTemporal(null);
+      return;
+    }
+    setTemporalLoading(true);
+    try {
+      const result = await fetchTemporalComparison(selectedId);
+      setTemporal(result);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load temporal comparison",
+      );
+    } finally {
+      setTemporalLoading(false);
+    }
+  }, [selectedId, selectedCohort?.interventionDate]);
+
+  useEffect(() => {
+    loadTemporal();
+  }, [loadTemporal]);
 
   async function handleCreate(data: Parameters<typeof createCohort>[0]) {
     const newCohort = await createCohort(data);
@@ -266,6 +359,33 @@ export default function ExperimentsPage() {
                   : `${selectedCohort.controlLocationIds?.length ?? 0} named locations`}
               </p>
 
+              {/* Section A: Temporal Analysis */}
+              {selectedCohort.interventionDate && (
+                <>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-2">
+                    Temporal Analysis
+                  </h3>
+                  {temporalLoading ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      {[1, 2, 3, 4].map((i) => (
+                        <Skeleton key={i} className="h-36 rounded-xl" />
+                      ))}
+                    </div>
+                  ) : temporal ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <TemporalCard period={temporal.pre} />
+                      <TemporalCard period={temporal.during} changeFrom={temporal.pre} />
+                      <TemporalCard period={temporal.yoyPre} />
+                      <TemporalCard period={temporal.yoyDuring} changeFrom={temporal.yoyPre} />
+                    </div>
+                  ) : null}
+                </>
+              )}
+
+              {/* Section B: Cohort vs Control */}
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mt-2">
+                Cohort vs Control
+              </h3>
               {compLoading ? (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   {[1, 2, 3].map((i) => (

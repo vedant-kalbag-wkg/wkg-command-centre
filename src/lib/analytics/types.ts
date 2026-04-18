@@ -355,6 +355,24 @@ export type ActionItem = {
   createdAt: string;
 };
 
+// ─── Temporal Comparison Types ───────────────────────────────────────────────
+
+export type PeriodMetrics = {
+  revenue: number;
+  transactions: number;
+  avgRevenue: number;
+  periodLabel: string;
+  dateFrom: string;
+  dateTo: string;
+};
+
+export type TemporalComparison = {
+  pre: PeriodMetrics;
+  during: PeriodMetrics;
+  yoyPre: PeriodMetrics;
+  yoyDuring: PeriodMetrics;
+};
+
 // ─── Comparison Types ────────────────────────────────────────────────────────
 
 export type ComparisonEntityType = "location" | "hotel_group" | "region"

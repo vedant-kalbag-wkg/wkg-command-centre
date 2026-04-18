@@ -4,15 +4,18 @@ import { db } from "@/db";
 import { experimentCohorts, locations } from "@/db/schema";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { writeAuditLog } from "@/lib/audit";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   getCohortMetrics,
   getRestOfPortfolioMetrics,
+  findSimilarLocations,
+  getCohortTemporalComparison,
 } from "@/lib/analytics/queries/experiments";
 import type {
   AnalyticsFilters,
   ExperimentCohort,
   CohortComparison,
+  TemporalComparison,
 } from "@/lib/analytics/types";
 
 // ---------------------------------------------------------------------------
@@ -200,4 +203,60 @@ export async function fetchCohortComparison(
   };
 
   return { cohortMetrics, controlMetrics, delta };
+}
+
+// ---------------------------------------------------------------------------
+// Similar Hotels
+// ---------------------------------------------------------------------------
+
+/**
+ * Find similar hotels based on room count and revenue characteristics.
+ * Returns location IDs and names of matched hotels.
+ */
+export async function findSimilarHotels(
+  cohortLocationIds: string[],
+  filters: AnalyticsFilters,
+): Promise<{ id: string; name: string }[]> {
+  const ctx = await getUserCtx();
+
+  const matchedIds = await findSimilarLocations(cohortLocationIds, ctx, filters);
+
+  if (matchedIds.length === 0) return [];
+
+  const rows = await db
+    .select({ id: locations.id, name: locations.name })
+    .from(locations)
+    .where(inArray(locations.id, matchedIds));
+
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Temporal Comparison
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch temporal comparison data for a cohort with an intervention date.
+ */
+export async function fetchTemporalComparison(
+  cohortId: string,
+): Promise<TemporalComparison | null> {
+  const ctx = await getUserCtx();
+
+  const [cohort] = await db
+    .select()
+    .from(experimentCohorts)
+    .where(eq(experimentCohorts.id, cohortId))
+    .limit(1);
+
+  if (!cohort) throw new Error("Cohort not found");
+  if (!cohort.interventionDate) return null;
+
+  const cohortLocationIds = (cohort.locationIds ?? []) as string[];
+
+  return getCohortTemporalComparison(
+    cohortLocationIds,
+    cohort.interventionDate,
+    ctx,
+  );
 }
