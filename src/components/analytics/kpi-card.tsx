@@ -2,7 +2,6 @@
 
 import { TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface KpiCardProps {
@@ -28,39 +27,61 @@ export function KpiCard({
   primary = false,
   icon,
 }: KpiCardProps) {
+  const borderClass = primary ? "border-l-4 border-l-[var(--wk-azure,#00A6D3)]" : ""
+
   if (loading) {
     return (
-      <Card size="sm">
-        <CardContent className="flex flex-col gap-2">
-          <Skeleton className="h-3 w-20" />
-          <Skeleton className="h-7 w-28" />
-          <Skeleton className="h-3 w-16" />
-        </CardContent>
-      </Card>
+      <div
+        className={cn(
+          "flex flex-col rounded-xl border bg-card text-card-foreground shadow-sm p-4",
+          borderClass,
+        )}
+      >
+        <Skeleton className="h-4 w-20 mb-3" />
+        <Skeleton className="h-7 w-24 mb-2" />
+        <Skeleton className="h-4 w-16" />
+      </div>
     )
   }
 
   return (
-    <Card
-      size="sm"
-      className={cn(primary && "border-l-4 border-l-[var(--wk-azure,#00A6D3)]")}
+    <div
+      className={cn(
+        "flex flex-col rounded-xl border bg-card text-card-foreground shadow-sm p-4",
+        borderClass,
+      )}
     >
-      <CardContent className="flex flex-col gap-1">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {icon}
-          <span>{title}</span>
-        </div>
-        <div className="text-2xl font-semibold tracking-tight">{value}</div>
-        {change && (
-          <div className="flex items-center gap-1 text-xs" style={{ color: change.color }}>
-            {(() => {
-              const Icon = directionIcons[change.direction]
-              return <Icon className="size-3" />
-            })()}
-            <span>{change.text}</span>
-          </div>
+      {/* Title row */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <span className="text-sm font-medium text-muted-foreground truncate">
+          {title}
+        </span>
+        {icon && (
+          <div className="shrink-0 text-muted-foreground">{icon}</div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Value */}
+      <p
+        className="text-xl lg:text-2xl font-bold leading-tight"
+        style={{ fontVariantNumeric: "tabular-nums" }}
+      >
+        {value}
+      </p>
+
+      {/* Change indicator */}
+      {change && (
+        <div
+          className="flex items-center gap-1 text-sm font-medium mt-1"
+          style={{ color: change.color }}
+        >
+          {(() => {
+            const Icon = directionIcons[change.direction]
+            return <Icon size={14} className="shrink-0" />
+          })()}
+          <span className="whitespace-nowrap">{change.text}</span>
+        </div>
+      )}
+    </div>
   )
 }

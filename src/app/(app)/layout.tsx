@@ -23,7 +23,7 @@ export default async function AppLayout({
           role: (session.user.role as string) || "member",
         }}
       />
-      <main className="flex-1 p-4 md:p-6">{children}</main>
+      <main className="flex-1">{children}</main>
     </div>
   );
 }
