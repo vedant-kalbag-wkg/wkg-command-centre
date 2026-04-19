@@ -38,6 +38,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -281,16 +282,19 @@ function UserMenu({
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <div className="flex flex-col gap-1">
-            <p className="text-sm font-medium leading-none">{userName}</p>
-            <p className="text-xs text-muted-foreground">{userEmail}</p>
-            <RoleBadge role={userRole} />
-          </div>
-        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium leading-none">{userName}</p>
+              <p className="text-xs text-muted-foreground">{userEmail}</p>
+              <RoleBadge role={userRole} />
+            </div>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
         {isAdmin && (
-          <>
+          <DropdownMenuGroup>
             <DropdownMenuSeparator />
+            <DropdownMenuLabel>Admin</DropdownMenuLabel>
             {systemAdminItems.map((item) => {
               const Icon = item.icon;
               const active = isItemActive(item.href, pathname);
@@ -308,7 +312,7 @@ function UserMenu({
                 </DropdownMenuItem>
               );
             })}
-          </>
+          </DropdownMenuGroup>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
