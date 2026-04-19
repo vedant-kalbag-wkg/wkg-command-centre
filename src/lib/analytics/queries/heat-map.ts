@@ -101,7 +101,7 @@ export async function getHeatMapData(
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
+    GROUP BY ${salesRecords.locationId}, ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
   `);
 
   // Kiosk count: scoped to locations from the sales query results

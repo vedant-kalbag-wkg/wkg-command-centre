@@ -83,13 +83,7 @@ export async function getRevenueByMaturityBucket(
     FROM ${baseFrom()}
     WHERE ${fullWhere}
     GROUP BY bucket
-    ORDER BY
-      CASE bucket
-        WHEN '0-30d' THEN 1
-        WHEN '31-60d' THEN 2
-        WHEN '61-90d' THEN 3
-        ELSE 4
-      END
+    ORDER BY bucket
   `);
 
   // Ensure all 4 buckets are represented
