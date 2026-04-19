@@ -285,7 +285,7 @@ export default function PortfolioPage() {
           <ChartCard
             title="Category Performance"
             description="Revenue by product category"
-            className="gap-0 py-0 lg:col-span-6"
+            className="gap-0 py-0 lg:col-span-12"
             loading={loading}
             empty={!loading && !hasCategoryData}
             emptyMessage="No category data for selected filters"
@@ -299,7 +299,7 @@ export default function PortfolioPage() {
           <ChartCard
             title="Top Products"
             description="Best-selling products by revenue"
-            className="gap-0 py-0 lg:col-span-6"
+            className="gap-0 py-0 lg:col-span-12"
             loading={loading}
             empty={!loading && !hasTopProductsData}
             emptyMessage="No product data for selected filters"
@@ -311,7 +311,7 @@ export default function PortfolioPage() {
           <ChartCard
             title="Hourly Distribution"
             description="Revenue by hour of day"
-            className="gap-0 py-0 lg:col-span-6"
+            className="gap-0 py-0 lg:col-span-12"
             loading={loading}
             empty={!loading && !hasHourlyData}
             emptyMessage="No hourly data for selected filters"
@@ -325,7 +325,7 @@ export default function PortfolioPage() {
           <ChartCard
             title="Outlet Tiers"
             description="Performance banding across outlets"
-            className="gap-0 py-0 lg:col-span-6"
+            className="gap-0 py-0 lg:col-span-12"
             loading={loading}
             empty={!loading && !hasOutletTiersData}
             emptyMessage="No outlet data for selected filters"

@@ -79,6 +79,23 @@ LIMIT 10001
 
 **Severity:** Medium.
 
+### A.4 Commission analytics page broken
+
+**Page:** `/analytics/commission`.
+
+**Symptom:** User reports the commission analytics doesn't work. Exact error not captured (likely "Failed query" banner or blank content). Needs reproduction to identify whether:
+- Same `outlet_code = 'TEST'` family as A.1, or
+- Different query, different failure mode.
+
+**Where to look:**
+- `src/app/(app)/analytics/commission/page.tsx`
+- `src/app/(app)/analytics/commission/actions.ts` (or equivalent server actions file)
+- `src/lib/analytics/commission.ts` / query builder if present.
+
+**Severity:** High — page is completely non-functional.
+
+**Related feature request:** page also needs a multi-select filter by hotel name (see C.5 below).
+
 ### A.3 Kiosks missing asset IDs on localhost (present on Vercel)
 
 **Page:** `/kiosks`.
@@ -184,6 +201,33 @@ Keep the regions-as-cards layout, but add an empty-state prompt like "Select a r
 
 **Where:** `src/app/(app)/analytics/regions/page.tsx` + `region-selector.tsx`.
 
+### C.5 Commission page — hotel-name multi-select filter
+
+**Context:** `/analytics/commission` is broken (see A.4) and also needs a multi-select hotel-name filter so users can scope commission views to a subset of hotels.
+
+**Proposed UI:** a `MultiSelectFilter` (same component used by the analytics layout filter bar) labeled "Hotels" (or "Locations" / "Hotel Name" — match terminology used elsewhere), populated from the locations table. Selection flows into the commission query's WHERE clause.
+
+**Where:** once A.4 is fixed, add to `src/app/(app)/analytics/commission/page.tsx`. Consider whether the hotel filter should be page-local or joined into the shared analytics filter bar (currently the shared bar has "Locations" already — check if that filter is applied to commission queries; if yes, the request may reduce to "make sure commission respects the existing Locations filter").
+
+### C.6 Heat-map weights — user customizable with validation
+
+**Page:** `/analytics/heat-map`.
+
+**Context:** the heat-map composite score currently uses fixed weights (30% Revenue, 20% Transactions, 25% Rev / Room, 15% Txn / Kiosk, 10% Avg Basket per the existing `Score Weights` card). Users want to customize this mix.
+
+**Requested:**
+- Editable fields for each weight (0–100%, integer percentages OK).
+- Live validation: UI must enforce total = 100%. Options: auto-normalize on change, or block "Apply" button until user manually balances to 100 and show a red warning banner with current sum.
+- Persist per-user preferences (probably in `analytics-filter-store` or a new `heatmap-weights-store`).
+- Default preset (matching current fixed weights) + a reset button.
+
+**Where:**
+- `src/app/(app)/analytics/heat-map/page.tsx` + `score-legend.tsx` (which currently renders the weight swatches).
+- Likely need a new form component for weight editing (e.g., `<WeightEditor>` or similar).
+- Backend query that applies the weights — needs to accept weight params instead of using hardcoded values.
+
+**Severity:** Medium feature — not blocking the UI modernization but a clear product gap.
+
 ---
 
 ## D. UI follow-ups — deferred to Phase 2/3 (in scope, not blocking Phase 1)
@@ -264,8 +308,11 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 | A.1 | High | Backend | Open |
 | A.2 | Medium | Backend | Open |
 | A.3 | Medium | Backend/data | Open |
+| A.4 | High | Backend/Analytics | Open |
 | B.1 | High | Analytics | Open |
 | B-prime.1 | Medium | Auth/admin | Open |
+| C.5 | Feature | Analytics | Backlog |
+| C.6 | Feature | Analytics | Backlog |
 | C.1 | Design | TBD | Backlog |
 | C.2 | Design | TBD | Backlog |
 | C.3 | Design | TBD | Backlog |
