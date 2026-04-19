@@ -27,9 +27,10 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { ChevronRight, ChevronDown, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, LayoutGrid, Plus } from "lucide-react";
 import { DraggableTableHead } from "@/components/table/draggable-header";
 import Link from "next/link";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { KioskListItem } from "@/app/(app)/kiosks/actions";
 import { updateKioskField } from "@/app/(app)/kiosks/actions";
 import { bulkUpdateKiosks, bulkArchiveKiosks } from "@/app/(app)/kiosks/bulk-actions";
@@ -256,41 +257,39 @@ export function KioskTable({ data }: KioskTableProps) {
       <div className="mt-2 rounded-lg border border-border overflow-x-auto">
         {!hasData ? (
           /* Empty state — no records */
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <h3 className="text-base font-semibold text-foreground">
-              No kiosks yet
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add your first kiosk to start tracking deployments.
-            </p>
-            <Link href="/kiosks/new" className="mt-4">
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-                <Plus className="mr-1.5 h-4 w-4" />
-                Add kiosk
-              </Button>
-            </Link>
-          </div>
+          <EmptyState
+            icon={LayoutGrid}
+            title="No kiosks yet"
+            description="Add your first kiosk to start tracking deployments."
+            action={
+              <Link href="/kiosks/new">
+                <Button size="sm">
+                  <Plus className="size-4" />
+                  Add kiosk
+                </Button>
+              </Link>
+            }
+          />
         ) : !hasFilteredRows ? (
           /* Empty state — filters applied, no results */
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <h3 className="text-base font-semibold text-foreground">
-              No kiosks match your filters
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Try adjusting or clearing your filters to see more results.
-            </p>
-            {isFiltering && (
-              <button
-                type="button"
-                onClick={() => {
-                  useKioskViewStore.getState().resetToDefaults();
-                }}
-                className="mt-4 text-sm text-primary hover:underline"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={LayoutGrid}
+            title="No kiosks match your filters"
+            description="Try adjusting or clearing your filters to see more results."
+            action={
+              isFiltering ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    useKioskViewStore.getState().resetToDefaults();
+                  }}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Clear filters
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             <DndContext
