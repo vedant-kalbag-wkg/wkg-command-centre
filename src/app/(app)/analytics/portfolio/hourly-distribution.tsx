@@ -9,7 +9,6 @@ import {
   Tooltip,
 } from "recharts";
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
-import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency } from "@/lib/analytics/formatters";
 import type { HourlyDistributionRow } from "@/lib/analytics/types";
 
@@ -22,10 +21,6 @@ export function HourlyDistribution({
   data,
   loading = false,
 }: HourlyDistributionProps) {
-  if (!loading && data.length === 0) {
-    return <EmptyState message="No hourly data for selected filters" />;
-  }
-
   return (
     <ChartWrapper loading={loading}>
       <BarChart

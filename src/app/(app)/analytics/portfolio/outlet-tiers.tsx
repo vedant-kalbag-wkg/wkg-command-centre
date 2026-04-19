@@ -9,7 +9,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
 import { cn } from "@/lib/utils";
 import {
@@ -47,15 +46,12 @@ const trafficLightLabel: Record<string, string> = {
   green: "High",
 };
 
-export function OutletTiers({ data, loading = false, thresholdConfig, flags = [], onFlagCreated }: OutletTiersProps) {
+export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }: OutletTiersProps) {
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
     const existing = flagsByLocation.get(f.locationId) ?? [];
     existing.push(f);
     flagsByLocation.set(f.locationId, existing);
-  }
-  if (!loading && data.length === 0) {
-    return <EmptyState message="No outlet data for selected filters" />;
   }
 
   return (
