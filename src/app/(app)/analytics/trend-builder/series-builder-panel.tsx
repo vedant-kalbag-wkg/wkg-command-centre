@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Plus, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTrendStore, TREND_PRESETS } from "@/lib/stores/trend-store";
+import { getDimensionOptions } from "@/app/(app)/analytics/actions";
+import type { DimensionOptions } from "@/lib/analytics/types";
 import { SeriesRow } from "./series-row";
 
 const MAX_SERIES = 6;
@@ -17,6 +20,19 @@ export function SeriesBuilderPanel() {
   const resetAll = useTrendStore((s) => s.resetAll);
   const builderPanelOpen = useTrendStore((s) => s.builderPanelOpen);
   const toggleBuilderPanel = useTrendStore((s) => s.toggleBuilderPanel);
+
+  const [dimensionOptions, setDimensionOptions] =
+    useState<DimensionOptions | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDimensionOptions().then((opts) => {
+      if (!cancelled) setDimensionOptions(opts);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="rounded-lg border overflow-hidden">
@@ -77,6 +93,7 @@ export function SeriesBuilderPanel() {
                   onUpdate={updateSeries}
                   onRemove={removeSeries}
                   canRemove={pendingSeries.length > 1}
+                  dimensionOptions={dimensionOptions}
                 />
               ))}
             </div>
