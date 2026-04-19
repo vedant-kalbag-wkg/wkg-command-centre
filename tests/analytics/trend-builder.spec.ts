@@ -9,14 +9,14 @@ test.describe("Trend Builder", () => {
     await expect(
       page.getByRole("heading", { name: "Trend Builder" }),
     ).toBeVisible();
-    await expect(page.getByText("Series Builder")).toBeVisible();
+    await expect(page.getByText("Builder Panel")).toBeVisible();
   });
 
   test("Add Series button creates a new series row", async ({ page }) => {
     await signInAsAdmin(page);
     await page.goto("/analytics/trend-builder");
 
-    await expect(page.getByText("Series Builder")).toBeVisible();
+    await expect(page.getByText("Builder Panel")).toBeVisible();
 
     // Click Add Series
     await page.getByRole("button", { name: "Add Series" }).click();
@@ -35,7 +35,7 @@ test.describe("Trend Builder", () => {
     await signInAsAdmin(page);
     await page.goto("/analytics/trend-builder");
 
-    await expect(page.getByText("Series Builder")).toBeVisible();
+    await expect(page.getByText("Builder Panel")).toBeVisible();
 
     // Click the preset button
     await page
