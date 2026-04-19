@@ -22,7 +22,7 @@ export function PivotToolbar({ onRunPivot, loading }: PivotToolbarProps) {
         onClick={onRunPivot}
         disabled={!canRun || loading}
         size="sm"
-        className="bg-[#00A6D3] hover:bg-[#00A6D3]/90"
+        className="bg-primary text-primary-foreground hover:bg-primary/90"
       >
         {loading ? "Running..." : "Run Analysis"}
       </Button>
@@ -43,7 +43,7 @@ export function PivotToolbar({ onRunPivot, loading }: PivotToolbarProps) {
           size="sm"
           className={`h-7 px-2 text-xs ${
             periodComparison === "mom"
-              ? "bg-[#00A6D3] hover:bg-[#00A6D3]/90"
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
               : ""
           }`}
           onClick={() =>
@@ -57,7 +57,7 @@ export function PivotToolbar({ onRunPivot, loading }: PivotToolbarProps) {
           size="sm"
           className={`h-7 px-2 text-xs ${
             periodComparison === "yoy"
-              ? "bg-[#00A6D3] hover:bg-[#00A6D3]/90"
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
               : ""
           }`}
           onClick={() =>

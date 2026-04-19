@@ -124,7 +124,7 @@ export default function ActionsDashboardPage() {
           </p>
         </div>
         <CreateActionDialog sourceType="manual" onCreated={loadItems}>
-          <Button size="sm" className="bg-[#00A6D3] hover:bg-[#00A6D3]/90">
+          <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
             <Plus className="mr-1.5 size-3.5" />
             New Action
           </Button>
@@ -141,7 +141,7 @@ export default function ActionsDashboardPage() {
               size="sm"
               className={`h-7 px-2 text-xs ${
                 statusFilter === opt.value
-                  ? "bg-[#00A6D3] hover:bg-[#00A6D3]/90"
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
                   : ""
               }`}
               onClick={() => setStatusFilter(opt.value)}

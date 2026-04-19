@@ -198,7 +198,7 @@ export default function TrendBuilderPage() {
                 size="sm"
                 className={
                   isActive
-                    ? "h-7 px-2 text-xs bg-[#00A6D3] hover:bg-[#00A6D3]/90"
+                    ? "h-7 px-2 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
                     : "h-7 px-2 text-xs"
                 }
                 onClick={() => setRollingAverage(w)}
