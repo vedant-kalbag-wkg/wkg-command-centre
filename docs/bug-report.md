@@ -322,12 +322,12 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 
 | ID | Severity | Owner | Status |
 |---|---|---|---|
-| A.1 | High | Backend | Open |
+| A.1 | High | Backend | Fixed in `78728e2` (heat-map GROUP BY + maturity ORDER BY) |
 | A.2 | Medium | Backend | Open |
-| A.3 | Medium | Backend/data | Open |
-| A.4 | High | Backend/Analytics | Open |
-| B.1 | High | Analytics | Open |
-| B-prime.1 | Medium | Auth/admin | Open |
+| A.3 | Medium | Backend/data | Fixed (docs) in `d61b62e` — followup F.1 below |
+| A.4 | High | Backend/Analytics | Fixed in `1fabd3d` (duplicate React keys from shared hotel names) |
+| B.1 | High | Analytics | Fixed in `90bfb4b` (per-series filter UI was never surfaced) |
+| B-prime.1 | Medium | Auth/admin | Fixed in `94ddc27` (admin create-user w/ password via `auth.api.createUser` + `setRole`) |
 | C.5 | Feature | Analytics | Backlog |
 | C.6 | Feature | Analytics | Backlog |
 | C.7 | Feature | Analytics | Backlog |
@@ -342,3 +342,27 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 | D.5 | Low (cosmetic) | UI sweep | Phase 2 |
 | D.6 | Medium (UX) | UI sweep | Phase 2 |
 | D.7 | Low (cosmetic) | UI sweep | Phase 2 (ref-page rebuild) |
+
+---
+
+## F. Followups surfaced during the backend-fix wave (2026-04-19)
+
+These came out of the A.1 / A.3 / A.4 / B.1 / B'.1 fixes but were intentionally scoped out.
+
+### F.1 Monday import doesn't write `hardware_serial_number`
+`scripts/import-from-monday.ts` upsert (around lines 296–304) omits `hardwareSerialNumber` from the values object. A.3's fix was docs-only — the seed already populates the field for its 8 rows, and the doc change points users at `db:seed:kiosks` for localhost. If Vercel shows populated asset IDs on Monday-imported kiosks, there's an unknown backfill path (grep for a migration copying `kiosk_id` → `hardware_serial_number`). Long-term fix: add the Monday column ID to `importKiosks()` once product confirms the source column.
+
+### F.2 Portfolio `getPortfolioData` swallows sub-query errors
+`src/lib/analytics/queries/portfolio.ts:340-345` wraps each sub-query in `.catch(() => [])`. This would have masked the A.1 bug from users (blank sections instead of an error banner). Consider surfacing sub-query failures instead of silently emptying — ideally a structured error per section so the UI can render a per-card error state.
+
+### F.3 Localhost `commission_ledger` table is empty
+124,598 `sales_records` locally but 0 `commission_ledger` rows. The ledger is populated by `calculateCommissionsForRecords` during sales-import; pre-existing seeded sales never flowed through it. A.4 was reproduced by seeding 500 synthetic ledger rows. Teee up a small script to backfill the ledger locally (and confirm Vercel is populated) so the commission page has real data to render.
+
+### F.4 Other trend-builder Playwright specs reference renamed text
+Three pre-existing specs in `tests/analytics/trend-builder.spec.ts` look for `"Series Builder"` text that was renamed to `"Builder Panel"` in `320c391`. One-line fix — parked out of B.1's scope.
+
+### F.5 `outlet_exclusions` has a single harmless `'TEST'` row
+Matches no real outlet; the A.1 SQL is structurally correct, so this is a no-op. If cleaning up the seed noise is wanted: `DELETE FROM outlet_exclusions WHERE outlet_code = 'TEST';`.
+
+### F.6 Phase4 worktree bootstrap papercut
+The worktree lacked `.env.local` and its `node_modules` was a symlink that tripped Turbopack with `Symlink node_modules is invalid, it points out of the filesystem root`. Reproduction required copying both from the main worktree. Worth a short "worktree bootstrap" note in `docs/DEVELOPMENT.md` for future parallel-agent runs.
