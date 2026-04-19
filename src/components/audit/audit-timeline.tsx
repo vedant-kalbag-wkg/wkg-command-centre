@@ -77,20 +77,20 @@ function ActionDescription({ entry }: { entry: AuditEntry }) {
   switch (entry.action) {
     case "create":
       return (
-        <span className="text-sm text-wk-graphite">
+        <span className="text-sm text-foreground">
           created this {entityLabel}
         </span>
       );
 
     case "update":
       return (
-        <span className="text-sm text-wk-graphite">
+        <span className="text-sm text-foreground">
           changed{" "}
           <span className="font-medium">{entry.field}</span>
           {entry.oldValue && (
             <>
               {" "}from{" "}
-              <span className="line-through text-wk-night-grey">{entry.oldValue}</span>
+              <span className="line-through text-muted-foreground">{entry.oldValue}</span>
             </>
           )}
           {entry.newValue && (
@@ -104,7 +104,7 @@ function ActionDescription({ entry }: { entry: AuditEntry }) {
 
     case "archive":
       return (
-        <span className="text-sm text-wk-graphite">
+        <span className="text-sm text-foreground">
           archived this {entityLabel}
         </span>
       );
@@ -112,18 +112,18 @@ function ActionDescription({ entry }: { entry: AuditEntry }) {
     case "assign":
       if (entry.oldValue && entry.newValue) {
         return (
-          <span className="inline-flex items-center gap-1 text-sm text-wk-graphite">
-            <ArrowRightLeft className="h-3.5 w-3.5 text-wk-night-grey" />
+          <span className="inline-flex items-center gap-1 text-sm text-foreground">
+            <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
             reassigned from{" "}
-            <span className="line-through text-wk-night-grey">{entry.oldValue}</span>{" "}
+            <span className="line-through text-muted-foreground">{entry.oldValue}</span>{" "}
             to{" "}
             <span className="font-medium">{entry.newValue}</span>
           </span>
         );
       }
       return (
-        <span className="inline-flex items-center gap-1 text-sm text-wk-graphite">
-          <ArrowRightLeft className="h-3.5 w-3.5 text-wk-night-grey" />
+        <span className="inline-flex items-center gap-1 text-sm text-foreground">
+          <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
           assigned to{" "}
           <span className="font-medium">{entry.newValue ?? "venue"}</span>
         </span>
@@ -131,15 +131,15 @@ function ActionDescription({ entry }: { entry: AuditEntry }) {
 
     case "unassign":
       return (
-        <span className="text-sm text-wk-graphite">
+        <span className="text-sm text-foreground">
           unassigned from{" "}
-          <span className="line-through text-wk-night-grey">{entry.oldValue}</span>
+          <span className="line-through text-muted-foreground">{entry.oldValue}</span>
         </span>
       );
 
     default:
       return (
-        <span className="text-sm text-wk-graphite">{entry.action}</span>
+        <span className="text-sm text-foreground">{entry.action}</span>
       );
   }
 }
@@ -192,7 +192,7 @@ export function AuditTimeline({ entityType, entityId }: AuditTimelineProps) {
   if (loading) {
     return (
       <div className="py-8 text-center">
-        <p className="text-sm text-wk-night-grey">Loading activity…</p>
+        <p className="text-sm text-muted-foreground">Loading activity…</p>
       </div>
     );
   }
@@ -200,7 +200,7 @@ export function AuditTimeline({ entityType, entityId }: AuditTimelineProps) {
   if (entries.length === 0) {
     return (
       <div className="py-8 text-center">
-        <p className="text-sm text-wk-night-grey">No activity yet. Changes to this record will appear here.</p>
+        <p className="text-sm text-muted-foreground">No activity yet. Changes to this record will appear here.</p>
       </div>
     );
   }
@@ -213,7 +213,7 @@ export function AuditTimeline({ entityType, entityId }: AuditTimelineProps) {
         <div key={day}>
           {/* Day header */}
           <div className="mb-3 sticky top-0 bg-white">
-            <p className="text-[12px] font-medium text-wk-night-grey uppercase tracking-wide">
+            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide">
               {day}
             </p>
           </div>
@@ -224,7 +224,7 @@ export function AuditTimeline({ entityType, entityId }: AuditTimelineProps) {
               <div key={entry.id} className="flex items-start gap-3">
                 {/* Avatar */}
                 <Avatar size="sm" className="mt-0.5 shrink-0">
-                  <AvatarFallback className="text-[10px] bg-wk-azure/10 text-wk-azure font-medium">
+                  <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-medium">
                     {getInitials(entry.actorName)}
                   </AvatarFallback>
                 </Avatar>
@@ -232,12 +232,12 @@ export function AuditTimeline({ entityType, entityId }: AuditTimelineProps) {
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-1.5 flex-wrap">
-                    <span className="text-sm font-medium text-wk-graphite">
+                    <span className="text-sm font-medium text-foreground">
                       {entry.actorName ?? "Unknown"}
                     </span>
                     <ActionDescription entry={entry} />
                   </div>
-                  <p className="mt-0.5 text-[12px] text-wk-night-grey">
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
                     {formatRelativeTime(new Date(entry.createdAt))}
                   </p>
                 </div>
@@ -254,7 +254,7 @@ export function AuditTimeline({ entityType, entityId }: AuditTimelineProps) {
             type="button"
             onClick={handleLoadMore}
             disabled={loadingMore}
-            className="text-sm text-wk-azure hover:underline disabled:opacity-50"
+            className="text-sm text-primary hover:underline disabled:opacity-50"
           >
             {loadingMore
               ? "Loading…"

@@ -62,10 +62,10 @@ function entityTypeLabel(entityType: string): string {
 function entityLink(entityType: string, entityId: string, entityName: string | null): React.ReactNode {
   const label = entityName ?? entityId;
   if (entityType === "kiosk") {
-    return <Link href={`/kiosks/${entityId}`} className="text-wk-azure hover:underline">{label}</Link>;
+    return <Link href={`/kiosks/${entityId}`} className="text-primary hover:underline">{label}</Link>;
   }
   if (entityType === "location") {
-    return <Link href={`/locations/${entityId}`} className="text-wk-azure hover:underline">{label}</Link>;
+    return <Link href={`/locations/${entityId}`} className="text-primary hover:underline">{label}</Link>;
   }
   return <span>{label}</span>;
 }
@@ -153,10 +153,10 @@ export function AuditTable() {
   return (
     <div className="space-y-4">
       {/* Filter bar */}
-      <div className="flex flex-wrap items-end gap-4 rounded-lg border border-wk-mid-grey bg-wk-light-grey/40 p-4">
+      <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-muted/40 p-4">
         {/* User filter */}
         <div className="space-y-1.5 min-w-[180px]">
-          <Label className="text-xs text-wk-night-grey">User</Label>
+          <Label className="text-xs text-muted-foreground">User</Label>
           <Select
             value={filters.actorId || "__all__"}
             onValueChange={(v) => setFilters((f) => ({ ...f, actorId: v === "__all__" ? "" : (v as string) }))}
@@ -181,7 +181,7 @@ export function AuditTable() {
 
         {/* Entity type filter */}
         <div className="space-y-1.5 min-w-[160px]">
-          <Label className="text-xs text-wk-night-grey">Entity Type</Label>
+          <Label className="text-xs text-muted-foreground">Entity Type</Label>
           <Select
             value={filters.entityType || "__all__"}
             onValueChange={(v) => setFilters((f) => ({ ...f, entityType: v === "__all__" ? "" : (v as string) }))}
@@ -204,7 +204,7 @@ export function AuditTable() {
 
         {/* User Type filter */}
         <div className="space-y-1.5 min-w-[160px]">
-          <Label className="text-xs text-wk-night-grey">User Type</Label>
+          <Label className="text-xs text-muted-foreground">User Type</Label>
           <Select
             value={filters.actorUserType}
             onValueChange={(val) =>
@@ -224,7 +224,7 @@ export function AuditTable() {
 
         {/* Date From */}
         <div className="space-y-1.5">
-          <Label className="text-xs text-wk-night-grey">From</Label>
+          <Label className="text-xs text-muted-foreground">From</Label>
           <Input
             type="date"
             value={filters.dateFrom}
@@ -235,7 +235,7 @@ export function AuditTable() {
 
         {/* Date To */}
         <div className="space-y-1.5">
-          <Label className="text-xs text-wk-night-grey">To</Label>
+          <Label className="text-xs text-muted-foreground">To</Label>
           <Input
             type="date"
             value={filters.dateTo}
@@ -250,7 +250,7 @@ export function AuditTable() {
             variant="ghost"
             size="sm"
             onClick={clearFilters}
-            className="h-8 text-xs text-wk-night-grey"
+            className="h-8 text-xs text-muted-foreground"
           >
             Clear filters
           </Button>
@@ -258,21 +258,21 @@ export function AuditTable() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-wk-mid-grey overflow-hidden">
+      <div className="rounded-lg border border-border overflow-hidden">
         {loading ? (
           <div className="py-16 text-center">
-            <p className="text-sm text-wk-night-grey">Loading…</p>
+            <p className="text-sm text-muted-foreground">Loading…</p>
           </div>
         ) : entries.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-sm text-wk-night-grey">
+            <p className="text-sm text-muted-foreground">
               No audit entries match. Try adjusting the date range or clearing the filters.
             </p>
             {hasFilters && (
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-3 text-sm text-wk-azure hover:underline"
+                className="mt-3 text-sm text-primary hover:underline"
               >
                 Clear filters
               </button>
@@ -281,37 +281,37 @@ export function AuditTable() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="bg-wk-light-grey hover:bg-wk-light-grey border-b border-wk-mid-grey">
-                <TableHead className="text-xs font-medium text-wk-graphite uppercase tracking-wide">
+              <TableRow className="bg-muted hover:bg-muted border-b border-border">
+                <TableHead className="text-xs font-medium text-foreground uppercase tracking-wide">
                   Date
                 </TableHead>
-                <TableHead className="text-xs font-medium text-wk-graphite uppercase tracking-wide">
+                <TableHead className="text-xs font-medium text-foreground uppercase tracking-wide">
                   User
                 </TableHead>
-                <TableHead className="text-xs font-medium text-wk-graphite uppercase tracking-wide">
+                <TableHead className="text-xs font-medium text-foreground uppercase tracking-wide">
                   Entity Type
                 </TableHead>
-                <TableHead className="text-xs font-medium text-wk-graphite uppercase tracking-wide">
+                <TableHead className="text-xs font-medium text-foreground uppercase tracking-wide">
                   Record
                 </TableHead>
-                <TableHead className="text-xs font-medium text-wk-graphite uppercase tracking-wide">
+                <TableHead className="text-xs font-medium text-foreground uppercase tracking-wide">
                   Field
                 </TableHead>
-                <TableHead className="text-xs font-medium text-wk-graphite uppercase tracking-wide">
+                <TableHead className="text-xs font-medium text-foreground uppercase tracking-wide">
                   Old Value
                 </TableHead>
-                <TableHead className="text-xs font-medium text-wk-graphite uppercase tracking-wide">
+                <TableHead className="text-xs font-medium text-foreground uppercase tracking-wide">
                   New Value
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {entries.map((entry) => (
-                <TableRow key={entry.id} className="hover:bg-wk-sky-blue">
-                  <TableCell className="py-2.5 text-sm text-wk-graphite whitespace-nowrap">
+                <TableRow key={entry.id} className="hover:bg-primary/10">
+                  <TableCell className="py-2.5 text-sm text-foreground whitespace-nowrap">
                     {formatDate(entry.createdAt)}
                   </TableCell>
-                  <TableCell className="py-2.5 text-sm text-wk-graphite">
+                  <TableCell className="py-2.5 text-sm text-foreground">
                     {entry.actorName ?? "—"}
                   </TableCell>
                   <TableCell className="py-2.5">
@@ -322,20 +322,20 @@ export function AuditTable() {
                   <TableCell className="py-2.5 text-sm">
                     {entityLink(entry.entityType, entry.entityId, entry.entityName)}
                   </TableCell>
-                  <TableCell className="py-2.5 text-sm text-wk-graphite">
+                  <TableCell className="py-2.5 text-sm text-foreground">
                     {entry.field ?? (
-                      <span className="text-wk-mid-grey italic">{entry.action}</span>
+                      <span className="text-muted-foreground italic">{entry.action}</span>
                     )}
                   </TableCell>
                   <TableCell className="py-2.5 text-sm">
                     {entry.oldValue ? (
-                      <span className="line-through text-wk-night-grey">{entry.oldValue}</span>
+                      <span className="line-through text-muted-foreground">{entry.oldValue}</span>
                     ) : (
-                      <span className="text-wk-mid-grey">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="py-2.5 text-sm text-wk-graphite">
-                    {entry.newValue ?? <span className="text-wk-mid-grey">—</span>}
+                  <TableCell className="py-2.5 text-sm text-foreground">
+                    {entry.newValue ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
                 </TableRow>
               ))}
@@ -351,7 +351,7 @@ export function AuditTable() {
             type="button"
             onClick={handleLoadMore}
             disabled={loadingMore}
-            className="text-sm text-wk-azure hover:underline disabled:opacity-50"
+            className="text-sm text-primary hover:underline disabled:opacity-50"
           >
             {loadingMore
               ? "Loading…"

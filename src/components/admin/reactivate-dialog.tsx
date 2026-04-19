@@ -65,7 +65,7 @@ export function ReactivateDialog({
           <Button
             onClick={handleConfirm}
             disabled={isSubmitting}
-            className="bg-wk-azure text-white hover:bg-wk-azure/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             {isSubmitting && <Loader2 className="size-4 animate-spin" />}
             Reactivate user
