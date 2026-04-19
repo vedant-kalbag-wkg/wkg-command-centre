@@ -8,8 +8,8 @@ export function AppShell({ title, action, children }: AppShellProps) {
   return (
     <div className="flex flex-1 flex-col min-h-0">
       {/* Content header */}
-      <header className="flex h-14 items-center gap-3 border-b border-wk-mid-grey px-6 shrink-0">
-        <h1 className="text-xl font-bold tracking-[-0.01em] text-wk-graphite">
+      <header className="flex h-14 items-center gap-3 border-b border-border px-6 shrink-0">
+        <h1 className="text-xl font-bold tracking-[-0.01em] text-foreground">
           {title}
         </h1>
         {action && <div className="ml-auto">{action}</div>}
