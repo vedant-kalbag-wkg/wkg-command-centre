@@ -51,6 +51,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/auth-client";
 
 // ============================================================
@@ -413,6 +414,7 @@ export function AppNavbar({ user }: AppNavbarProps) {
 
         {/* Right: User + Mobile hamburger */}
         <div className="flex items-center gap-1">
+          <ThemeToggle />
           {user && (
             <UserMenu
               userName={user.name}
