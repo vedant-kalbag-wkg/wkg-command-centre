@@ -83,62 +83,64 @@ export function AnalyticsFilterBar({
   }));
 
   return (
-    <div className="sticky top-14 z-20 flex flex-wrap items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-2.5">
-      <DateRangePicker
-        from={store.dateRange.from}
-        to={store.dateRange.to}
-        onRangeChange={(from, to) => store.setDateRange({ from, to })}
-      />
+    <div className="sticky top-14 z-20 flex items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-2.5">
+      <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
+        <DateRangePicker
+          from={store.dateRange.from}
+          to={store.dateRange.to}
+          onRangeChange={(from, to) => store.setDateRange({ from, to })}
+        />
 
-      <MultiSelectFilter
-        label="Locations"
-        options={locationOptions}
-        selected={store.hotelFilter}
-        onChange={(values) => store.setFilter("hotelFilter", values)}
-        placeholder="Search locations..."
-      />
+        <MultiSelectFilter
+          label="Locations"
+          options={locationOptions}
+          selected={store.hotelFilter}
+          onChange={(values) => store.setFilter("hotelFilter", values)}
+          placeholder="Search locations..."
+        />
 
-      <MultiSelectFilter
-        label="Products"
-        options={productOptions}
-        selected={store.productFilter}
-        onChange={(values) => store.setFilter("productFilter", values)}
-        placeholder="Search products..."
-      />
+        <MultiSelectFilter
+          label="Products"
+          options={productOptions}
+          selected={store.productFilter}
+          onChange={(values) => store.setFilter("productFilter", values)}
+          placeholder="Search products..."
+        />
 
-      <MultiSelectFilter
-        label="Hotel Groups"
-        options={hotelGroupOptions}
-        selected={store.hotelGroupFilter}
-        onChange={(values) => store.setFilter("hotelGroupFilter", values)}
-        placeholder="Search hotel groups..."
-      />
+        <MultiSelectFilter
+          label="Hotel Groups"
+          options={hotelGroupOptions}
+          selected={store.hotelGroupFilter}
+          onChange={(values) => store.setFilter("hotelGroupFilter", values)}
+          placeholder="Search hotel groups..."
+        />
 
-      <MultiSelectFilter
-        label="Regions"
-        options={regionOptions}
-        selected={store.regionFilter}
-        onChange={(values) => store.setFilter("regionFilter", values)}
-        placeholder="Search regions..."
-      />
+        <MultiSelectFilter
+          label="Regions"
+          options={regionOptions}
+          selected={store.regionFilter}
+          onChange={(values) => store.setFilter("regionFilter", values)}
+          placeholder="Search regions..."
+        />
 
-      <MultiSelectFilter
-        label="Location Groups"
-        options={locationGroupOptions}
-        selected={store.locationGroupFilter}
-        onChange={(values) => store.setFilter("locationGroupFilter", values)}
-        placeholder="Search location groups..."
-      />
+        <MultiSelectFilter
+          label="Location Groups"
+          options={locationGroupOptions}
+          selected={store.locationGroupFilter}
+          onChange={(values) => store.setFilter("locationGroupFilter", values)}
+          placeholder="Search location groups..."
+        />
 
-      <MultiSelectFilter
-        label="Maturity"
-        options={MATURITY_BUCKETS.map((b) => ({ value: b.value, label: b.label }))}
-        selected={store.maturityFilter}
-        onChange={(values) => store.setFilter("maturityFilter", values)}
-        placeholder="Filter by maturity..."
-      />
+        <MultiSelectFilter
+          label="Maturity"
+          options={MATURITY_BUCKETS.map((b) => ({ value: b.value, label: b.label }))}
+          selected={store.maturityFilter}
+          onChange={(values) => store.setFilter("maturityFilter", values)}
+          placeholder="Filter by maturity..."
+        />
+      </div>
 
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 shrink-0">
         <Button
           variant="ghost"
           size="sm"

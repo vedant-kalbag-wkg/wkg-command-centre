@@ -79,6 +79,45 @@ LIMIT 10001
 
 **Severity:** Medium.
 
+### A.3 Kiosks missing asset IDs on localhost (present on Vercel)
+
+**Page:** `/kiosks`.
+
+**Symptom:** On localhost, kiosk rows are missing asset IDs (the asset/serial number column is blank). On Vercel, the same kiosks render with asset IDs populated.
+
+**Root cause hypothesis (needs verification):** environment/data divergence. Candidates:
+- Local seed (`npm run db:seed` / `db:seed:kiosks`) doesn't populate `hardwareSerialNumber` (the likely asset-ID field) whereas Vercel's database does. Check `src/db/seed-kiosks.ts` for the fields being seeded.
+- An import step (e.g., `db:import:monday`) was run on Vercel but not locally; the asset IDs come from Monday.com import.
+- Column visibility state (per-user) — unlikely, but check if `useKioskViewStore` has a default that hides the asset column on a fresh localhost user.
+
+**Where to look:**
+- `src/db/seed-kiosks.ts` — confirm asset IDs are seeded.
+- `src/components/kiosks/kiosk-columns.tsx` — confirm the asset-ID column exists and is visible by default.
+- Local DB: `SELECT id, hardware_serial_number FROM kiosks LIMIT 10;` — see if the column is null on localhost.
+- `scripts/import-from-monday.ts` — this is probably the source of asset IDs in production.
+
+**Severity:** Medium — doesn't break localhost UX entirely, but makes it hard to QA anything involving asset IDs (e.g., the new `/kiosks` reference-page rebuild). Suggest running the Monday import script locally or extending `db:seed:kiosks` to populate the field.
+
+## B-prime. Functional feature requests (discovered via UI modernization)
+
+### B-prime.1 Admin needs to create users directly with a default password
+
+**Symptom:** The current user-invite flow (`/settings/users` → "Invite user") relies on email. On localhost, email delivery is not configured, so there's no way to create a new user for testing or for environments without SMTP. The "both apps" phrasing from the user implies this applies to the kiosk tool AND the analytics side (same codebase, same auth — `better-auth`).
+
+**Requested change:** add an admin flow to create a user with a pre-set password, bypassing the email invitation. Ideally:
+- New "Create user" action in `/settings/users` (alongside or replacing "Invite user" for admin-created accounts).
+- Admin provides: name, email, role, password.
+- Backend creates the user via `better-auth`'s server API with the supplied password hashed.
+- User can then log in immediately.
+
+**Where to look:**
+- `src/lib/auth.ts` + `src/lib/auth-client.ts` — `better-auth` configuration.
+- `src/components/admin/invite-user-dialog.tsx` — current invite flow.
+- `src/app/(app)/settings/users/*` — admin users surface.
+- `better-auth` docs on `auth.api.signUpEmail` or equivalent server-side user creation.
+
+**Severity:** Medium for dev/staging, Low for production (assuming SMTP is configured there). Unblocks localhost QA for everything downstream of "I need another user to test X".
+
 ---
 
 ## B. Pre-existing functional regressions (not caused by UI sweep)
@@ -224,7 +263,9 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 |---|---|---|---|
 | A.1 | High | Backend | Open |
 | A.2 | Medium | Backend | Open |
+| A.3 | Medium | Backend/data | Open |
 | B.1 | High | Analytics | Open |
+| B-prime.1 | Medium | Auth/admin | Open |
 | C.1 | Design | TBD | Backlog |
 | C.2 | Design | TBD | Backlog |
 | C.3 | Design | TBD | Backlog |
