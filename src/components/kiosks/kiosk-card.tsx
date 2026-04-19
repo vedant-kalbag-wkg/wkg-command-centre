@@ -48,7 +48,7 @@ const KioskCardContent = React.memo(function KioskCardContent({
   return (
     <div
       className={cn(
-        "w-full min-h-[80px] p-3 border rounded-lg cursor-pointer select-none bg-white",
+        "w-full min-h-[80px] p-3 border rounded-lg cursor-pointer select-none bg-card",
         "border-border transition-shadow",
         "hover:shadow-md",
         isDragging
