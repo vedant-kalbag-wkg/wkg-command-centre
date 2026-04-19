@@ -83,7 +83,7 @@ export function KeyContactsEditor({
   if (contacts.length === 0) {
     return (
       <div className="py-4 text-center">
-        <p className="text-sm text-wk-night-grey">No contacts added yet</p>
+        <p className="text-sm text-muted-foreground">No contacts added yet</p>
         {!disabled && (
           <Button
             type="button"
@@ -105,7 +105,7 @@ export function KeyContactsEditor({
       {contacts.map((contact, index) => (
         <div
           key={index}
-          className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-center rounded-lg border border-wk-mid-grey px-3 py-2"
+          className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-center rounded-lg border border-border px-3 py-2"
         >
           <Input
             value={contact.name}
@@ -144,7 +144,7 @@ export function KeyContactsEditor({
             <button
               type="button"
               onClick={() => removeContact(index)}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-wk-mid-grey hover:text-destructive transition-colors"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-colors"
               aria-label="Remove contact"
             >
               <X className="h-3.5 w-3.5" />
@@ -166,7 +166,7 @@ export function KeyContactsEditor({
           </Button>
         )}
         {isSaving && (
-          <div className="flex items-center gap-1 text-[12px] text-wk-night-grey">
+          <div className="flex items-center gap-1 text-[12px] text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
             Saving…
           </div>

@@ -252,18 +252,18 @@ export function LocationTable({ data }: LocationTableProps) {
       />
 
       {/* Table */}
-      <div className="mt-2 rounded-lg border border-wk-mid-grey overflow-x-auto">
+      <div className="mt-2 rounded-lg border border-border overflow-x-auto">
         {!hasData ? (
           /* Empty state — no records */
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <h3 className="text-base font-semibold text-wk-graphite">
+            <h3 className="text-base font-semibold text-foreground">
               No locations yet
             </h3>
-            <p className="mt-1 text-sm text-wk-night-grey">
+            <p className="mt-1 text-sm text-muted-foreground">
               Add your first location to assign kiosks to venues.
             </p>
             <Link href="/locations/new" className="mt-4">
-              <Button className="bg-wk-azure text-white hover:bg-wk-azure/90">
+              <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
                 <Plus className="mr-1.5 h-4 w-4" />
                 Add location
               </Button>
@@ -272,10 +272,10 @@ export function LocationTable({ data }: LocationTableProps) {
         ) : !hasFilteredRows ? (
           /* Empty state — filters applied, no results */
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <h3 className="text-base font-semibold text-wk-graphite">
+            <h3 className="text-base font-semibold text-foreground">
               No locations match your filters
             </h3>
-            <p className="mt-1 text-sm text-wk-night-grey">
+            <p className="mt-1 text-sm text-muted-foreground">
               Try adjusting or clearing your filters to see more results.
             </p>
             {isFiltering && (
@@ -284,7 +284,7 @@ export function LocationTable({ data }: LocationTableProps) {
                 onClick={() => {
                   useLocationViewStore.getState().resetToDefaults();
                 }}
-                className="mt-4 text-sm text-wk-azure hover:underline"
+                className="mt-4 text-sm text-primary hover:underline"
               >
                 Clear filters
               </button>
@@ -304,7 +304,7 @@ export function LocationTable({ data }: LocationTableProps) {
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow
                     key={headerGroup.id}
-                    className="bg-wk-light-grey hover:bg-wk-light-grey border-b border-wk-mid-grey"
+                    className="bg-muted hover:bg-muted border-b border-border"
                   >
                     <SortableContext
                       items={headerGroup.headers.map((h) => h.id)}
@@ -323,21 +323,21 @@ export function LocationTable({ data }: LocationTableProps) {
                     return (
                       <TableRow
                         key={row.id}
-                        className="bg-wk-light-grey/50 hover:bg-wk-light-grey cursor-pointer"
+                        className="bg-muted/50 hover:bg-muted cursor-pointer"
                         onClick={() => row.toggleExpanded()}
                       >
                         <TableCell
                           colSpan={locationColumns.length}
                           className="py-2 px-3"
                         >
-                          <span className="inline-flex items-center gap-2 font-medium text-sm text-wk-graphite">
+                          <span className="inline-flex items-center gap-2 font-medium text-sm text-foreground">
                             {row.getIsExpanded() ? (
-                              <ChevronDown className="h-4 w-4 text-wk-night-grey" />
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
                             ) : (
-                              <ChevronRight className="h-4 w-4 text-wk-night-grey" />
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
                             )}
                             {row.groupingValue as string ?? "—"}
-                            <span className="text-xs text-wk-night-grey font-normal">
+                            <span className="text-xs text-muted-foreground font-normal">
                               ({row.subRows.length})
                             </span>
                           </span>
@@ -352,8 +352,8 @@ export function LocationTable({ data }: LocationTableProps) {
                       className={`
                         transition-colors min-h-[44px]
                         ${row.getIsSelected()
-                          ? "bg-[var(--color-wk-azure-20)] hover:bg-[var(--color-wk-azure-20)]"
-                          : "hover:bg-wk-sky-blue"
+                          ? "bg-primary/20 hover:bg-primary/20"
+                          : "hover:bg-primary/10"
                         }
                       `}
                     >
@@ -378,8 +378,8 @@ export function LocationTable({ data }: LocationTableProps) {
 
             {/* Pagination */}
             {table.getPageCount() > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-wk-mid-grey">
-                <span className="text-xs text-wk-night-grey">
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                <span className="text-xs text-muted-foreground">
                   Page {table.getState().pagination.pageIndex + 1} of{" "}
                   {table.getPageCount()} — {table.getFilteredRowModel().rows.length} total
                 </span>

@@ -32,7 +32,7 @@ export function ConfigGroupsTable({ data }: ConfigGroupsTableProps) {
       columnHelper.accessor("name", {
         header: "Group Name",
         cell: (info) => (
-          <span className="font-medium text-wk-graphite">{info.getValue()}</span>
+          <span className="font-medium text-foreground">{info.getValue()}</span>
         ),
       }),
       columnHelper.accessor("productAvailability", {
@@ -92,10 +92,10 @@ export function ConfigGroupsTable({ data }: ConfigGroupsTableProps) {
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <h2 className="text-xl font-bold tracking-[-0.01em] text-wk-graphite mb-2">
+        <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground mb-2">
           No config groups yet
         </h2>
-        <p className="text-wk-graphite/60 text-sm max-w-sm">
+        <p className="text-foreground/60 text-sm max-w-sm">
           Kiosk Config Groups are imported from your Monday.com board. Run an import
           to populate this list.
         </p>

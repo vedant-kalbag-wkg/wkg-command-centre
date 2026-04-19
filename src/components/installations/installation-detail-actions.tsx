@@ -57,7 +57,7 @@ export function InstallationDetailActions({
           <DialogHeader>
             <DialogTitle>Delete installation?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-wk-night-grey">
+          <p className="text-sm text-muted-foreground">
             This will permanently delete the installation and its milestones.
             Linked kiosks will not be affected.
           </p>

@@ -90,13 +90,13 @@ export function ProductsTable({ data }: ProductsTableProps) {
       columnHelper.accessor("name", {
         header: "Product Name",
         cell: (info) => (
-          <span className="font-medium text-wk-graphite">{info.getValue()}</span>
+          <span className="font-medium text-foreground">{info.getValue()}</span>
         ),
       }),
       columnHelper.accessor("providerName", {
         header: "Provider",
         cell: (info) => (
-          <span className="text-wk-graphite/70">{info.getValue() ?? "—"}</span>
+          <span className="text-foreground/70">{info.getValue() ?? "—"}</span>
         ),
       }),
       columnHelper.accessor("hotelsOffering", {
@@ -178,7 +178,7 @@ export function ProductsTable({ data }: ProductsTableProps) {
       {/* Add Product CTA */}
       <div className="flex justify-end mb-4">
         <Button
-          className="bg-wk-azure text-white hover:bg-wk-azure/90"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={() => setAddOpen(true)}
         >
           <Plus className="mr-1.5 h-4 w-4" />
@@ -188,10 +188,10 @@ export function ProductsTable({ data }: ProductsTableProps) {
 
       {data.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <h2 className="text-xl font-bold tracking-[-0.01em] text-wk-graphite mb-2">
+          <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground mb-2">
             No products yet
           </h2>
-          <p className="text-wk-graphite/60 text-sm max-w-sm">
+          <p className="text-foreground/60 text-sm max-w-sm">
             Products are imported from your Kiosk Config Groups board. Run an import
             to populate this list.
           </p>
@@ -254,7 +254,7 @@ export function ProductsTable({ data }: ProductsTableProps) {
               <Button
                 type="submit"
                 disabled={addLoading || !addName.trim()}
-                className="bg-wk-azure text-white hover:bg-wk-azure/90"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {addLoading ? "Adding..." : "Add Product"}
               </Button>

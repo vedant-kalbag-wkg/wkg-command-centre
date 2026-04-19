@@ -135,12 +135,12 @@ export function ContractDocuments({
           {documents.map((doc) => (
             <div
               key={doc.s3Key}
-              className="flex items-center gap-3 rounded-lg border border-wk-mid-grey px-3 py-2"
+              className="flex items-center gap-3 rounded-lg border border-border px-3 py-2"
             >
-              <FileText className="h-4 w-4 flex-shrink-0 text-wk-night-grey" />
+              <FileText className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
               <div className="flex-1 min-w-0">
-                <p className="truncate text-sm text-wk-graphite">{doc.fileName}</p>
-                <p className="text-[11px] text-wk-mid-grey">
+                <p className="truncate text-sm text-foreground">{doc.fileName}</p>
+                <p className="text-[11px] text-muted-foreground">
                   Uploaded {format(new Date(doc.uploadedAt), "dd MMM yyyy")}
                 </p>
               </div>
@@ -148,7 +148,7 @@ export function ContractDocuments({
               {confirmRemoveKey === doc.s3Key ? (
                 // Inline confirmation
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-[12px] text-wk-night-grey">
+                  <span className="text-[12px] text-muted-foreground">
                     Remove {doc.fileName}?
                   </span>
                   <button
@@ -160,7 +160,7 @@ export function ContractDocuments({
                   </button>
                   <button
                     onClick={() => setConfirmRemoveKey(null)}
-                    className="text-[12px] text-wk-night-grey hover:underline"
+                    className="text-[12px] text-muted-foreground hover:underline"
                   >
                     Cancel
                   </button>
@@ -173,7 +173,7 @@ export function ContractDocuments({
                     target="_blank"
                     rel="noopener noreferrer"
                     title={`Download ${doc.fileName}`}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-wk-mid-grey hover:text-wk-graphite transition-colors"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Download className="h-3.5 w-3.5" />
                   </a>
@@ -182,7 +182,7 @@ export function ContractDocuments({
                       type="button"
                       onClick={() => setConfirmRemoveKey(doc.s3Key)}
                       title={`Remove ${doc.fileName}`}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-wk-mid-grey hover:text-destructive transition-colors"
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-colors"
                       aria-label={`Remove ${doc.fileName}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -194,7 +194,7 @@ export function ContractDocuments({
           ))}
         </div>
       ) : (
-        <p className="text-sm text-wk-night-grey">No documents uploaded yet</p>
+        <p className="text-sm text-muted-foreground">No documents uploaded yet</p>
       )}
 
       {/* Upload progress */}
@@ -202,10 +202,10 @@ export function ContractDocuments({
         <div className="space-y-1">
           <Progress value={uploadProgress}>
             <ProgressTrack>
-              <ProgressIndicator className="bg-wk-azure" />
+              <ProgressIndicator className="bg-primary" />
             </ProgressTrack>
           </Progress>
-          <p className="text-[12px] text-wk-night-grey">
+          <p className="text-[12px] text-muted-foreground">
             Uploading… {uploadProgress}%
           </p>
         </div>
@@ -239,7 +239,7 @@ export function ContractDocuments({
       )}
 
       {uploadProgress !== null && (
-        <div className="flex items-center gap-2 text-[12px] text-wk-night-grey">
+        <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin" />
           Uploading…
         </div>

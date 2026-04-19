@@ -52,7 +52,7 @@ const milestoneTypeItems = [
 
 function MilestoneTypeBadge({ type }: { type: string }) {
   return (
-    <Badge variant="outline" className="text-xs font-normal text-wk-night-grey border-wk-mid-grey">
+    <Badge variant="outline" className="text-xs font-normal text-muted-foreground border-border">
       {milestoneTypeLabels[type] ?? type}
     </Badge>
   );
@@ -141,20 +141,20 @@ export function MilestoneList({ milestones, installationId }: MilestoneListProps
     <div className="flex flex-col gap-3">
       {/* Milestone list */}
       {milestones.length === 0 ? (
-        <p className="text-sm text-wk-night-grey py-2">
+        <p className="text-sm text-muted-foreground py-2">
           No milestones — add one to track key dates for this installation.
         </p>
       ) : (
-        <ul className="divide-y divide-wk-mid-grey">
+        <ul className="divide-y divide-border">
           {milestones.map((milestone) => (
             <li key={milestone.id} className="flex items-center justify-between py-2.5">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-wk-graphite">
+                <span className="text-sm font-medium text-foreground">
                   {milestone.name}
                 </span>
                 <div className="flex items-center gap-2">
                   <MilestoneTypeBadge type={milestone.type} />
-                  <span className="text-xs text-wk-night-grey">
+                  <span className="text-xs text-muted-foreground">
                     {format(milestone.targetDate, "dd MMM yyyy")}
                   </span>
                 </div>
@@ -162,7 +162,7 @@ export function MilestoneList({ milestones, installationId }: MilestoneListProps
               <button
                 type="button"
                 onClick={() => setDeletingId(milestone.id)}
-                className="p-1 text-wk-mid-grey hover:text-wk-destructive transition-colors"
+                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
                 aria-label={`Delete milestone ${milestone.name}`}
               >
                 <Trash2 className="h-4 w-4" />
@@ -174,7 +174,7 @@ export function MilestoneList({ milestones, installationId }: MilestoneListProps
 
       {/* Add milestone inline form */}
       {showAddForm ? (
-        <form onSubmit={handleSubmit(onAddSubmit)} className="flex flex-col gap-3 rounded-lg border border-wk-mid-grey p-3 bg-wk-light-grey">
+        <form onSubmit={handleSubmit(onAddSubmit)} className="flex flex-col gap-3 rounded-lg border border-border p-3 bg-muted">
           <div className="flex flex-col gap-1">
             <Label htmlFor="milestone-name" className="text-xs">Name</Label>
             <Input
@@ -184,7 +184,7 @@ export function MilestoneList({ milestones, installationId }: MilestoneListProps
               aria-invalid={!!errors.name}
             />
             {errors.name && (
-              <p className="text-xs text-wk-destructive">{errors.name.message}</p>
+              <p className="text-xs text-destructive">{errors.name.message}</p>
             )}
           </div>
 
@@ -222,7 +222,7 @@ export function MilestoneList({ milestones, installationId }: MilestoneListProps
               aria-invalid={!!errors.targetDate}
             />
             {errors.targetDate && (
-              <p className="text-xs text-wk-destructive">{errors.targetDate.message}</p>
+              <p className="text-xs text-destructive">{errors.targetDate.message}</p>
             )}
           </div>
 
@@ -231,7 +231,7 @@ export function MilestoneList({ milestones, installationId }: MilestoneListProps
               type="submit"
               size="sm"
               disabled={isPending}
-              className="bg-wk-azure text-white hover:bg-wk-azure/90"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {isPending ? "Adding…" : "Add milestone"}
             </Button>
@@ -252,7 +252,7 @@ export function MilestoneList({ milestones, installationId }: MilestoneListProps
         <button
           type="button"
           onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-1.5 text-sm text-wk-azure hover:underline"
+          className="flex items-center gap-1.5 text-sm text-primary hover:underline"
         >
           <Plus className="h-4 w-4" />
           Add milestone
@@ -265,7 +265,7 @@ export function MilestoneList({ milestones, installationId }: MilestoneListProps
           <DialogHeader>
             <DialogTitle>Delete milestone?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-wk-night-grey">
+          <p className="text-sm text-muted-foreground">
             This milestone will be permanently removed from the installation.
           </p>
           <DialogFooter>
