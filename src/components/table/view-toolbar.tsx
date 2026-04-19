@@ -133,7 +133,7 @@ export function ViewToolbar({
       <div className="flex flex-1 flex-wrap items-center gap-2">
         {/* Global search */}
         <div className="relative min-w-[200px] max-w-sm flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-wk-night-grey" />
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={searchPlaceholder}
             value={searchValue}
@@ -154,7 +154,7 @@ export function ViewToolbar({
                   <Filter className="h-3.5 w-3.5" />
                   Filter
                   {activeFilterCount > 0 && (
-                    <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-wk-azure text-[10px] text-white">
+                    <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white">
                       {activeFilterCount}
                     </span>
                   )}
@@ -163,12 +163,12 @@ export function ViewToolbar({
             />
             <PopoverContent align="start" className="w-72 p-4">
               <div className="space-y-3">
-                <p className="text-xs font-medium text-wk-night-grey uppercase tracking-wide">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Filter by
                 </p>
                 {filterableColumns.map((col) => (
                   <div key={col.id} className="space-y-1">
-                    <Label className="text-xs text-wk-graphite">{col.label}</Label>
+                    <Label className="text-xs text-foreground">{col.label}</Label>
                     {col.options ? (
                       <Select
                         value={filterDraft[col.id] ?? ""}
@@ -219,7 +219,7 @@ export function ViewToolbar({
                   <Button
                     size="sm"
                     onClick={applyFilters}
-                    className="h-8 bg-wk-azure text-white hover:bg-wk-azure/90 text-xs"
+                    className="h-8 bg-primary text-white hover:bg-primary/90 text-xs"
                   >
                     Apply
                   </Button>
@@ -247,7 +247,7 @@ export function ViewToolbar({
               ]}
             >
               <SelectTrigger className="h-9 w-auto min-w-[130px] gap-1.5 text-sm border-input">
-                <ChevronDown className="h-3.5 w-3.5 text-wk-night-grey" />
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                 <SelectValue placeholder="Group by..." />
               </SelectTrigger>
               <SelectContent>
@@ -276,7 +276,7 @@ export function ViewToolbar({
             }
           />
           <PopoverContent align="start" className="w-52 p-3">
-            <p className="mb-2 text-xs font-medium text-wk-night-grey uppercase tracking-wide">
+            <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Toggle columns
             </p>
             <div className="space-y-2">
@@ -296,7 +296,7 @@ export function ViewToolbar({
                     />
                     <label
                       htmlFor={`col-${col.id}`}
-                      className="cursor-pointer text-sm text-wk-graphite"
+                      className="cursor-pointer text-sm text-foreground"
                     >
                       {typeof col.columnDef.header === "string"
                         ? col.columnDef.header

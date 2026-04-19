@@ -111,7 +111,7 @@ export function BulkToolbar<T>({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs text-wk-night-grey">Field to edit</Label>
+              <Label className="text-xs text-muted-foreground">Field to edit</Label>
               <Select
                 value={selectedField}
                 onValueChange={(v) => {
@@ -135,7 +135,7 @@ export function BulkToolbar<T>({
 
             {currentField && (
               <div className="space-y-1.5">
-                <Label className="text-xs text-wk-night-grey">New value</Label>
+                <Label className="text-xs text-muted-foreground">New value</Label>
                 {currentField.type === "select" && currentField.options ? (
                   <Select
                     value={fieldValue}
@@ -175,7 +175,7 @@ export function BulkToolbar<T>({
             <Button
               onClick={handleApplyChanges}
               disabled={isUpdating || !selectedField}
-              className="bg-wk-azure text-white hover:bg-wk-azure/90"
+              className="bg-primary text-white hover:bg-primary/90"
             >
               {isUpdating ? "Applying…" : "Apply changes"}
             </Button>
@@ -189,7 +189,7 @@ export function BulkToolbar<T>({
           <DialogHeader>
             <DialogTitle>Archive {selectedCount} records?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-wk-night-grey">
+          <p className="text-sm text-muted-foreground">
             These records will be hidden from default views. You can restore them by filtering for
             archived records.
           </p>
@@ -216,14 +216,14 @@ export function BulkToolbar<T>({
       <div
         className={`
           fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between
-          border-t border-wk-mid-grey bg-white px-6 py-3 shadow-lg
+          border-t border-border bg-white px-6 py-3 shadow-lg
           transition-transform duration-200 ease-out
           ${isVisible ? "translate-y-0" : "translate-y-full"}
         `}
         aria-hidden={!isVisible}
       >
         {/* Left: selection count */}
-        <span className="text-sm font-medium text-wk-graphite">
+        <span className="text-sm font-medium text-foreground">
           {selectedCount} selected
         </span>
 
@@ -274,7 +274,7 @@ export function BulkToolbar<T>({
           <button
             type="button"
             onClick={onClearSelection}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-wk-night-grey hover:bg-wk-light-grey hover:text-wk-graphite"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
             title="Clear selection"
           >
             <X className="h-4 w-4" />

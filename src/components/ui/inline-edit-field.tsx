@@ -126,12 +126,12 @@ export function InlineEditField({
   };
 
   const borderClass = showSuccess
-    ? "border-wk-success"
+    ? "border-[--color-wk-success]"
     : error
     ? "border-destructive"
     : isEditing
-    ? "border-wk-azure"
-    : "border-wk-mid-grey";
+    ? "border-primary"
+    : "border-border";
 
   // Switch type — toggle directly without entering edit mode
   if (type === "switch") {
@@ -142,7 +142,7 @@ export function InlineEditField({
           disabled={disabled || isSaving}
           onCheckedChange={(checked) => handleSave(checked)}
         />
-        {isSaving && <Loader2 className="h-3 w-3 animate-spin text-wk-mid-grey" />}
+        {isSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
         {error && <p className="text-[12px] text-destructive">{error}</p>}
       </div>
     );
@@ -166,7 +166,7 @@ export function InlineEditField({
             className={cn(
               "h-9 text-sm border transition-colors",
               borderClass,
-              showSuccess && "border-wk-success",
+              showSuccess && "border-[--color-wk-success]",
               isSaving && "opacity-60"
             )}
           >
@@ -181,7 +181,7 @@ export function InlineEditField({
           </SelectContent>
         </Select>
         {isSaving && (
-          <div className="flex items-center gap-1 text-[12px] text-wk-night-grey">
+          <div className="flex items-center gap-1 text-[12px] text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
             Saving…
           </div>
@@ -212,7 +212,7 @@ export function InlineEditField({
               "inline-flex h-9 w-full items-center justify-start rounded-lg border px-3 text-sm font-normal transition-colors",
               "bg-background text-left",
               borderClass,
-              !dateValue && "text-wk-mid-grey",
+              !dateValue && "text-muted-foreground",
               isSaving && "opacity-60"
             )}
           >
@@ -232,7 +232,7 @@ export function InlineEditField({
           </PopoverContent>
         </Popover>
         {isSaving && (
-          <div className="flex items-center gap-1 text-[12px] text-wk-night-grey">
+          <div className="flex items-center gap-1 text-[12px] text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
             Saving…
           </div>
@@ -253,11 +253,11 @@ export function InlineEditField({
         <span
           onClick={startEdit}
           className={cn(
-            "min-h-[1.5rem] cursor-text text-sm text-wk-graphite transition-all",
-            isHovered && !disabled && "underline decoration-wk-mid-grey underline-offset-2",
+            "min-h-[1.5rem] cursor-text text-sm text-foreground transition-all",
+            isHovered && !disabled && "underline decoration-border underline-offset-2",
             disabled && "cursor-not-allowed opacity-60",
-            showSuccess && "text-wk-success",
-            !value && "text-wk-mid-grey"
+            showSuccess && "text-[--color-wk-success]",
+            !value && "text-muted-foreground"
           )}
         >
           {displayValue()}
@@ -269,7 +269,7 @@ export function InlineEditField({
 
   const inputBaseClass = cn(
     "w-full rounded-md border px-3 py-1.5 text-sm outline-none transition-colors",
-    "focus:ring-1 focus:ring-wk-azure",
+    "focus:ring-1 focus:ring-ring",
     borderClass,
     isSaving && "opacity-60"
   );
@@ -301,7 +301,7 @@ export function InlineEditField({
           />
         )}
         {isSaving && (
-          <Loader2 className="absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 animate-spin text-wk-mid-grey" />
+          <Loader2 className="absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 animate-spin text-muted-foreground" />
         )}
       </div>
       {error && <p className="text-[12px] text-destructive">{error}</p>}
