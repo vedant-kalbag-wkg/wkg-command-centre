@@ -56,17 +56,17 @@ export function ResetPasswordForm() {
   if (sentTo) {
     return (
       <div className="flex flex-col gap-4">
-        <h2 className="text-xl font-bold tracking-[-0.01em] text-wk-graphite">
+        <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground">
           Check your inbox
         </h2>
-        <p className="text-sm text-wk-night-grey">
+        <p className="text-sm text-muted-foreground">
           We sent a reset link to{" "}
-          <span className="font-medium text-wk-graphite">{sentTo}</span>. Check
+          <span className="font-medium text-foreground">{sentTo}</span>. Check
           your spam folder if it doesn&apos;t arrive within a few minutes.
         </p>
         <a
           href="/login"
-          className="text-sm text-wk-azure hover:text-wk-sea-blue"
+          className="text-sm text-primary hover:text-primary"
         >
           Back to sign in
         </a>
@@ -78,36 +78,36 @@ export function ResetPasswordForm() {
     <div className="flex flex-col gap-4">
       <a
         href="/login"
-        className="flex items-center gap-1 text-sm text-wk-night-grey hover:text-wk-azure w-fit"
+        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary w-fit"
       >
         <ArrowLeft className="size-4" />
         Back to sign in
       </a>
 
-      <h2 className="text-xl font-bold tracking-[-0.01em] text-wk-graphite">
+      <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground">
         Reset your password
       </h2>
 
-      <p className="text-sm text-wk-night-grey">
+      <p className="text-sm text-muted-foreground">
         Enter your email and we&apos;ll send you a link to reset your password.
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <Label htmlFor="email" className="text-sm text-wk-graphite">
+          <Label htmlFor="email" className="text-sm text-foreground">
             Email address
-            <span className="text-wk-night-grey ml-0.5">*</span>
+            <span className="text-muted-foreground ml-0.5">*</span>
           </Label>
           <Input
             id="email"
             type="email"
             placeholder="you@example.com"
             aria-invalid={!!errors.email}
-            className="border-wk-mid-grey focus:border-wk-azure focus:ring-wk-azure"
+            className="border-border focus:border-primary focus:ring-ring"
             {...register("email")}
           />
           {errors.email && (
-            <p className="flex items-center gap-1 text-xs text-wk-destructive" role="alert">
+            <p className="flex items-center gap-1 text-xs text-destructive" role="alert">
               <AlertCircle className="size-3.5 shrink-0" />
               {errors.email.message}
             </p>
@@ -117,7 +117,7 @@ export function ResetPasswordForm() {
         <Button
           type="submit"
           disabled={isLoading}
-          className="w-full h-11 bg-wk-azure text-white hover:bg-wk-sea-blue font-medium"
+          className="w-full h-11 bg-primary text-white hover:bg-primary font-medium"
           style={{ borderRadius: "8px" }}
         >
           {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}

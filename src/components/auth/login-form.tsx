@@ -62,20 +62,20 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <Label htmlFor="email" className="text-sm text-wk-graphite">
+        <Label htmlFor="email" className="text-sm text-foreground">
           Email address
-          <span className="text-wk-night-grey ml-0.5">*</span>
+          <span className="text-muted-foreground ml-0.5">*</span>
         </Label>
         <Input
           id="email"
           type="email"
           placeholder="you@example.com"
           aria-invalid={!!errors.email}
-          className="border-wk-mid-grey focus:border-wk-azure focus:ring-wk-azure"
+          className="border-border focus:border-primary focus:ring-ring"
           {...register("email")}
         />
         {errors.email && (
-          <p className="flex items-center gap-1 text-xs text-wk-destructive" role="alert">
+          <p className="flex items-center gap-1 text-xs text-destructive" role="alert">
             <AlertCircle className="size-3.5 shrink-0" />
             {errors.email.message}
           </p>
@@ -83,9 +83,9 @@ export function LoginForm() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="password" className="text-sm text-wk-graphite">
+        <Label htmlFor="password" className="text-sm text-foreground">
           Password
-          <span className="text-wk-night-grey ml-0.5">*</span>
+          <span className="text-muted-foreground ml-0.5">*</span>
         </Label>
         <div className="relative">
           <Input
@@ -93,13 +93,13 @@ export function LoginForm() {
             type={showPassword ? "text" : "password"}
             placeholder="Enter your password"
             aria-invalid={!!errors.password}
-            className="border-wk-mid-grey pr-10 focus:border-wk-azure focus:ring-wk-azure"
+            className="border-border pr-10 focus:border-primary focus:ring-ring"
             {...register("password")}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-wk-night-grey hover:text-wk-graphite"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             aria-label={showPassword ? "Hide password" : "Show password"}
           >
             {showPassword ? (
@@ -110,7 +110,7 @@ export function LoginForm() {
           </button>
         </div>
         {errors.password && (
-          <p className="flex items-center gap-1 text-xs text-wk-destructive" role="alert">
+          <p className="flex items-center gap-1 text-xs text-destructive" role="alert">
             <AlertCircle className="size-3.5 shrink-0" />
             {errors.password.message}
           </p>
@@ -118,7 +118,7 @@ export function LoginForm() {
         <div className="flex justify-end">
           <a
             href="/reset-password"
-            className="text-sm text-wk-azure hover:text-wk-sea-blue"
+            className="text-sm text-primary hover:text-primary"
           >
             Forgot password?
           </a>
@@ -128,7 +128,7 @@ export function LoginForm() {
       <Button
         type="submit"
         disabled={isLoading}
-        className="w-full h-11 bg-wk-azure text-white hover:bg-wk-sea-blue font-medium"
+        className="w-full h-11 bg-primary text-white hover:bg-primary font-medium"
         style={{ borderRadius: "8px" }}
       >
         {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
