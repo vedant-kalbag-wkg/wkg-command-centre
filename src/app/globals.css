@@ -192,6 +192,19 @@
   border: 2px dashed #00A6D3 !important;
 }
 
+/* Dark-mode overrides */
+.dark .gantt-wk {
+  --wx-gantt-task-color: #00A6D3;
+  --wx-gantt-task-fill-color: #00A6D3;
+  --wx-gantt-milestone-color: #00A6D3;
+
+  --wx-grid-header-font-color: var(--color-wk-white);
+  --wx-grid-body-font-color: var(--color-wk-white);
+
+  --wx-timescale-font-color: var(--color-wk-mid-grey);
+  --wx-gantt-border: 1px solid #262626;
+}
+
 /* ==========================================================================
    react-big-calendar — WeKnow brand overrides (scoped to .rbc-calendar-wk)
    ========================================================================== */
@@ -219,6 +232,31 @@
 
 .rbc-calendar-wk .rbc-toolbar button:hover {
   background-color: rgba(0, 166, 211, 0.1);
+}
+
+/* Dark-mode overrides */
+.dark .rbc-calendar-wk .rbc-calendar {
+  color: var(--color-wk-white);
+}
+
+.dark .rbc-calendar-wk .rbc-header {
+  color: var(--color-wk-mid-grey);
+  border-bottom: 1px solid #262626;
+}
+
+.dark .rbc-calendar-wk .rbc-today {
+  background-color: rgba(0, 166, 211, 0.12);
+}
+
+.dark .rbc-calendar-wk .rbc-off-range-bg {
+  background-color: #141414;
+}
+
+.dark .rbc-calendar-wk .rbc-day-bg + .rbc-day-bg,
+.dark .rbc-calendar-wk .rbc-month-row + .rbc-month-row,
+.dark .rbc-calendar-wk .rbc-time-content > * + * > *,
+.dark .rbc-calendar-wk .rbc-time-header-content {
+  border-color: #262626;
 }
 
 /* Milestone diamond marker */
