@@ -88,7 +88,7 @@ export function SalesImportClient() {
         </CardHeader>
         <CardContent>
           <label className="flex flex-col gap-2 max-w-md">
-            <span className="text-sm text-wk-night-grey">
+            <span className="text-sm text-muted-foreground">
               CSV file with columns: Saleref, Din, OutletCode, ProductName, Quantity, Gross (+optional fields).
             </span>
             <div className="flex items-center gap-2">
@@ -98,7 +98,7 @@ export function SalesImportClient() {
                 onChange={onFileChange}
                 disabled={uploading || committing || preview !== null}
                 aria-label="CSV file"
-                className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-wk-mid-grey/40 file:bg-white file:px-3 file:py-1.5 file:text-sm hover:file:bg-wk-sky-blue/40"
+                className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-border/40 file:bg-white file:px-3 file:py-1.5 file:text-sm hover:file:bg-primary/5"
               />
               {uploading && <Loader2 className="h-4 w-4 animate-spin" aria-label="Uploading" />}
             </div>
@@ -133,7 +133,7 @@ export function SalesImportClient() {
               />
             </div>
 
-            <div className="border border-wk-mid-grey/40 rounded-md overflow-hidden">
+            <div className="border border-border/40 rounded-md overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -208,10 +208,10 @@ function Stat({
   value: string;
   tone?: "ok" | "err";
 }) {
-  const color = tone === "err" ? "text-red-600" : tone === "ok" ? "text-wk-azure" : "text-wk-night-grey";
+  const color = tone === "err" ? "text-red-600" : tone === "ok" ? "text-primary" : "text-muted-foreground";
   return (
     <div className="flex flex-col">
-      <span className="text-xs text-wk-night-grey">{label}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
       <span className={`text-xl font-medium ${color}`}>{value}</span>
     </div>
   );

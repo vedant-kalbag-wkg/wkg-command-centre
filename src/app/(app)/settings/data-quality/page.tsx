@@ -100,7 +100,7 @@ export default function DataQualityPage() {
                     <TableCell>
                       <Link
                         href={`/locations/${row.id}`}
-                        className="text-wk-azure hover:underline font-medium"
+                        className="text-primary hover:underline font-medium"
                       >
                         {row.name}
                       </Link>

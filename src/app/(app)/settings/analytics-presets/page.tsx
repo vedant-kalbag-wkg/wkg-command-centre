@@ -73,7 +73,7 @@ export default function AnalyticsPresetsPage() {
       title="Analytics Presets"
       action={
         <Link href="/settings">
-          <Button variant="ghost" size="sm" className="text-wk-night-grey">
+          <Button variant="ghost" size="sm" className="text-muted-foreground">
             <ArrowLeft className="mr-1.5 h-4 w-4" />
             Back to Settings
           </Button>
