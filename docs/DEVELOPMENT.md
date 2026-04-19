@@ -102,6 +102,42 @@ docker exec wkg-pg psql -U postgres -d wkg_kiosk_dev \
   -c "SELECT email, role FROM \"user\" WHERE email = 'admin@weknow.co';"
 ```
 
+## 6b. Localhost data bootstrap (kiosks, markets, sales demo)
+
+The seeds in Step 6 only create the admin user and pipeline stages. To populate
+kiosks, locations, and sales data — required for QA of `/kiosks`, `/analytics`,
+and the reference pages — run the optional seeds and/or the Monday import:
+
+```bash
+# 8 demo kiosks across all pipeline stages, with populated
+# hardware_serial_number values ("SN-KP22-0001" etc.) — needed for the
+# "Asset" column on /kiosks to render non-blank on localhost.
+npm run db:seed:kiosks
+
+# Markets / regions used by the portfolio analytics pages.
+npm run db:seed:markets
+
+# Sales-demo locations + installations used by analytics fixtures.
+npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-sales-demo.ts
+```
+
+All three are idempotent (skip when their target rows already exist) and depend
+on the base seeds from Step 6 — run them in order.
+
+**Monday.com import (optional, requires credentials):**
+
+```bash
+# Pulls real kiosk + location rows from the Monday.com "Assets" board.
+npm run db:import:monday
+```
+
+Prereqs: `MONDAY_API_TOKEN` and `MONDAY_BOARD_ID` in `.env.local`. Note that
+the current import script does **not** populate `hardware_serial_number` (the
+"Asset" column on `/kiosks`) — rows imported from Monday will have that field
+blank until the import is extended (see bug-report.md A.3). If you need
+populated asset IDs for QA, run `db:seed:kiosks` on a fresh DB instead of
+importing from Monday.
+
 ## 7. Run the dev server
 
 ```bash
