@@ -77,6 +77,8 @@ LIMIT 10001
 1. Triggering the import action (via the UI button or `scripts/import-location-products-from-monday.ts` / similar script).
 2. Capturing the server log and network response.
 
+**Update 2026-04-19:** user noted A.2 may not be a real failure — the import may simply not have been allowed to finish its loading state. Park until reproduced with a confirmed error message.
+
 **Severity:** Medium.
 
 ### A.4 Commission analytics page broken
@@ -323,7 +325,7 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 | ID | Severity | Owner | Status |
 |---|---|---|---|
 | A.1 | High | Backend | Fixed in `78728e2` (heat-map GROUP BY + maturity ORDER BY) |
-| A.2 | Medium | Backend | Open |
+| A.2 | Medium | Backend | Parked — likely non-bug (user may not have let loading finish); re-open when reproduced |
 | A.3 | Medium | Backend/data | Fixed (docs) in `d61b62e` — followup F.1 below |
 | A.4 | High | Backend/Analytics | Fixed in `1fabd3d` (duplicate React keys from shared hotel names) |
 | B.1 | High | Analytics | Fixed in `90bfb4b` (per-series filter UI was never surfaced) |
