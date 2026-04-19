@@ -85,25 +85,25 @@ function CalendarToolbarInner({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 bg-wk-light-grey rounded-lg px-4 py-2">
+    <div className="flex flex-wrap items-center gap-3 bg-muted rounded-lg px-4 py-2">
       {/* Navigation: Back / Today / Next */}
       <div className="flex items-center gap-1">
         <button
           onClick={() => toolbar.onNavigate("PREV")}
-          className="inline-flex items-center justify-center size-8 rounded-md border border-border bg-white text-wk-graphite hover:bg-wk-azure/10 transition-colors"
+          className="inline-flex items-center justify-center size-8 rounded-md border border-border bg-white text-foreground hover:bg-primary/10 transition-colors"
           aria-label="Previous"
         >
           <ChevronLeft className="size-4" />
         </button>
         <button
           onClick={() => toolbar.onNavigate("TODAY")}
-          className="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-white text-wk-graphite hover:bg-wk-azure/10 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-white text-foreground hover:bg-primary/10 transition-colors"
         >
           Today
         </button>
         <button
           onClick={() => toolbar.onNavigate("NEXT")}
-          className="inline-flex items-center justify-center size-8 rounded-md border border-border bg-white text-wk-graphite hover:bg-wk-azure/10 transition-colors"
+          className="inline-flex items-center justify-center size-8 rounded-md border border-border bg-white text-foreground hover:bg-primary/10 transition-colors"
           aria-label="Next"
         >
           <ChevronRight className="size-4" />
@@ -111,7 +111,7 @@ function CalendarToolbarInner({
       </div>
 
       {/* Current label (e.g. "April 2026") */}
-      <span className="text-sm font-semibold text-wk-graphite min-w-[120px]">
+      <span className="text-sm font-semibold text-foreground min-w-[120px]">
         {toolbar.label}
       </span>
 
@@ -123,8 +123,8 @@ function CalendarToolbarInner({
             onClick={() => handleViewChange(mode.value)}
             className={`px-3 py-1.5 text-xs font-medium transition-colors ${
               viewMode === mode.value
-                ? "bg-wk-azure text-white"
-                : "bg-white text-wk-graphite hover:bg-wk-azure/10"
+                ? "bg-primary text-primary-foreground"
+                : "bg-white text-foreground hover:bg-primary/10"
             }`}
             aria-pressed={viewMode === mode.value}
           >
@@ -208,7 +208,7 @@ function CalendarToolbarInner({
       {hasActiveFilters && (
         <button
           onClick={clearFilters}
-          className="text-xs text-wk-night-grey hover:text-wk-graphite transition-colors underline underline-offset-2"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
         >
           Clear filters
         </button>

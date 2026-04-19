@@ -18,14 +18,14 @@ import { MilestoneQuickAddPopover } from "./milestone-quick-add-popover";
 function ResourceCell({ row }: { row: { members?: { userId: string; userName: string; role: string }[] } }) {
   const members = row.members ?? [];
   if (members.length === 0) {
-    return <span className="text-xs text-wk-mid-grey">—</span>;
+    return <span className="text-xs text-muted-foreground">—</span>;
   }
   const displayed = members.slice(0, 2).map((m) => m.userName);
   const extra = members.length > 2 ? ` +${members.length - 2}` : "";
   return (
-    <span className="text-xs text-wk-graphite truncate">
+    <span className="text-xs text-foreground truncate">
       {displayed.join(", ")}
-      {extra && <span className="text-wk-night-grey">{extra}</span>}
+      {extra && <span className="text-muted-foreground">{extra}</span>}
     </span>
   );
 }
@@ -38,16 +38,16 @@ function GanttEmptyState() {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 pointer-events-none">
       <div className="pointer-events-auto text-center">
-        <h3 className="text-base font-semibold text-wk-graphite tracking-tight">
+        <h3 className="text-base font-semibold text-foreground tracking-tight">
           No installations yet
         </h3>
-        <p className="mt-1 text-sm text-wk-night-grey max-w-sm">
+        <p className="mt-1 text-sm text-muted-foreground max-w-sm">
           Create an installation to start planning deployment timelines.
           Installations group your kiosks by project and region.
         </p>
         <Link
           href="/installations/new"
-          className="mt-4 inline-flex items-center px-4 py-2 rounded bg-wk-azure text-white text-sm font-medium hover:opacity-90 transition-opacity"
+          className="mt-4 inline-flex items-center px-4 py-2 rounded bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
         >
           Add installation
         </Link>
@@ -158,7 +158,7 @@ export function GanttView({ installations }: GanttViewProps) {
             />
           ))}
           {installations.length > 3 && (
-            <span className="text-xs text-wk-mid-grey">
+            <span className="text-xs text-muted-foreground">
               + {installations.length - 3} more installations
             </span>
           )}

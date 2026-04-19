@@ -16,12 +16,12 @@ export function GanttToolbar() {
   const setZoom = useGanttStore((s) => s.setZoom);
 
   return (
-    <div className="flex items-center gap-3 bg-wk-light-grey rounded-lg px-4 py-2 mb-3">
+    <div className="flex items-center gap-3 bg-muted rounded-lg px-4 py-2 mb-3">
       {/* Grouping select */}
       <div className="flex items-center gap-2">
         <label
           htmlFor="gantt-group-by"
-          className="text-xs font-medium text-wk-night-grey whitespace-nowrap"
+          className="text-xs font-medium text-muted-foreground whitespace-nowrap"
         >
           Group by
         </label>
@@ -29,7 +29,7 @@ export function GanttToolbar() {
           id="gantt-group-by"
           value={groupBy}
           onChange={(e) => setGroupBy(e.target.value as "region" | "status")}
-          className="text-sm bg-white border border-border rounded px-2 py-1 text-wk-graphite focus:outline-none focus:ring-1 focus:ring-wk-azure"
+          className="text-sm bg-white border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="region">Region</option>
           <option value="status">Status</option>
@@ -47,8 +47,8 @@ export function GanttToolbar() {
             onClick={() => setZoom(value)}
             className={
               zoom === value
-                ? "px-3 py-1 rounded text-xs font-medium bg-wk-azure text-white"
-                : "px-3 py-1 rounded text-xs font-medium text-wk-graphite hover:bg-white transition-colors"
+                ? "px-3 py-1 rounded text-xs font-medium bg-primary text-primary-foreground"
+                : "px-3 py-1 rounded text-xs font-medium text-foreground hover:bg-white transition-colors"
             }
             aria-pressed={zoom === value}
           >

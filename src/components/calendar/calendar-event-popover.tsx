@@ -22,11 +22,11 @@ function formatDateRange(start: Date, end: Date): string {
 
 function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, string> = {
-    planned: "bg-wk-mid-grey text-white",
-    active: "bg-wk-azure text-white",
-    complete: "bg-wk-success text-white",
+    planned: "bg-border text-white",
+    active: "bg-primary text-primary-foreground",
+    complete: "bg-[--color-wk-success] text-white",
   };
-  const className = variants[status] ?? "bg-wk-mid-grey text-white";
+  const className = variants[status] ?? "bg-border text-white";
   return (
     <span
       className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${className}`}
@@ -73,16 +73,16 @@ export function CalendarEventPopover({
         <>
           <div className="flex items-start justify-between gap-2 mb-2">
             <div>
-              <p className="text-sm font-semibold text-wk-graphite leading-tight">
+              <p className="text-sm font-semibold text-foreground leading-tight">
                 {event.title}
               </p>
-              <p className="text-xs text-wk-night-grey mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {formatDateRange(event.start, event.end)}
               </p>
             </div>
             <button
               onClick={onClose}
-              className="text-wk-night-grey hover:text-wk-graphite transition-colors flex-shrink-0"
+              className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
               aria-label="Close"
             >
               <X className="size-4" />
@@ -91,14 +91,14 @@ export function CalendarEventPopover({
           <div className="flex flex-col gap-1.5 mb-3">
             {event.status && <StatusBadge status={event.status} />}
             {event.regionSlug && event.regionSlug !== "default" && (
-              <p className="text-xs text-wk-night-grey">
+              <p className="text-xs text-muted-foreground">
                 Region: {event.regionSlug}
               </p>
             )}
           </div>
           <Link
             href={`/installations/${event.entityId}`}
-            className="text-xs font-medium text-wk-azure hover:underline"
+            className="text-xs font-medium text-primary hover:underline"
             onClick={onClose}
           >
             View installation →
@@ -112,16 +112,16 @@ export function CalendarEventPopover({
         <>
           <div className="flex items-start justify-between gap-2 mb-2">
             <div>
-              <p className="text-sm font-semibold text-wk-graphite leading-tight">
+              <p className="text-sm font-semibold text-foreground leading-tight">
                 {event.milestoneName ?? event.title}
               </p>
-              <p className="text-xs text-wk-night-grey mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {format(event.start, "d MMM yyyy")}
               </p>
             </div>
             <button
               onClick={onClose}
-              className="text-wk-night-grey hover:text-wk-graphite transition-colors flex-shrink-0"
+              className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
               aria-label="Close"
             >
               <X className="size-4" />
@@ -132,14 +132,14 @@ export function CalendarEventPopover({
               <MilestoneTypeBadge type={event.milestoneType} />
             )}
             {event.installationName && (
-              <p className="text-xs text-wk-night-grey">
+              <p className="text-xs text-muted-foreground">
                 Installation: {event.installationName}
               </p>
             )}
           </div>
           <Link
             href={`/installations/${event.entityId}`}
-            className="text-xs font-medium text-wk-azure hover:underline"
+            className="text-xs font-medium text-primary hover:underline"
             onClick={onClose}
           >
             View installation →
@@ -153,16 +153,16 @@ export function CalendarEventPopover({
       <>
         <div className="flex items-start justify-between gap-2 mb-2">
           <div>
-            <p className="text-sm font-semibold text-wk-graphite leading-tight">
+            <p className="text-sm font-semibold text-foreground leading-tight">
               {event.kioskDisplayId ?? event.title}
             </p>
-            <p className="text-xs text-wk-night-grey mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Trial ends {format(event.start, "d MMM yyyy")}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-wk-night-grey hover:text-wk-graphite transition-colors flex-shrink-0"
+            className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
             aria-label="Close"
           >
             <X className="size-4" />
@@ -170,7 +170,7 @@ export function CalendarEventPopover({
         </div>
         <Link
           href={`/kiosks/${event.entityId}`}
-          className="text-xs font-medium text-wk-azure hover:underline"
+          className="text-xs font-medium text-primary hover:underline"
           onClick={onClose}
         >
           View kiosk →

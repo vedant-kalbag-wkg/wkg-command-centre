@@ -59,7 +59,7 @@ export function GanttPendingBar() {
       aria-live="polite"
       className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-white border border-border rounded-lg shadow-lg px-5 py-3"
     >
-      <p className="text-sm text-wk-graphite">
+      <p className="text-sm text-foreground">
         <span className="font-medium">{installationName}</span> moved to{" "}
         <span className="font-medium">
           {formatDate(newStart)} &ndash; {formatDate(newEnd)}
@@ -67,7 +67,7 @@ export function GanttPendingBar() {
       </p>
 
       {error && (
-        <p className="text-xs text-wk-destructive max-w-xs">{error}</p>
+        <p className="text-xs text-destructive max-w-xs">{error}</p>
       )}
 
       <div className="flex items-center gap-3">
@@ -75,7 +75,7 @@ export function GanttPendingBar() {
           type="button"
           onClick={handleApply}
           disabled={saving}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded bg-wk-azure text-white text-sm font-medium hover:opacity-90 disabled:opacity-60 transition-opacity"
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-60 transition-opacity"
         >
           {saving && (
             <span
@@ -90,7 +90,7 @@ export function GanttPendingBar() {
           type="button"
           onClick={handleDiscard}
           disabled={saving}
-          className="text-sm text-wk-night-grey hover:text-wk-graphite underline-offset-2 hover:underline transition-colors disabled:opacity-60"
+          className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors disabled:opacity-60"
         >
           Discard changes
         </button>

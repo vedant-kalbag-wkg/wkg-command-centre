@@ -71,13 +71,13 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between py-3">
-      <h3 className="text-sm font-medium uppercase tracking-wide text-wk-night-grey">
+      <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
         {title}
       </h3>
       {open ? (
-        <ChevronUp className="h-4 w-4 text-wk-mid-grey" />
+        <ChevronUp className="h-4 w-4 text-muted-foreground" />
       ) : (
-        <ChevronDown className="h-4 w-4 text-wk-mid-grey" />
+        <ChevronDown className="h-4 w-4 text-muted-foreground" />
       )}
     </div>
   );
@@ -96,7 +96,7 @@ function FieldRow({
 }) {
   return (
     <div className="grid grid-cols-[180px_1fr] items-start gap-4 py-2">
-      <Label className="pt-1 text-[12px] font-normal text-wk-night-grey">{label}</Label>
+      <Label className="pt-1 text-[12px] font-normal text-muted-foreground">{label}</Label>
       <div>{children}</div>
     </div>
   );
@@ -119,7 +119,7 @@ function DetailSection({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="w-full border-b border-wk-mid-grey text-left">
+      <CollapsibleTrigger className="w-full border-b border-border text-left">
         <SectionHeader title={title} open={open} />
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -221,7 +221,7 @@ function NewKioskForm({
           <select
             value={fields.pipelineStageId}
             onChange={(e) => setFields((f) => ({ ...f, pipelineStageId: e.target.value }))}
-            className="h-8 w-full rounded-lg border border-wk-mid-grey px-2 text-sm"
+            className="h-8 w-full rounded-lg border border-border px-2 text-sm"
           >
             <option value="">Select stage</option>
             {pipelineStages.map((s) => (
@@ -260,7 +260,7 @@ function NewKioskForm({
         <Button
           onClick={handleCreate}
           disabled={isPending || !fields.kioskId}
-          className="bg-wk-azure text-white hover:bg-wk-azure/90"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           {isPending ? "Creating…" : "Create kiosk"}
         </Button>
@@ -347,7 +347,7 @@ function ExistingKioskForm({
           <DialogHeader>
             <DialogTitle>Archive this kiosk?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-wk-night-grey">
+          <p className="text-sm text-muted-foreground">
             This kiosk will be hidden from all views. You can restore it by filtering for
             archived records.
           </p>
@@ -383,7 +383,7 @@ function ExistingKioskForm({
           </DialogHeader>
           <div className="space-y-4">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-wk-mid-grey" />
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={locationSearch}
                 onChange={(e) => setLocationSearch(e.target.value)}
@@ -391,9 +391,9 @@ function ExistingKioskForm({
                 className="pl-8"
               />
             </div>
-            <div className="max-h-60 overflow-y-auto rounded-lg border border-wk-mid-grey">
+            <div className="max-h-60 overflow-y-auto rounded-lg border border-border">
               {filteredLocations.length === 0 ? (
-                <p className="p-4 text-center text-sm text-wk-night-grey">
+                <p className="p-4 text-center text-sm text-muted-foreground">
                   No locations found
                 </p>
               ) : (
@@ -402,19 +402,19 @@ function ExistingKioskForm({
                     key={loc.id}
                     onClick={() => setSelectedLocationId(loc.id)}
                     className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-wk-light-grey",
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
                       selectedLocationId === loc.id &&
-                        "bg-wk-sky-blue text-wk-graphite"
+                        "bg-primary/10 text-foreground"
                     )}
                   >
-                    <MapPin className="h-3.5 w-3.5 text-wk-mid-grey" />
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                     {loc.name}
                   </button>
                 ))
               )}
             </div>
             <div>
-              <Label className="text-[12px] text-wk-night-grey">Reason (optional)</Label>
+              <Label className="text-[12px] text-muted-foreground">Reason (optional)</Label>
               <Input
                 value={assignReason}
                 onChange={(e) => setAssignReason(e.target.value)}
@@ -434,7 +434,7 @@ function ExistingKioskForm({
             <Button
               onClick={handleAssign}
               disabled={isAssigning || !selectedLocationId}
-              className="bg-wk-azure text-white hover:bg-wk-azure/90"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {isAssigning
                 ? "Saving…"
@@ -515,7 +515,7 @@ function ExistingKioskForm({
               saveField("cmsConfigStatus", v, kiosk.cmsConfigStatus ?? undefined)
             }
           />
-          <span className="text-[12px] text-wk-night-grey">
+          <span className="text-[12px] text-muted-foreground">
             {kiosk.cmsConfigStatus === "configured" ? "Configured" : "Not configured"}
           </span>
         </FieldRow>
@@ -575,9 +575,9 @@ function ExistingKioskForm({
         {/* Current venue */}
         <FieldRow label="Current Venue">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-wk-graphite">
+            <span className="text-sm text-foreground">
               {kiosk.currentAssignment?.locationName ?? (
-                <span className="text-wk-mid-grey">Not assigned</span>
+                <span className="text-muted-foreground">Not assigned</span>
               )}
             </span>
             <Button
@@ -602,7 +602,7 @@ function ExistingKioskForm({
         {/* Assignment history sub-section */}
         <div className="ml-[196px] mt-3">
           <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
-            <CollapsibleTrigger className="flex items-center gap-1 text-[12px] text-wk-night-grey hover:text-wk-graphite">
+            <CollapsibleTrigger className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
               {historyOpen ? (
                 <ChevronUp className="h-3 w-3" />
               ) : (
@@ -687,7 +687,7 @@ export function KioskDetailForm({
 
   return (
     <Tabs defaultValue="details">
-      <TabsList variant="line" className="mb-6 border-b border-wk-mid-grey w-full rounded-none justify-start">
+      <TabsList variant="line" className="mb-6 border-b border-border w-full rounded-none justify-start">
         <TabsTrigger value="details">Details</TabsTrigger>
         <TabsTrigger value="audit">Audit</TabsTrigger>
       </TabsList>
