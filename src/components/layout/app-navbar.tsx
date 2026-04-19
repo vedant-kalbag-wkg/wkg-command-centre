@@ -36,14 +36,13 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  M3DropdownMenu,
+  M3DropdownMenuContent,
+  M3DropdownMenuItem,
+  M3DropdownMenuLabel,
+  M3DropdownMenuSeparator,
+  M3DropdownMenuTrigger,
+} from "@/components/ui/material-dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -267,63 +266,57 @@ function UserMenu({
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="icon" className="rounded-full" />
-        }
-      >
+    <M3DropdownMenu>
+      <M3DropdownMenuTrigger className="h-9 w-9">
         <Avatar className="h-8 w-8">
-          <AvatarFallback
-            className="text-white text-xs font-medium bg-[#00A6D3]"
-          >
+          <AvatarFallback className="text-white text-xs font-medium bg-[#00A6D3]">
             {getInitials(userName)}
           </AvatarFallback>
         </Avatar>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium leading-none">{userName}</p>
-              <p className="text-xs text-muted-foreground">{userEmail}</p>
-              <RoleBadge role={userRole} />
-            </div>
-          </DropdownMenuLabel>
-        </DropdownMenuGroup>
+      </M3DropdownMenuTrigger>
+      <M3DropdownMenuContent align="end" className="w-64">
+        <div className="flex items-center gap-3 px-4 py-3 m3-item-enter">
+          <Avatar className="h-10 w-10 shrink-0">
+            <AvatarFallback className="text-white text-sm font-medium bg-[#00A6D3]">
+              {getInitials(userName)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <p className="text-sm font-semibold leading-none truncate">{userName}</p>
+            <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+            <RoleBadge role={userRole} />
+          </div>
+        </div>
         {isAdmin && (
-          <DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Admin</DropdownMenuLabel>
+          <>
+            <M3DropdownMenuSeparator />
+            <M3DropdownMenuLabel>Admin</M3DropdownMenuLabel>
             {systemAdminItems.map((item) => {
               const Icon = item.icon;
               const active = isItemActive(item.href, pathname);
               return (
-                <DropdownMenuItem
+                <M3DropdownMenuItem
                   key={item.href}
-                  onClick={() => router.push(item.href)}
-                  className={cn(
-                    "cursor-pointer",
-                    active && "text-[#00A6D3] font-medium",
-                  )}
+                  onSelect={() => router.push(item.href)}
+                  className={cn(active && "text-[#00A6D3]")}
                 >
-                  <Icon className="mr-2 h-4 w-4" />
+                  <Icon className="h-5 w-5 text-muted-foreground" />
                   {item.label}
-                </DropdownMenuItem>
+                </M3DropdownMenuItem>
               );
             })}
-          </DropdownMenuGroup>
+          </>
         )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={handleSignOut}
-          className="text-red-600 focus:text-red-600 cursor-pointer"
+        <M3DropdownMenuSeparator />
+        <M3DropdownMenuItem
+          onSelect={handleSignOut}
+          className="text-red-600"
         >
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="h-5 w-5" />
           Sign Out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </M3DropdownMenuItem>
+      </M3DropdownMenuContent>
+    </M3DropdownMenu>
   );
 }
 
