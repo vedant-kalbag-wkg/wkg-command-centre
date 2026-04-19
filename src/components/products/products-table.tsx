@@ -9,7 +9,7 @@ import {
   flexRender,
   createColumnHelper,
 } from "@tanstack/react-table";
-import { Pencil, Trash2, Plus } from "lucide-react";
+import { Pencil, Trash2, Plus, Package } from "lucide-react";
 import { toast } from "sonner";
 import type { ProductListItem } from "@/app/(app)/products/actions";
 import { createProduct, deleteProduct } from "@/app/(app)/products/actions";
@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -177,57 +178,64 @@ export function ProductsTable({ data }: ProductsTableProps) {
     <>
       {/* Add Product CTA */}
       <div className="flex justify-end mb-4">
-        <Button
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-          onClick={() => setAddOpen(true)}
-        >
-          <Plus className="mr-1.5 h-4 w-4" />
-          Add Product
+        <Button size="sm" onClick={() => setAddOpen(true)}>
+          <Plus className="size-4" />
+          Add product
         </Button>
       </div>
 
-      {data.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground mb-2">
-            No products yet
-          </h2>
-          <p className="text-foreground/60 text-sm max-w-sm">
-            Products are imported from your Kiosk Config Groups board. Run an import
-            to populate this list.
-          </p>
-        </div>
-      ) : (
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => router.push(`/products/${row.original.id}`)}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      <div className="rounded-lg border border-border overflow-x-auto">
+        {data.length === 0 ? (
+          <EmptyState
+            icon={Package}
+            title="No products yet"
+            description="Products are imported from your Kiosk Config Groups board. Run an import to populate this list."
+            action={
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Plus className="size-4" />
+                Add product
+              </Button>
+            }
+          />
+        ) : (
+          <Table
+            className="table-fixed"
+            style={{ width: `max(100%, ${table.getCenterTotalSize()}px)` }}
+          >
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow
+                  key={headerGroup.id}
+                  className="bg-muted hover:bg-muted border-b border-border"
+                >
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  className="cursor-pointer transition-colors min-h-[44px] hover:bg-primary/10"
+                  onClick={() => router.push(`/products/${row.original.id}`)}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id} className="py-2.5">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
       {/* Add Product Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -254,9 +262,8 @@ export function ProductsTable({ data }: ProductsTableProps) {
               <Button
                 type="submit"
                 disabled={addLoading || !addName.trim()}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                {addLoading ? "Adding..." : "Add Product"}
+                {addLoading ? "Adding..." : "Add product"}
               </Button>
             </DialogFooter>
           </form>
