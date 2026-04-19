@@ -297,7 +297,7 @@ function UserMenu({
               return (
                 <DropdownMenuItem
                   key={item.href}
-                  render={<Link href={item.href} />}
+                  onClick={() => router.push(item.href)}
                   className={cn(
                     "cursor-pointer",
                     active && "text-[#00A6D3] font-medium",
