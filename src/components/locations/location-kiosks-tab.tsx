@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
+import { Monitor } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 
 type KioskAssignment = {
   assignmentId: string;
@@ -21,12 +23,11 @@ interface LocationKiosksTabProps {
 export function LocationKiosksTab({ assignments }: LocationKiosksTabProps) {
   if (assignments.length === 0) {
     return (
-      <div className="py-12 text-center">
-        <p className="text-sm text-muted-foreground">No kiosks assigned.</p>
-        <p className="mt-1 text-[12px] text-muted-foreground">
-          Kiosks assigned to this location will appear here.
-        </p>
-      </div>
+      <EmptyState
+        icon={Monitor}
+        title="No kiosks assigned"
+        description="Kiosks assigned to this location will appear here."
+      />
     );
   }
 

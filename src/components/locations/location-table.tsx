@@ -27,9 +27,10 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { ChevronRight, ChevronDown, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, MapPin } from "lucide-react";
 import { DraggableTableHead } from "@/components/table/draggable-header";
 import Link from "next/link";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { LocationListItem } from "@/app/(app)/locations/actions";
 import { updateLocationField } from "@/app/(app)/locations/actions";
 import { bulkUpdateLocations, bulkArchiveLocations } from "@/app/(app)/locations/bulk-actions";
@@ -255,41 +256,40 @@ export function LocationTable({ data }: LocationTableProps) {
       <div className="mt-2 rounded-lg border border-border overflow-x-auto">
         {!hasData ? (
           /* Empty state — no records */
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <h3 className="text-base font-semibold text-foreground">
-              No locations yet
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add your first location to assign kiosks to venues.
-            </p>
-            <Link href="/locations/new" className="mt-4">
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-                <Plus className="mr-1.5 h-4 w-4" />
-                Add location
-              </Button>
-            </Link>
-          </div>
+          <EmptyState
+            icon={MapPin}
+            title="No locations yet"
+            description="Add your first location to assign kiosks to venues."
+            action={
+              <Link href="/locations/new">
+                <Button size="sm">
+                  <Plus className="size-4" />
+                  Add location
+                </Button>
+              </Link>
+            }
+          />
         ) : !hasFilteredRows ? (
           /* Empty state — filters applied, no results */
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <h3 className="text-base font-semibold text-foreground">
-              No locations match your filters
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Try adjusting or clearing your filters to see more results.
-            </p>
-            {isFiltering && (
-              <button
-                type="button"
-                onClick={() => {
-                  useLocationViewStore.getState().resetToDefaults();
-                }}
-                className="mt-4 text-sm text-primary hover:underline"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={MapPin}
+            title="No locations match your filters"
+            description="Try adjusting or clearing your filters to see more results."
+            action={
+              isFiltering ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    useLocationViewStore.getState().resetToDefaults();
+                  }}
+                >
+                  Clear filters
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             <DndContext
