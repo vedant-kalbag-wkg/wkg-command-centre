@@ -99,16 +99,16 @@
   --chart-5: #ADADAD;
   --radius: 0.5rem;
 
-  /* Sidebar */
-  --sidebar: var(--color-wk-graphite);
-  --sidebar-foreground: var(--color-wk-white);
+  /* Sidebar — light mode (flips with theme per design Q3) */
+  --sidebar: var(--color-wk-light-grey);
+  --sidebar-foreground: var(--color-wk-graphite);
   --sidebar-primary: var(--color-wk-azure);
   --sidebar-primary-foreground: var(--color-wk-white);
-  --sidebar-accent: rgba(0, 166, 211, 0.15);
-  --sidebar-accent-foreground: var(--color-wk-white);
-  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-accent: rgba(0, 166, 211, 0.1);
+  --sidebar-accent-foreground: var(--color-wk-graphite);
+  --sidebar-border: rgba(0, 0, 0, 0.06);
   --sidebar-ring: var(--color-wk-azure);
-  --sidebar-background: var(--color-wk-graphite);
+  --sidebar-background: var(--color-wk-light-grey);
 }
 
 .dark {

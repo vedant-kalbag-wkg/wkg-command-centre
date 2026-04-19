@@ -15,7 +15,7 @@ export function AppShellV2({
       <AppSidebar isAdmin={isAdmin} />
       <SidebarInset className="min-w-0">
         <AppTopBar user={user} />
-        <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
+        <main className="flex-1 min-w-0 overflow-x-auto">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );
