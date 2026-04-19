@@ -14,7 +14,7 @@ export default async function LocationsPage() {
       title="Locations"
       action={
         <Link href="/locations/new">
-          <Button className="bg-wk-azure text-white hover:bg-wk-azure/90">
+          <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
             <Plus className="mr-1.5 h-4 w-4" />
             Add location
           </Button>

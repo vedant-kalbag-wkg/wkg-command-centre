@@ -38,7 +38,7 @@ export default async function InstallationDetailPage({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Installation details (editable form) */}
         <div>
-          <h2 className="text-base font-semibold text-wk-graphite tracking-[-0.01em] mb-4">
+          <h2 className="text-base font-semibold text-foreground tracking-[-0.01em] mb-4">
             Details
           </h2>
           <InstallationForm
@@ -50,8 +50,8 @@ export default async function InstallationDetailPage({
         {/* Right: Milestones + Team */}
         <div className="flex flex-col gap-6">
           {/* Milestones card */}
-          <div className="rounded-lg border border-wk-mid-grey p-4">
-            <h2 className="text-base font-semibold text-wk-graphite tracking-[-0.01em] mb-3">
+          <div className="rounded-lg border border-border p-4">
+            <h2 className="text-base font-semibold text-foreground tracking-[-0.01em] mb-3">
               Milestones
             </h2>
             <MilestoneList
@@ -61,8 +61,8 @@ export default async function InstallationDetailPage({
           </div>
 
           {/* Team card */}
-          <div className="rounded-lg border border-wk-mid-grey p-4">
-            <h2 className="text-base font-semibold text-wk-graphite tracking-[-0.01em] mb-3">
+          <div className="rounded-lg border border-border p-4">
+            <h2 className="text-base font-semibold text-foreground tracking-[-0.01em] mb-3">
               Team
             </h2>
             <ResourceMemberList

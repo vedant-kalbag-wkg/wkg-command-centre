@@ -20,7 +20,7 @@ const CalendarTab = dynamic(
 function TabLoadingPlaceholder() {
   return (
     <div className="flex items-center justify-center py-24">
-      <Loader2 className="animate-spin size-5 text-wk-azure" />
+      <Loader2 className="animate-spin size-5 text-primary" />
     </div>
   );
 }
@@ -59,8 +59,8 @@ export function InstallationViewTabsClient({
 
       <div className="relative">
         {isPending && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 pointer-events-none">
-            <Loader2 className="animate-spin size-5 text-wk-azure" />
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 pointer-events-none">
+            <Loader2 className="animate-spin size-5 text-primary" />
             <span className="sr-only">Loading...</span>
           </div>
         )}

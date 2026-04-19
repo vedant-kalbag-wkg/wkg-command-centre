@@ -38,7 +38,7 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
     <AppShell title={product.name}>
       {hotels.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-wk-graphite/60 text-sm">
+          <p className="text-foreground/60 text-sm">
             No hotels configured for this product yet.
           </p>
         </div>
@@ -57,13 +57,13 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
                 <TableCell>
                   <Link
                     href={`/locations/${hotel.locationId}`}
-                    className="text-wk-azure hover:underline"
+                    className="text-primary hover:underline"
                   >
                     {hotel.locationName}
                   </Link>
                 </TableCell>
                 <TableCell>{availabilityBadge(hotel.availability)}</TableCell>
-                <TableCell className="text-wk-graphite/70">
+                <TableCell className="text-foreground/70">
                   {hotel.providerName ?? "—"}
                 </TableCell>
               </TableRow>

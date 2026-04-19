@@ -72,12 +72,12 @@ function pastConfigs(configs: VersionedTierConfig[]): VersionedTierConfig[] {
 function AvailabilityDot({ availability }: { availability: string }) {
   const colorMap: Record<string, string> = {
     yes: "bg-green-500",
-    no: "bg-wk-mid-grey",
+    no: "bg-border",
     unavailable: "bg-red-400",
   };
   return (
     <span
-      className={`inline-block h-2 w-2 rounded-full ${colorMap[availability] ?? "bg-wk-mid-grey"}`}
+      className={`inline-block h-2 w-2 rounded-full ${colorMap[availability] ?? "bg-border"}`}
     />
   );
 }
@@ -88,7 +88,7 @@ function AvailabilityDot({ availability }: { availability: string }) {
 
 function TierChips({ tiers }: { tiers: CommissionTier[] }) {
   if (!tiers || tiers.length === 0) {
-    return <span className="text-wk-mid-grey text-[12px]">No tiers</span>;
+    return <span className="text-muted-foreground text-[12px]">No tiers</span>;
   }
   return (
     <div className="flex flex-wrap gap-1">
@@ -97,7 +97,7 @@ function TierChips({ tiers }: { tiers: CommissionTier[] }) {
         return (
           <span
             key={i}
-            className="inline-flex items-center rounded bg-wk-light-grey px-1.5 py-0.5 text-[11px] text-wk-night-grey"
+            className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
           >
             {tier.maxRevenue !== null
               ? `<${tier.maxRevenue.toLocaleString()}: ${displayRate}%`
@@ -154,10 +154,10 @@ function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
   };
 
   return (
-    <div className="space-y-2 rounded-md border border-wk-mid-grey p-3">
+    <div className="space-y-2 rounded-md border border-border p-3">
       <div className="flex items-center gap-2 pb-1">
-        <Calendar className="h-3.5 w-3.5 text-wk-night-grey" />
-        <label className="text-[11px] font-medium uppercase tracking-wide text-wk-night-grey">
+        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+        <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Effective from
         </label>
         <Input
@@ -172,7 +172,7 @@ function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
           </span>
         )}
       </div>
-      <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-1.5 text-[11px] font-medium uppercase tracking-wide text-wk-night-grey">
+      <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         <span>Min Revenue</span>
         <span>Max Revenue</span>
         <span>Rate (%)</span>
@@ -204,7 +204,7 @@ function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 text-wk-mid-grey hover:text-destructive"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
             onClick={() => removeTier(i)}
           >
             ×
@@ -227,7 +227,7 @@ function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
           </Button>
           <Button
             size="sm"
-            className="h-7 bg-wk-azure text-white text-[12px] hover:bg-wk-azure/90"
+            className="h-7 bg-primary text-primary-foreground text-[12px] hover:bg-primary/90"
             onClick={() =>
               onSave(
                 editedTiers.map((t) => ({ ...t, rate: t.rate / 100 })),
@@ -303,8 +303,8 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
   };
 
   return (
-    <tr className="border-b border-wk-light-grey hover:bg-wk-light-grey/30">
-      <td className="py-3 pr-4 text-sm font-medium text-wk-graphite">
+    <tr className="border-b border-border hover:bg-muted/30">
+      <td className="py-3 pr-4 text-sm font-medium text-foreground">
         {item.productName}
       </td>
       <td className="py-3 pr-4">
@@ -314,7 +314,7 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
             value={item.availability}
             onChange={(e) => handleAvailabilityChange(e.target.value)}
             disabled={isUpdating}
-            className="h-7 rounded border border-wk-mid-grey px-2 text-sm text-wk-graphite focus:ring-1 focus:ring-wk-azure disabled:opacity-50"
+            className="h-7 rounded border border-border px-2 text-sm text-foreground focus:ring-1 focus:ring-ring disabled:opacity-50"
           >
             <option value="yes">Yes</option>
             <option value="no">No</option>
@@ -327,7 +327,7 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
           value={item.providerId ?? ""}
           onChange={(e) => handleProviderChange(e.target.value)}
           disabled={isUpdating}
-          className="h-7 rounded border border-wk-mid-grey px-2 text-sm text-wk-graphite focus:ring-1 focus:ring-wk-azure disabled:opacity-50"
+          className="h-7 rounded border border-border px-2 text-sm text-foreground focus:ring-1 focus:ring-ring disabled:opacity-50"
         >
           <option value="">None</option>
           {allProviders.map((p) => (
@@ -375,7 +375,7 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
               className="flex items-center gap-1 text-left hover:opacity-70"
             >
               <TierChips tiers={currentTiers(item.commissionTiers)} />
-              <span className="ml-1 text-[11px] text-wk-azure">
+              <span className="ml-1 text-[11px] text-primary">
                 <ChevronDown className="h-3 w-3" />
               </span>
             </button>
@@ -386,17 +386,17 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
             <div>
               <button
                 onClick={() => setShowHistory((v) => !v)}
-                className="flex items-center gap-1 text-[11px] text-wk-night-grey hover:text-wk-graphite"
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
               >
                 <History className="h-3 w-3" />
                 <span>Tier History ({pastConfigs(item.commissionTiers).length})</span>
                 {showHistory ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               </button>
               {showHistory && (
-                <div className="mt-1 space-y-1.5 border-l-2 border-wk-light-grey pl-2">
+                <div className="mt-1 space-y-1.5 border-l-2 border-border pl-2">
                   {pastConfigs(item.commissionTiers).map((cfg) => (
                     <div key={cfg.effectiveFrom} className="space-y-0.5">
-                      <span className="text-[10px] font-medium text-wk-night-grey">
+                      <span className="text-[10px] font-medium text-muted-foreground">
                         {cfg.effectiveFrom}
                       </span>
                       <TierChips tiers={cfg.tiers} />
@@ -411,7 +411,7 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
           {isAdmin && (
             <div>
               {showRecalc ? (
-                <div className="flex items-center gap-2 rounded-md border border-wk-mid-grey p-2">
+                <div className="flex items-center gap-2 rounded-md border border-border p-2">
                   <Input
                     type="month"
                     value={recalcMonth}
@@ -423,7 +423,7 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
                   />
                   <Button
                     size="sm"
-                    className="h-7 bg-wk-azure text-white text-[12px] hover:bg-wk-azure/90"
+                    className="h-7 bg-primary text-primary-foreground text-[12px] hover:bg-primary/90"
                     onClick={handleRecalculate}
                     disabled={isRecalculating}
                   >
@@ -446,7 +446,7 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
               ) : (
                 <button
                   onClick={() => setShowRecalc(true)}
-                  className="flex items-center gap-1 text-[11px] text-wk-azure hover:text-wk-azure/80"
+                  className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80"
                 >
                   <RefreshCw className="h-3 w-3" />
                   <span>Recalculate</span>
@@ -535,7 +535,7 @@ export function LocationProductsClient({ locationId }: LocationProductsClientPro
   if (loading) {
     return (
       <div className="py-12 text-center">
-        <p className="text-sm text-wk-night-grey">Loading products…</p>
+        <p className="text-sm text-muted-foreground">Loading products…</p>
       </div>
     );
   }
@@ -544,26 +544,26 @@ export function LocationProductsClient({ locationId }: LocationProductsClientPro
     <div className="space-y-4">
       {locationProductItems.length === 0 ? (
         <div className="py-12 text-center">
-          <p className="text-sm text-wk-night-grey">No products configured for this location.</p>
-          <p className="mt-1 text-[12px] text-wk-mid-grey">
+          <p className="text-sm text-muted-foreground">No products configured for this location.</p>
+          <p className="mt-1 text-[12px] text-muted-foreground">
             Add a product below to configure availability and commission tiers.
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-wk-mid-grey">
+        <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-wk-mid-grey bg-wk-light-grey/50 text-left">
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-wk-night-grey">
+              <tr className="border-b border-border bg-muted/50 text-left">
+                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Product
                 </th>
-                <th className="px-0 py-3 pr-4 text-[11px] font-medium uppercase tracking-wide text-wk-night-grey">
+                <th className="px-0 py-3 pr-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Availability
                 </th>
-                <th className="py-3 pr-4 text-[11px] font-medium uppercase tracking-wide text-wk-night-grey">
+                <th className="py-3 pr-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Provider
                 </th>
-                <th className="py-3 pr-4 text-[11px] font-medium uppercase tracking-wide text-wk-night-grey">
+                <th className="py-3 pr-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Commission Tiers
                 </th>
               </tr>
@@ -584,7 +584,7 @@ export function LocationProductsClient({ locationId }: LocationProductsClientPro
       )}
 
       {/* Add product section */}
-      <div className="flex items-center gap-2 rounded-md border border-wk-mid-grey p-3">
+      <div className="flex items-center gap-2 rounded-md border border-border p-3">
         <Input
           placeholder="New product name…"
           value={newProductName}
@@ -599,13 +599,13 @@ export function LocationProductsClient({ locationId }: LocationProductsClientPro
           size="sm"
           onClick={handleAddProduct}
           disabled={isAdding || !newProductName.trim()}
-          className="h-8 bg-wk-azure text-white hover:bg-wk-azure/90"
+          className="h-8 bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="mr-1.5 h-3.5 w-3.5" />
           {isAdding ? "Adding…" : "Add Product"}
         </Button>
       </div>
-      <p className="text-[11px] text-wk-mid-grey">
+      <p className="text-[11px] text-muted-foreground">
         Adding a product makes it available across all locations with "Unavailable" status by default.
       </p>
     </div>
