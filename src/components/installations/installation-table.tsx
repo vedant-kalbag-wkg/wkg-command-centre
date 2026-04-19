@@ -25,11 +25,12 @@ import {
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Package } from "lucide-react";
 import { DraggableTableHead } from "@/components/table/draggable-header";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableHeader,
@@ -197,20 +198,19 @@ export function InstallationTable({ data }: InstallationTableProps) {
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       {!hasData ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <h3 className="text-base font-semibold text-foreground">
-            No installations yet
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Create an installation to start planning deployment timelines.
-          </p>
-          <Link href="/installations/new" className="mt-4">
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add installation
-            </Button>
-          </Link>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="No installations yet"
+          description="Create an installation to start planning deployment timelines."
+          action={
+            <Link href="/installations/new">
+              <Button size="sm">
+                <Plus className="size-4" />
+                Add installation
+              </Button>
+            </Link>
+          }
+        />
       ) : (
         <DndContext
           id="installation-table-dnd"

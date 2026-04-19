@@ -41,9 +41,10 @@ export function InstallationDetailActions({
     <>
       <Button
         variant="destructive"
+        size="sm"
         onClick={() => setShowDeleteDialog(true)}
       >
-        <Trash2 className="mr-1.5 h-4 w-4" />
+        <Trash2 className="size-4" />
         Delete installation
       </Button>
 
