@@ -223,7 +223,7 @@ export default function CommissionPage() {
               </thead>
               <tbody>
                 {d.byLocation.map((row) => (
-                  <tr key={row.locationName} className="border-b hover:bg-muted/30">
+                  <tr key={row.locationId} className="border-b hover:bg-muted/30">
                     <td className="px-4 py-2 font-medium">{row.locationName}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency(row.commissionable)}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency(row.commission)}</td>
