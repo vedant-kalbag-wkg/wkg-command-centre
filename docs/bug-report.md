@@ -209,6 +209,23 @@ Keep the regions-as-cards layout, but add an empty-state prompt like "Select a r
 
 **Where:** once A.4 is fixed, add to `src/app/(app)/analytics/commission/page.tsx`. Consider whether the hotel filter should be page-local or joined into the shared analytics filter bar (currently the shared bar has "Locations" already — check if that filter is applied to commission queries; if yes, the request may reduce to "make sure commission respects the existing Locations filter").
 
+### C.7 Portfolio — Low Performer Patterns section
+
+**Context:** `/analytics/portfolio` now surfaces "High Performer Patterns" (traits shared by top-tier outlets) as the lead chart card. The symmetric counterpart — a "Low Performer Patterns" section describing traits shared by bottom-tier outlets — does not exist yet.
+
+**Requested:**
+- A new `LowPerformerPatterns` component mirroring `HighPerformerPatterns`: insight bullets, KPI values, distribution tables, and any related top/bottom products breakdown.
+- A backing server action (likely sibling to `fetchHighPerformerPatterns`) — e.g., `fetchLowPerformerPatterns` — that returns the same shape computed against the bottom tier instead of the top.
+- Render on `/analytics/portfolio` immediately below High Performer Patterns as a full-width ChartCard.
+
+**Where:**
+- `src/app/(app)/analytics/portfolio/high-performer-patterns.tsx` → copy to a new `low-performer-patterns.tsx`.
+- `src/app/(app)/analytics/portfolio/actions.ts` → add `fetchLowPerformerPatterns`.
+- `src/app/(app)/analytics/portfolio/page.tsx` → add the new ChartCard and wire data fetching.
+- `src/lib/analytics/types.ts` → mirror whatever types support high-performer data.
+
+**Severity:** Medium feature — not blocking the UI modernization but a clear symmetry gap in the portfolio dashboard.
+
 ### C.6 Heat-map weights — user customizable with validation
 
 **Page:** `/analytics/heat-map`.
@@ -313,6 +330,7 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 | B-prime.1 | Medium | Auth/admin | Open |
 | C.5 | Feature | Analytics | Backlog |
 | C.6 | Feature | Analytics | Backlog |
+| C.7 | Feature | Analytics | Backlog |
 | C.1 | Design | TBD | Backlog |
 | C.2 | Design | TBD | Backlog |
 | C.3 | Design | TBD | Backlog |

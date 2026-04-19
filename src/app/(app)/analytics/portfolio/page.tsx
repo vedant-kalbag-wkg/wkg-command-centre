@@ -265,6 +265,20 @@ export default function PortfolioPage() {
         {/* 12-col chart grid */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           <ChartCard
+            title="High Performer Patterns"
+            description="Traits shared by top-tier outlets"
+            className="gap-0 py-0 lg:col-span-12"
+            loading={loading}
+            empty={!loading && !hasHighPerformerData}
+            emptyMessage="No performance data for selected filters"
+            collapsible
+          >
+            {highPerformerData && (
+              <HighPerformerPatterns data={highPerformerData} />
+            )}
+          </ChartCard>
+
+          <ChartCard
             title="Daily Trends"
             description="Revenue and transactions over time"
             className="gap-0 py-0 lg:col-span-12"
@@ -341,19 +355,6 @@ export default function PortfolioPage() {
             )}
           </ChartCard>
 
-          <ChartCard
-            title="High Performer Patterns"
-            description="Traits shared by top-tier outlets"
-            className="gap-0 py-0 lg:col-span-12"
-            loading={loading}
-            empty={!loading && !hasHighPerformerData}
-            emptyMessage="No performance data for selected filters"
-            collapsible
-          >
-            {highPerformerData && (
-              <HighPerformerPatterns data={highPerformerData} />
-            )}
-          </ChartCard>
         </div>
       </div>
 
