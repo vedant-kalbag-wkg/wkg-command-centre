@@ -219,7 +219,7 @@ export function InstallationTable({ data }: InstallationTableProps) {
           modifiers={DND_MODIFIERS}
           onDragEnd={handleColumnDragEnd}
         >
-        <Table className="table-fixed" style={{ width: table.getCenterTotalSize() }}>
+        <Table className="table-fixed" style={{ width: `max(100%, ${table.getCenterTotalSize()}px)` }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow
