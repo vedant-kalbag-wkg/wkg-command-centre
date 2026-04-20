@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import {
   BarChart,
   Bar,
@@ -78,32 +79,27 @@ export default function MaturityPage() {
   const [error, setError] = useState<string | null>(null);
 
   const filtersJson = JSON.stringify(filters);
-  const abortRef = useRef<AbortController | null>(null);
+
+  // Discard stale server-action results on unmount / newer dispatch.
+  const fetchMaturity = useAbortableAction(fetchMaturityAnalysis);
 
   const loadData = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setLoading(true);
     setError(null);
 
     try {
       const parsed = JSON.parse(filtersJson) as AnalyticsFilters;
-      const result = await fetchMaturityAnalysis(parsed);
-      if (!controller.signal.aborted) {
-        setData(result);
-      }
+      const result = await fetchMaturity(parsed);
+      // `null` from the abortable dispatcher means a newer call superseded
+      // this one (or the component unmounted) — discard this batch.
+      if (result === null) return;
+      setData(result);
     } catch (err) {
-      if (!controller.signal.aborted) {
-        setError(err instanceof Error ? err.message : "Failed to load data");
-      }
+      setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [filtersJson]);
+  }, [filtersJson, fetchMaturity]);
 
   useEffect(() => {
     loadData();

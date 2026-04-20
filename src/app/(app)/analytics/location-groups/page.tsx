@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { MapPin } from "lucide-react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,51 +26,41 @@ export default function LocationGroupsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const filtersJson = JSON.stringify(filters);
-  const abortRef = useRef<AbortController | null>(null);
-  const detailAbortRef = useRef<AbortController | null>(null);
+
+  // Discard stale server-action results on unmount / newer dispatch.
+  const fetchList = useAbortableAction(fetchLocationGroupsList);
+  const fetchDetail = useAbortableAction(fetchLocationGroupDetail);
 
   // Load groups list when filters change
   const loadGroups = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setListLoading(true);
     setError(null);
 
     try {
       const parsed = JSON.parse(filtersJson);
-      const result = await fetchLocationGroupsList(parsed);
-      if (!controller.signal.aborted) {
-        setGroups(result);
-        // Do NOT auto-select — the user must pick a group explicitly, which
-        // drives the "no group selected" EmptyState below. Clear selection
-        // only if it is no longer in the filtered result set.
-        const stillValid = result.some((g) => g.id === selectedGroupId);
-        if (!stillValid) {
-          setSelectedGroupId(null);
-          setDetail(null);
-        }
+      const result = await fetchList(parsed);
+      if (result === null) return;
+      setGroups(result);
+      // Do NOT auto-select — the user must pick a group explicitly, which
+      // drives the "no group selected" EmptyState below. Clear selection
+      // only if it is no longer in the filtered result set.
+      const stillValid = result.some((g) => g.id === selectedGroupId);
+      if (!stillValid) {
+        setSelectedGroupId(null);
+        setDetail(null);
       }
     } catch (err) {
-      if (!controller.signal.aborted) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load location groups",
-        );
-      }
+      setError(
+        err instanceof Error ? err.message : "Failed to load location groups",
+      );
     } finally {
-      if (!controller.signal.aborted) {
-        setListLoading(false);
-      }
+      setListLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtersJson]);
+  }, [filtersJson, fetchList]);
 
   useEffect(() => {
     loadGroups();
-    return () => {
-      abortRef.current?.abort();
-    };
   }, [loadGroups]);
 
   // Load detail when selected group changes
@@ -79,36 +70,26 @@ export default function LocationGroupsPage() {
       return;
     }
 
-    detailAbortRef.current?.abort();
-    const controller = new AbortController();
-    detailAbortRef.current = controller;
-
     setDetailLoading(true);
 
     try {
       const parsed = JSON.parse(filtersJson);
-      const result = await fetchLocationGroupDetail([selectedGroupId], parsed);
-      if (!controller.signal.aborted) {
-        setDetail(result);
-      }
+      const result = await fetchDetail([selectedGroupId], parsed);
+      // `null` from the abortable dispatcher means a newer call superseded
+      // this one (or the component unmounted) — discard this batch.
+      if (result === null) return;
+      setDetail(result);
     } catch (err) {
-      if (!controller.signal.aborted) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load group detail",
-        );
-      }
+      setError(
+        err instanceof Error ? err.message : "Failed to load group detail",
+      );
     } finally {
-      if (!controller.signal.aborted) {
-        setDetailLoading(false);
-      }
+      setDetailLoading(false);
     }
-  }, [selectedGroupId, filtersJson]);
+  }, [selectedGroupId, filtersJson, fetchDetail]);
 
   useEffect(() => {
     loadDetail();
-    return () => {
-      detailAbortRef.current?.abort();
-    };
   }, [loadDetail]);
 
   const emptyDetail: LocationGroupDetail = {

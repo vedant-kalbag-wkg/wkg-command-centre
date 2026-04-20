@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Flag } from "lucide-react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { ChartCard } from "@/components/ui/chart-card";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -95,14 +96,11 @@ export default function PortfolioPage() {
 
   // Serialize filters for effect dependency (stable reference comparison)
   const filtersJson = JSON.stringify(filters);
-  const abortRef = useRef<AbortController | null>(null);
+
+  // Discard stale server-action results on unmount / newer dispatch.
+  const fetchPortfolio = useAbortableAction(fetchPortfolioData);
 
   const loadData = useCallback(async () => {
-    // Cancel any in-flight request
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setLoading(true);
     setError(null);
 
@@ -110,39 +108,33 @@ export default function PortfolioPage() {
       const parsed = JSON.parse(filtersJson) as AnalyticsFilters;
       const [result, thresholds, eventsResult, hpResult, lpResult, activeFlags] =
         await Promise.all([
-          fetchPortfolioData(parsed, comparisonMode),
+          fetchPortfolio(parsed, comparisonMode),
           fetchThresholdConfig(),
           fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo).catch(() => []),
           fetchHighPerformerPatterns(parsed, greenCutoff).catch(() => null),
           fetchLowPerformerPatterns(parsed, redCutoff).catch(() => null),
           fetchActiveFlags().catch(() => []),
         ]);
-      if (!controller.signal.aborted) {
-        setData(result);
-        setThresholdConfig(thresholds);
-        setEvents(eventsResult);
-        setHighPerformerData(hpResult);
-        setLowPerformerData(lpResult);
-        setFlags(activeFlags);
-      }
+      // `null` from the abortable dispatcher means a newer call superseded
+      // this one (or the component unmounted) — discard this batch.
+      if (result === null) return;
+      setData(result);
+      setThresholdConfig(thresholds);
+      setEvents(eventsResult);
+      setHighPerformerData(hpResult);
+      setLowPerformerData(lpResult);
+      setFlags(activeFlags);
     } catch (err) {
-      if (!controller.signal.aborted) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load portfolio data",
-        );
-      }
+      setError(
+        err instanceof Error ? err.message : "Failed to load portfolio data",
+      );
     } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [filtersJson, comparisonMode, greenCutoff, redCutoff]);
+  }, [filtersJson, comparisonMode, greenCutoff, redCutoff, fetchPortfolio]);
 
   useEffect(() => {
     loadData();
-    return () => {
-      abortRef.current?.abort();
-    };
   }, [loadData]);
 
   const comparisonLabel = comparisonMode === "mom" ? "vs. prev." : "vs. prev. yr";

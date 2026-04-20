@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAnalyticsFilterStore } from "@/lib/stores/analytics-filter-store";
+import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { useTrendStore } from "@/lib/stores/trend-store";
 import { toLocalISODate } from "@/lib/analytics/formatters";
 import { PageHeader } from "@/components/layout/page-header";
@@ -70,7 +71,6 @@ export default function TrendBuilderPage() {
   const [events, setEvents] = useState<BusinessEventDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
 
   // Serialize dependencies for effect stability
   const seriesJson = JSON.stringify(
@@ -110,11 +110,79 @@ export default function TrendBuilderPage() {
     }
   }, [weatherAllowed, showWeather, setShowWeather]);
 
-  const loadData = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  // Wrap the whole batched fetch once so the monotonic req-id covers every
+  // parallel sub-request within a single dispatch. Discards stale results on
+  // unmount / newer dispatch.
+  const fetchAll = useAbortableAction(
+    useCallback(
+      async (
+        parsed: {
+          id: string;
+          metric: TrendMetric;
+          filters: SeriesFilters;
+        }[],
+      ) => {
+        const seriesPromises = parsed.map(async (s) => {
+          const data = await fetchTrendSeriesData(
+            s.metric,
+            s.filters,
+            dateFrom,
+            dateTo,
+          );
+          return [s.id, data] as const;
+        });
 
+        const yoyPromises = showYoY
+          ? parsed.map(async (s) => {
+              const data = await fetchTrendSeriesDataYoY(
+                s.metric,
+                s.filters,
+                dateFrom,
+                dateTo,
+              );
+              return [s.id, data] as const;
+            })
+          : [];
+
+        // Server-side gate: only fetch weather when exactly one location group
+        // is effectively selected. Resolves lat/lng from the first location in
+        // the group server-side.
+        const weatherPromise =
+          showWeather && weatherAllowed && effectiveLocationGroupId
+            ? fetchWeatherForLocationGroup(
+                effectiveLocationGroupId,
+                dateFrom,
+                dateTo,
+              )
+            : Promise.resolve([] as DailyWeather[]);
+
+        const eventsPromise = showEvents
+          ? fetchBusinessEvents(dateFrom, dateTo)
+          : Promise.resolve([] as BusinessEventDisplay[]);
+
+        const [seriesResults, yoyResults, weatherResult, eventsResult] =
+          await Promise.all([
+            Promise.all(seriesPromises),
+            Promise.all(yoyPromises),
+            weatherPromise,
+            eventsPromise,
+          ]);
+
+        return { seriesResults, yoyResults, weatherResult, eventsResult };
+      },
+      [
+        dateFrom,
+        dateTo,
+        showWeather,
+        showEvents,
+        showYoY,
+        weatherAllowed,
+        effectiveLocationGroupId,
+      ],
+    ),
+  );
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -125,87 +193,26 @@ export default function TrendBuilderPage() {
         filters: SeriesFilters;
       }[];
 
-      // Fetch all series in parallel
-      const seriesPromises = parsed.map(async (s) => {
-        const data = await fetchTrendSeriesData(
-          s.metric,
-          s.filters,
-          dateFrom,
-          dateTo,
-        );
-        return [s.id, data] as const;
-      });
+      const result = await fetchAll(parsed);
+      // `null` from the abortable dispatcher means a newer call superseded
+      // this one (or the component unmounted) — discard this batch.
+      if (result === null) return;
 
-      // Fetch YoY series in parallel when enabled
-      const yoyPromises = showYoY
-        ? parsed.map(async (s) => {
-            const data = await fetchTrendSeriesDataYoY(
-              s.metric,
-              s.filters,
-              dateFrom,
-              dateTo,
-            );
-            return [s.id, data] as const;
-          })
-        : [];
-
-      // Fetch weather + events in parallel with series.
-      // Server-side gate: only fetches when exactly one location group is
-      // effectively selected. Passes the group id and resolves lat/lng from
-      // the first location in the group server-side.
-      const weatherPromise =
-        showWeather && weatherAllowed && effectiveLocationGroupId
-          ? fetchWeatherForLocationGroup(
-              effectiveLocationGroupId,
-              dateFrom,
-              dateTo,
-            )
-          : Promise.resolve([]);
-
-      const eventsPromise = showEvents
-        ? fetchBusinessEvents(dateFrom, dateTo)
-        : Promise.resolve([]);
-
-      const [seriesResults, yoyResults, weatherResult, eventsResult] = await Promise.all([
-        Promise.all(seriesPromises),
-        Promise.all(yoyPromises),
-        weatherPromise,
-        eventsPromise,
-      ]);
-
-      if (!controller.signal.aborted) {
-        setSeriesData(new Map(seriesResults));
-        setYoyData(showYoY ? new Map(yoyResults) : new Map());
-        setWeatherData(weatherResult);
-        setEvents(eventsResult);
-      }
+      setSeriesData(new Map(result.seriesResults));
+      setYoyData(showYoY ? new Map(result.yoyResults) : new Map());
+      setWeatherData(result.weatherResult);
+      setEvents(result.eventsResult);
     } catch (err) {
-      if (!controller.signal.aborted) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load trend data",
-        );
-      }
+      setError(
+        err instanceof Error ? err.message : "Failed to load trend data",
+      );
     } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [
-    seriesJson,
-    dateFrom,
-    dateTo,
-    showWeather,
-    showEvents,
-    showYoY,
-    weatherAllowed,
-    effectiveLocationGroupId,
-  ]);
+  }, [seriesJson, showYoY, fetchAll]);
 
   useEffect(() => {
     loadData();
-    return () => {
-      abortRef.current?.abort();
-    };
   }, [loadData]);
 
   // Apply rolling average transformation client-side
