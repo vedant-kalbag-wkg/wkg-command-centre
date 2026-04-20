@@ -19,7 +19,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CreateActionDialog } from "@/components/analytics/create-action-dialog";
-import { Plus } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ClipboardList, Plus } from "lucide-react";
 import {
   listActionItems,
   updateActionItemStatus,
@@ -113,23 +115,18 @@ export default function ActionsDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Action Dashboard
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {openCount} open action{openCount !== 1 ? "s" : ""} across the
-            portfolio
-          </p>
-        </div>
-        <CreateActionDialog sourceType="manual" onCreated={loadItems}>
-          <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
-            <Plus className="mr-1.5 size-3.5" />
-            New Action
-          </Button>
-        </CreateActionDialog>
-      </div>
+      <PageHeader
+        title="Action Dashboard"
+        description={`${openCount} open action${openCount !== 1 ? "s" : ""} across the portfolio`}
+        actions={
+          <CreateActionDialog sourceType="manual" onCreated={loadItems}>
+            <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
+              <Plus className="mr-1.5 size-3.5" />
+              New Action
+            </Button>
+          </CreateActionDialog>
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
@@ -171,8 +168,12 @@ export default function ActionsDashboardPage() {
           Loading actions...
         </div>
       ) : items.length === 0 ? (
-        <div className="flex h-48 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-          No action items found.
+        <div className="rounded-lg border border-dashed">
+          <EmptyState
+            icon={ClipboardList}
+            title="No action items found"
+            description="Adjust your filters or create a new action to populate this list."
+          />
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
