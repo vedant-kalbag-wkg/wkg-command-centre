@@ -19,11 +19,11 @@ import {
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
-import {
-  classifyTrafficLight,
-  type ThresholdConfig,
-} from "@/lib/analytics/thresholds";
-import type { AnalyticsFilters, HighPerformerPatterns } from "@/lib/analytics/types";
+import type {
+  AnalyticsFilters,
+  HighPerformerPatterns,
+  LowPerformerPatterns,
+} from "@/lib/analytics/types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dbAny = db as any;
@@ -52,16 +52,57 @@ async function buildWhere(
   ]);
 }
 
-// ─── Main Query ─────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-export async function getHighPerformerPatterns(
+function clampCutoff(pct: number): number {
+  if (!Number.isFinite(pct)) return 30;
+  if (pct <= 0) return 0;
+  if (pct >= 100) return 100;
+  return Math.round(pct);
+}
+
+/**
+ * Given per-location revenues sorted DESC (best first), return the set of
+ * location IDs in the top `cutoffPct` percent ("top") or the bottom
+ * `cutoffPct` percent ("bottom"). Uses ceil to ensure at least 1 entry
+ * when cutoff > 0 and any locations exist.
+ */
+function pickTierIds(
+  sortedDesc: { location_id: string; revenue: number }[],
+  cutoffPct: number,
+  direction: "top" | "bottom",
+): string[] {
+  const n = sortedDesc.length;
+  if (n === 0 || cutoffPct <= 0) return [];
+  const count = Math.min(n, Math.max(1, Math.ceil((n * cutoffPct) / 100)));
+  return direction === "top"
+    ? sortedDesc.slice(0, count).map((r) => r.location_id)
+    : sortedDesc.slice(n - count).map((r) => r.location_id);
+}
+
+// ─── Core computation (shared by top & bottom) ──────────────────────────────
+
+type CommonShape = {
+  count: number;
+  totalCount: number;
+  insights: string[];
+  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
+  regionDistribution: { name: string; count: number; percentage: number }[];
+  avgKioskCount: number | null;
+  avgRoomCount: number | null;
+  avgRevenuePerRoom: number | null;
+  topProducts: { name: string; revenue: number }[];
+};
+
+async function computePerformerPatterns(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
-  thresholdConfig: ThresholdConfig,
-): Promise<HighPerformerPatterns> {
+  cutoffPct: number,
+  direction: "top" | "bottom",
+): Promise<CommonShape> {
   const whereClause = await buildWhere(filters, userCtx);
 
-  // 1. Get per-location revenue
+  // 1. Per-location revenue + rooms (our composite-score proxy for this view)
   const locationRevenues = await db.execute<{
     location_id: string;
     location_name: string;
@@ -81,34 +122,37 @@ export async function getHighPerformerPatterns(
 
   const totalCount = locationRevenues.length;
 
-  // 2. Classify each location
-  const greenLocationIds: string[] = [];
-  const greenRooms: number[] = [];
-  let greenTotalRevenue = 0;
-  let greenTotalRooms = 0;
+  // 2. Sort DESC by revenue, then pick top-N% or bottom-N%.
+  const sortedDesc = locationRevenues
+    .map((r) => ({
+      location_id: r.location_id,
+      revenue: Number(r.revenue),
+      num_rooms: r.num_rooms == null ? null : Number(r.num_rooms),
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
 
-  for (const row of locationRevenues) {
-    const revenue = Number(row.revenue);
-    const tier = classifyTrafficLight(revenue, thresholdConfig);
-    if (tier === "green") {
-      greenLocationIds.push(row.location_id);
-      greenTotalRevenue += revenue;
-      if (row.num_rooms != null) {
-        const rooms = Number(row.num_rooms);
-        greenRooms.push(rooms);
-        greenTotalRooms += rooms;
-      }
-    }
-  }
+  const tierIds = pickTierIds(sortedDesc, cutoffPct, direction);
+  const tierSet = new Set(tierIds);
+  const tierRevenueById = new Map(
+    sortedDesc
+      .filter((r) => tierSet.has(r.location_id))
+      .map((r) => [r.location_id, r.revenue] as const),
+  );
+  const tierRooms: number[] = sortedDesc
+    .filter((r) => tierSet.has(r.location_id) && r.num_rooms != null)
+    .map((r) => r.num_rooms as number);
 
-  const greenCount = greenLocationIds.length;
+  const count = tierIds.length;
 
-  // Early return if no green locations
-  if (greenCount === 0) {
+  // Early return if nothing to analyse
+  if (count === 0) {
     return {
-      greenCount: 0,
+      count: 0,
       totalCount,
-      insights: ["No locations currently meet the green tier threshold"],
+      insights:
+        direction === "top"
+          ? ["No locations currently qualify as top performers"]
+          : ["No locations currently qualify as bottom performers"],
       hotelGroupDistribution: [],
       regionDistribution: [],
       avgKioskCount: null,
@@ -118,7 +162,7 @@ export async function getHighPerformerPatterns(
     };
   }
 
-  // 3. Aggregate for green-tier locations
+  // 3. Aggregate for tier-member locations (parallel)
   const [hotelGroupRows, regionRows, kioskRows, topProductRows] =
     await Promise.all([
       // Hotel group distribution
@@ -130,7 +174,7 @@ export async function getHighPerformerPatterns(
           INNER JOIN ${hotelGroups}
             ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
         WHERE ${locationHotelGroupMemberships.locationId} IN ${sql`(${sql.join(
-          greenLocationIds.map((id) => sql`${id}`),
+          tierIds.map((id) => sql`${id}`),
           sql`, `,
         )})`}
         GROUP BY ${hotelGroups.name}
@@ -146,14 +190,14 @@ export async function getHighPerformerPatterns(
           INNER JOIN ${regions}
             ON ${locationRegionMemberships.regionId} = ${regions.id}
         WHERE ${locationRegionMemberships.locationId} IN ${sql`(${sql.join(
-          greenLocationIds.map((id) => sql`${id}`),
+          tierIds.map((id) => sql`${id}`),
           sql`, `,
         )})`}
         GROUP BY ${regions.name}
         ORDER BY count DESC
       `),
 
-      // Average kiosk count per green location
+      // Average kiosk count per tier location
       db.execute<{ avg_kiosks: string | null }>(sql`
         SELECT
           AVG(kiosk_count)::text AS avg_kiosks
@@ -163,7 +207,7 @@ export async function getHighPerformerPatterns(
             COUNT(*)::int AS kiosk_count
           FROM ${kioskAssignments}
           WHERE ${kioskAssignments.locationId} IN ${sql`(${sql.join(
-            greenLocationIds.map((id) => sql`${id}`),
+            tierIds.map((id) => sql`${id}`),
             sql`, `,
           )})`}
             AND ${kioskAssignments.unassignedAt} IS NULL
@@ -171,7 +215,7 @@ export async function getHighPerformerPatterns(
         ) AS kc
       `),
 
-      // Top products by revenue for green locations
+      // Top products by revenue for tier locations
       db.execute<{ name: string; revenue: string }>(sql`
         SELECT
           ${products.name} AS name,
@@ -180,7 +224,7 @@ export async function getHighPerformerPatterns(
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
         WHERE ${salesRecords.locationId} IN ${sql`(${sql.join(
-          greenLocationIds.map((id) => sql`${id}`),
+          tierIds.map((id) => sql`${id}`),
           sql`, `,
         )})`}
           ${whereClause ? sql`AND ${whereClause}` : sql``}
@@ -194,52 +238,65 @@ export async function getHighPerformerPatterns(
   const hotelGroupDistribution = hotelGroupRows.map((r) => ({
     name: r.name,
     count: Number(r.count),
-    percentage: greenCount > 0 ? (Number(r.count) / greenCount) * 100 : 0,
+    percentage: count > 0 ? (Number(r.count) / count) * 100 : 0,
   }));
 
   const regionDistribution = regionRows.map((r) => ({
     name: r.name,
     count: Number(r.count),
-    percentage: greenCount > 0 ? (Number(r.count) / greenCount) * 100 : 0,
+    percentage: count > 0 ? (Number(r.count) / count) * 100 : 0,
   }));
 
-  const avgKioskCount = kioskRows[0]?.avg_kiosks != null
-    ? Number(kioskRows[0].avg_kiosks)
-    : null;
+  const avgKioskCount =
+    kioskRows[0]?.avg_kiosks != null ? Number(kioskRows[0].avg_kiosks) : null;
 
-  const avgRoomCount = greenRooms.length > 0
-    ? greenRooms.reduce((sum, r) => sum + r, 0) / greenRooms.length
-    : null;
+  const avgRoomCount =
+    tierRooms.length > 0
+      ? tierRooms.reduce((sum, r) => sum + r, 0) / tierRooms.length
+      : null;
 
-  // Period-total revenue divided by total rooms across green-tier locations.
-  const avgRevenuePerRoom = greenTotalRooms > 0
-    ? greenTotalRevenue / greenTotalRooms
-    : null;
+  // Period-total revenue ÷ period-total rooms across tier-member locations.
+  const tierPairs = sortedDesc.filter(
+    (r) => tierSet.has(r.location_id) && r.num_rooms != null && r.num_rooms > 0,
+  );
+  const tierRevenueTotal = tierPairs.reduce((acc, r) => acc + r.revenue, 0);
+  const tierRoomsTotal = tierPairs.reduce(
+    (acc, r) => acc + (r.num_rooms as number),
+    0,
+  );
+  const avgRevenuePerRoom = tierRoomsTotal > 0 ? tierRevenueTotal / tierRoomsTotal : null;
 
   const topProducts = topProductRows.map((r) => ({
     name: r.name,
     revenue: Number(r.revenue),
   }));
 
-  // 5. Generate insights
+  // 5. Insights — symmetric copy
+  const noun = direction === "top" ? "Top performers" : "Bottom performers";
   const insights: string[] = [];
 
   if (regionDistribution.length > 0) {
     const topRegion = regionDistribution[0];
     insights.push(
-      `${topRegion.count} of ${greenCount} top performers are in region ${topRegion.name}`,
+      `${topRegion.count} of ${count} ${noun.toLowerCase()} are in region ${topRegion.name}`,
     );
   }
 
   if (avgKioskCount != null) {
     insights.push(
-      `Top performers average ${avgKioskCount.toFixed(1)} kiosks per location`,
+      `${noun} average ${avgKioskCount.toFixed(1)} kiosks per location`,
     );
   }
 
   if (avgRoomCount != null) {
     insights.push(
-      `Top performers average ${Math.round(avgRoomCount)} rooms per location`,
+      `${noun} average ${Math.round(avgRoomCount)} rooms per location`,
+    );
+  }
+
+  if (avgRevenuePerRoom != null) {
+    insights.push(
+      `${noun} average £${Math.round(avgRevenuePerRoom).toLocaleString()} revenue per room`,
     );
   }
 
@@ -251,12 +308,15 @@ export async function getHighPerformerPatterns(
   if (hotelGroupDistribution.length > 0) {
     const topGroup = hotelGroupDistribution[0];
     insights.push(
-      `${topGroup.count} of ${greenCount} top performers belong to ${topGroup.name}`,
+      `${topGroup.count} of ${count} ${noun.toLowerCase()} belong to ${topGroup.name}`,
     );
   }
 
+  // silence unused warning (kept for parity with earlier impl)
+  void tierRevenueById;
+
   return {
-    greenCount,
+    count,
     totalCount,
     insights,
     hotelGroupDistribution,
@@ -266,4 +326,62 @@ export async function getHighPerformerPatterns(
     avgRevenuePerRoom,
     topProducts,
   };
+}
+
+// ─── Public: top-tier (green) ───────────────────────────────────────────────
+
+export async function getHighPerformerData(
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  greenCutoff: number = 30,
+): Promise<HighPerformerPatterns> {
+  const pct = clampCutoff(greenCutoff);
+  const base = await computePerformerPatterns(filters, userCtx, pct, "top");
+  return {
+    greenCount: base.count,
+    totalCount: base.totalCount,
+    insights: base.insights,
+    hotelGroupDistribution: base.hotelGroupDistribution,
+    regionDistribution: base.regionDistribution,
+    avgKioskCount: base.avgKioskCount,
+    avgRoomCount: base.avgRoomCount,
+    avgRevenuePerRoom: base.avgRevenuePerRoom,
+    topProducts: base.topProducts,
+  };
+}
+
+// ─── Public: bottom-tier (red) ──────────────────────────────────────────────
+
+export async function getLowPerformerData(
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  redCutoff: number = 30,
+): Promise<LowPerformerPatterns> {
+  const pct = clampCutoff(redCutoff);
+  const base = await computePerformerPatterns(filters, userCtx, pct, "bottom");
+  return {
+    redCount: base.count,
+    totalCount: base.totalCount,
+    insights: base.insights,
+    hotelGroupDistribution: base.hotelGroupDistribution,
+    regionDistribution: base.regionDistribution,
+    avgKioskCount: base.avgKioskCount,
+    avgRoomCount: base.avgRoomCount,
+    avgRevenuePerRoom: base.avgRevenuePerRoom,
+    topProducts: base.topProducts,
+  };
+}
+
+// ─── Backwards-compat wrapper ────────────────────────────────────────────────
+// Older callers imported `getHighPerformerPatterns` with a ThresholdConfig.
+// That shape is now ignored — the cutoff is percentage-based. Kept as a thin
+// alias so existing imports don't break.
+
+export async function getHighPerformerPatterns(
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  _thresholdConfig?: unknown,
+  greenCutoff: number = 30,
+): Promise<HighPerformerPatterns> {
+  return getHighPerformerData(filters, userCtx, greenCutoff);
 }
