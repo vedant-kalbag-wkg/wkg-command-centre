@@ -40,7 +40,7 @@
     "drizzle-orm": "^0.45.1",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.577.0",
-    "next": "16.1.7",
+    "next": "16.2.4",
     "next-themes": "^0.4.6",
     "nodemailer": "^8.0.3",
     "papaparse": "^5.5.3",
@@ -78,5 +78,8 @@
     "testcontainers": "^11.14.0",
     "typescript": "^5",
     "vitest": "^4.1.2"
+  },
+  "overrides": {
+    "esbuild": ">=0.25.0"
   }
 }
