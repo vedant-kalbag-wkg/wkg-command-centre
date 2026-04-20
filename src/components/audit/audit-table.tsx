@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { ScrollText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -264,20 +266,22 @@ export function AuditTable() {
             <p className="text-sm text-muted-foreground">Loading…</p>
           </div>
         ) : entries.length === 0 ? (
-          <div className="py-16 text-center">
-            <p className="text-sm text-muted-foreground">
-              No audit entries match. Try adjusting the date range or clearing the filters.
-            </p>
-            {hasFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="mt-3 text-sm text-primary hover:underline"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={ScrollText}
+            title="No audit entries match"
+            description="Try adjusting the date range or clearing the filters."
+            action={
+              hasFilters ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearFilters}
+                >
+                  Clear filters
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <Table>
             <TableHeader>
