@@ -326,7 +326,7 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 |---|---|---|---|
 | A.1 | High | Backend | Fixed in `78728e2` (heat-map GROUP BY + maturity ORDER BY) |
 | A.2 | Medium | Backend | Parked — likely non-bug (user may not have let loading finish); re-open when reproduced |
-| A.3 | Medium | Backend/data | Fixed (docs) in `d61b62e` — followup F.1 below |
+| A.3 | Medium | Backend/data | Fixed (docs) in `d61b62e`; F.1 import follow-through fixed in `72a80bd` |
 | A.4 | High | Backend/Analytics | Fixed in `1fabd3d` (duplicate React keys from shared hotel names) |
 | B.1 | High | Analytics | Fixed in `90bfb4b` (per-series filter UI was never surfaced) |
 | B-prime.1 | Medium | Auth/admin | Fixed in `94ddc27` (admin create-user w/ password via `auth.api.createUser` + `setRole`) |
@@ -351,8 +351,8 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 
 These came out of the A.1 / A.3 / A.4 / B.1 / B'.1 fixes but were intentionally scoped out.
 
-### F.1 Monday import doesn't write `hardware_serial_number`
-`scripts/import-from-monday.ts` upsert (around lines 296–304) omits `hardwareSerialNumber` from the values object. A.3's fix was docs-only — the seed already populates the field for its 8 rows, and the doc change points users at `db:seed:kiosks` for localhost. If Vercel shows populated asset IDs on Monday-imported kiosks, there's an unknown backfill path (grep for a migration copying `kiosk_id` → `hardware_serial_number`). Long-term fix: add the Monday column ID to `importKiosks()` once product confirms the source column.
+### F.1 Monday import doesn't write `hardware_serial_number` — Fixed in `72a80bd`
+`scripts/import-from-monday.ts` upsert (around lines 296–304) omitted `hardwareSerialNumber` from the values object. Fixed by extracting Monday column `1466686598` (Asset serial number, confirmed by product) via `getColumnText` and including `hardwareSerialNumber` in the upsert values. Monday-imported kiosks now populate the field on localhost the same way they do on Vercel.
 
 ### F.2 Portfolio `getPortfolioData` swallows sub-query errors
 `src/lib/analytics/queries/portfolio.ts:340-345` wraps each sub-query in `.catch(() => [])`. This would have masked the A.1 bug from users (blank sections instead of an error banner). Consider surfacing sub-query failures instead of silently emptying — ideally a structured error per section so the UI can render a per-card error state.
