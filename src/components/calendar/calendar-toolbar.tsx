@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCalendarStore } from "@/lib/stores/calendar-store";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -88,48 +89,48 @@ function CalendarToolbarInner({
     <div className="flex flex-wrap items-center gap-3 bg-muted rounded-lg px-4 py-2">
       {/* Navigation: Back / Today / Next */}
       <div className="flex items-center gap-1">
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => toolbar.onNavigate("PREV")}
-          className="inline-flex items-center justify-center size-8 rounded-md border border-border bg-white text-foreground hover:bg-primary/10 transition-colors"
           aria-label="Previous"
         >
-          <ChevronLeft className="size-4" />
-        </button>
-        <button
+          <ChevronLeft />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => toolbar.onNavigate("TODAY")}
-          className="px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-white text-foreground hover:bg-primary/10 transition-colors"
         >
           Today
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => toolbar.onNavigate("NEXT")}
-          className="inline-flex items-center justify-center size-8 rounded-md border border-border bg-white text-foreground hover:bg-primary/10 transition-colors"
           aria-label="Next"
         >
-          <ChevronRight className="size-4" />
-        </button>
+          <ChevronRight />
+        </Button>
       </div>
 
       {/* Current label (e.g. "April 2026") */}
-      <span className="text-sm font-semibold text-foreground min-w-[120px]">
+      <span className="text-lg font-medium text-foreground min-w-[120px]">
         {toolbar.label}
       </span>
 
       {/* View mode toggle */}
-      <div className="flex items-center rounded-md border border-border overflow-hidden">
+      <div className="flex items-center gap-1">
         {VIEW_MODES.map((mode) => (
-          <button
+          <Button
             key={mode.value}
+            variant={viewMode === mode.value ? "default" : "ghost"}
+            size="sm"
             onClick={() => handleViewChange(mode.value)}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-              viewMode === mode.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-white text-foreground hover:bg-primary/10"
-            }`}
             aria-pressed={viewMode === mode.value}
           >
             {mode.label}
-          </button>
+          </Button>
         ))}
       </div>
 
