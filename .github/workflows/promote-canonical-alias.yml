@@ -1,0 +1,71 @@
+name: Promote canonical alias
+
+# Vercel's dashboard auto-promote to wkg-command-centre.vercel.app doesn't fire
+# reliably on this project, so we promote explicitly after each push to main.
+# See docs/HANDOFF-2026-04-20.md §"Vercel alias / deployment hygiene".
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: promote-canonical-alias
+  cancel-in-progress: true
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for Vercel production deployment then alias
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PROJECT_ID: prj_m4d7BYIEpIMQn3LuN7Mb0HV4M8Wr
+          TEAM_ID: team_aPbfcOvNg9I0CuBMiyZ1S1Hi
+          ALIAS: wkg-command-centre.vercel.app
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          echo "Looking for Vercel production deployment for commit $SHA"
+
+          STATE=""
+          URL=""
+          for i in $(seq 1 30); do
+            RESP=$(curl -sfG "https://api.vercel.com/v6/deployments" \
+              --data-urlencode "projectId=$PROJECT_ID" \
+              --data-urlencode "teamId=$TEAM_ID" \
+              --data-urlencode "meta-githubCommitSha=$SHA" \
+              --data-urlencode "target=production" \
+              --data-urlencode "limit=1" \
+              -H "Authorization: Bearer $VERCEL_TOKEN")
+
+            STATE=$(echo "$RESP" | jq -r '.deployments[0].readyState // "NONE"')
+            URL=$(echo "$RESP"  | jq -r '.deployments[0].url // empty')
+
+            case "$STATE" in
+              READY)
+                echo "Deployment READY: $URL"
+                break
+                ;;
+              ERROR|CANCELED)
+                echo "Deployment ended in state $STATE — aborting" >&2
+                exit 1
+                ;;
+              *)
+                echo "[$i/30] state=$STATE — sleeping 10s"
+                sleep 10
+                ;;
+            esac
+          done
+
+          if [ "$STATE" != "READY" ] || [ -z "$URL" ]; then
+            echo "Timed out waiting for a READY production deployment for $SHA" >&2
+            exit 1
+          fi
+
+          echo "Aliasing https://$URL -> $ALIAS"
+          npx -y vercel@latest alias set "$URL" "$ALIAS" \
+            --token="$VERCEL_TOKEN" \
+            --scope="$TEAM_ID"
