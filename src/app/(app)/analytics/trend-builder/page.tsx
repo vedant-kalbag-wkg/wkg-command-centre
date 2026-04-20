@@ -4,18 +4,23 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useAnalyticsFilterStore } from "@/lib/stores/analytics-filter-store";
 import { useTrendStore } from "@/lib/stores/trend-store";
 import { toLocalISODate } from "@/lib/analytics/formatters";
-import { resolveWeatherLocation } from "@/lib/weather/region-coordinates";
 import { PageHeader } from "@/components/layout/page-header";
 import { ChartCard } from "@/components/ui/chart-card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { applyRollingAverage } from "@/lib/analytics/rolling-average";
 import type { RollingWindow } from "@/lib/analytics/rolling-average";
 import {
   fetchTrendSeriesData,
   fetchTrendSeriesDataYoY,
-  fetchWeatherData,
+  fetchWeatherForLocationGroup,
   fetchBusinessEvents,
 } from "./actions";
 import { SeriesBuilderPanel } from "./series-builder-panel";
@@ -33,6 +38,9 @@ import type {
 export default function TrendBuilderPage() {
   // Date range from shared analytics filter store
   const dateRange = useAnalyticsFilterStore((s) => s.dateRange);
+  const globalLocationGroupFilter = useAnalyticsFilterStore(
+    (s) => s.locationGroupFilter,
+  );
   const dateFrom = toLocalISODate(dateRange.from);
   const dateTo = toLocalISODate(dateRange.to);
 
@@ -73,6 +81,35 @@ export default function TrendBuilderPage() {
     })),
   );
 
+  // ── Weather gating ──────────────────────────────────────────────────────
+  // Weather requires exactly one location group to be selected (tighter of
+  // per-series vs. global filter). Per-series groups are unioned across all
+  // applied series; if none are set on any series, fall back to the global
+  // analytics filter bar.
+  const { weatherAllowed, effectiveLocationGroupId } = useMemo(() => {
+    const perSeriesGroups = new Set<string>();
+    for (const s of appliedSeries) {
+      for (const id of s.filters.locationGroupIds ?? []) {
+        perSeriesGroups.add(id);
+      }
+    }
+    const effective =
+      perSeriesGroups.size > 0
+        ? Array.from(perSeriesGroups)
+        : (globalLocationGroupFilter ?? []);
+    return {
+      weatherAllowed: effective.length === 1,
+      effectiveLocationGroupId: effective.length === 1 ? effective[0] : null,
+    };
+  }, [appliedSeries, globalLocationGroupFilter]);
+
+  // Force weather off when no longer allowed (defense-in-depth alongside UI gate)
+  useEffect(() => {
+    if (!weatherAllowed && showWeather) {
+      setShowWeather(false);
+    }
+  }, [weatherAllowed, showWeather, setShowWeather]);
+
   const loadData = useCallback(async () => {
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -112,13 +149,18 @@ export default function TrendBuilderPage() {
           })
         : [];
 
-      // Fetch weather + events in parallel with series
-      const weatherPromise = showWeather
-        ? (() => {
-            const coord = resolveWeatherLocation();
-            return fetchWeatherData(coord.lat, coord.lon, dateFrom, dateTo);
-          })()
-        : Promise.resolve([]);
+      // Fetch weather + events in parallel with series.
+      // Server-side gate: only fetches when exactly one location group is
+      // effectively selected. Passes the group id and resolves lat/lng from
+      // the first location in the group server-side.
+      const weatherPromise =
+        showWeather && weatherAllowed && effectiveLocationGroupId
+          ? fetchWeatherForLocationGroup(
+              effectiveLocationGroupId,
+              dateFrom,
+              dateTo,
+            )
+          : Promise.resolve([]);
 
       const eventsPromise = showEvents
         ? fetchBusinessEvents(dateFrom, dateTo)
@@ -148,7 +190,16 @@ export default function TrendBuilderPage() {
         setLoading(false);
       }
     }
-  }, [seriesJson, dateFrom, dateTo, showWeather, showEvents, showYoY]);
+  }, [
+    seriesJson,
+    dateFrom,
+    dateTo,
+    showWeather,
+    showEvents,
+    showYoY,
+    weatherAllowed,
+    effectiveLocationGroupId,
+  ]);
 
   useEffect(() => {
     loadData();
@@ -200,16 +251,41 @@ export default function TrendBuilderPage() {
               })}
             </div>
 
-            <div className="flex items-center gap-2">
-              <Switch
-                id="show-weather"
-                checked={showWeather}
-                onCheckedChange={setShowWeather}
-              />
-              <Label htmlFor="show-weather" className="text-xs">
-                Weather
-              </Label>
-            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <div
+                      className="flex items-center gap-2"
+                      data-testid="weather-toggle-wrapper"
+                      data-weather-allowed={weatherAllowed ? "true" : "false"}
+                    >
+                      <Switch
+                        id="show-weather"
+                        checked={weatherAllowed && showWeather}
+                        onCheckedChange={setShowWeather}
+                        disabled={!weatherAllowed}
+                      />
+                      <Label
+                        htmlFor="show-weather"
+                        className={
+                          weatherAllowed
+                            ? "text-xs"
+                            : "text-xs text-muted-foreground"
+                        }
+                      >
+                        Weather
+                      </Label>
+                    </div>
+                  }
+                />
+                {!weatherAllowed && (
+                  <TooltipContent>
+                    Weather requires exactly one location group selected
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
 
             <div className="flex items-center gap-2">
               <Switch

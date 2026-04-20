@@ -1,5 +1,8 @@
 "use server";
 
+import { db } from "@/db";
+import { locations, locationGroupMemberships } from "@/db/schema";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { getTrendSeriesData, getBusinessEvents } from "@/lib/analytics/queries/trend-series";
 import { getComparisonDates } from "@/lib/analytics/metrics";
@@ -31,6 +34,44 @@ export async function fetchWeatherData(
   // Auth check — weather is only available to authenticated users
   await getUserCtx();
   return fetchWeatherFromApi(lat, lon, dateFrom, dateTo);
+}
+
+/**
+ * Weather fetch gated on exactly one location group being selected.
+ * Resolves the representative coordinates from the first location in the
+ * group that has both latitude and longitude set. Returns [] when no
+ * groupId is supplied or no location in the group has coordinates —
+ * acts as a server-side defense against the UI gate being bypassed.
+ */
+export async function fetchWeatherForLocationGroup(
+  groupId: string | null,
+  dateFrom: string,
+  dateTo: string,
+): Promise<DailyWeather[]> {
+  await getUserCtx();
+
+  if (!groupId) return [];
+
+  const rows = await db
+    .select({
+      latitude: locations.latitude,
+      longitude: locations.longitude,
+    })
+    .from(locationGroupMemberships)
+    .innerJoin(locations, eq(locationGroupMemberships.locationId, locations.id))
+    .where(
+      and(
+        eq(locationGroupMemberships.locationGroupId, groupId),
+        isNotNull(locations.latitude),
+        isNotNull(locations.longitude),
+      ),
+    )
+    .limit(1);
+
+  const first = rows[0];
+  if (!first || first.latitude == null || first.longitude == null) return [];
+
+  return fetchWeatherFromApi(first.latitude, first.longitude, dateFrom, dateTo);
 }
 
 export async function fetchBusinessEvents(
