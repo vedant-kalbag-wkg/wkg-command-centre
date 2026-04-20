@@ -12,10 +12,11 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { SectionAccordion } from "@/components/analytics/section-accordion";
+import { PageHeader } from "@/components/layout/page-header";
+import { ChartCard } from "@/components/ui/chart-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { KpiCard } from "@/components/analytics/kpi-card";
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
-import { EmptyState } from "@/components/analytics/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchMaturityAnalysis } from "./actions";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
@@ -111,16 +112,18 @@ export default function MaturityPage() {
   const bucketLabel = (value: string) =>
     DETAILED_MATURITY_BUCKETS.find((b) => b.value === value)?.label ?? value;
 
+  const hasBucketData =
+    !!data && data.bucketMetrics.some((b) => b.totalRevenue > 0);
+  const hasRampData =
+    !!data && data.rampCurve.some((p) => p.avgRevenue > 0);
+  const hasCohortData = !!data && data.installCohorts.length > 0;
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Maturity Analysis
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Understand how kiosk revenue evolves after installation
-        </p>
-      </div>
+      <PageHeader
+        title="Maturity Analysis"
+        description="Understand how kiosk revenue evolves after installation"
+      />
 
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -129,25 +132,26 @@ export default function MaturityPage() {
       )}
 
       {/* A. Revenue by Maturity Bucket */}
-      <SectionAccordion title="Revenue by Maturity Bucket">
+      <ChartCard
+        title="Revenue by Maturity Bucket"
+        description="Average revenue grouped by days-since-install"
+        loading={loading}
+        empty={!loading && !hasBucketData && !data?.bucketMetrics.length}
+        emptyMessage="No maturity data for selected filters"
+        collapsible
+      >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {loading
-            ? Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 rounded-xl" />
-              ))
-            : data?.bucketMetrics.map((bm) => (
-                <KpiCard
-                  key={bm.bucket}
-                  title={`${bucketLabel(bm.bucket)} (${formatNumber(bm.locationCount)} locations)`}
-                  value={formatCurrency(bm.avgRevenue)}
-                />
-              ))}
+          {data?.bucketMetrics.map((bm) => (
+            <KpiCard
+              key={bm.bucket}
+              title={`${bucketLabel(bm.bucket)} (${formatNumber(bm.locationCount)} locations)`}
+              value={formatCurrency(bm.avgRevenue)}
+            />
+          ))}
         </div>
 
         <div className="mt-4">
-          {loading ? (
-            <Skeleton className="h-[300px] w-full rounded-lg" />
-          ) : data && data.bucketMetrics.some((b) => b.totalRevenue > 0) ? (
+          {data && hasBucketData ? (
             <ChartWrapper>
               <BarChart
                 data={data.bucketMetrics.map((bm) => ({
@@ -176,16 +180,21 @@ export default function MaturityPage() {
               </BarChart>
             </ChartWrapper>
           ) : (
-            <EmptyState message="No maturity data for selected filters" />
+            <EmptyState title="No maturity data for selected filters" />
           )}
         </div>
-      </SectionAccordion>
+      </ChartCard>
 
       {/* B. Revenue Ramp Curve */}
-      <SectionAccordion title="Revenue Ramp Curve">
-        {loading ? (
-          <Skeleton className="h-[300px] w-full rounded-lg" />
-        ) : data && data.rampCurve.some((p) => p.avgRevenue > 0) ? (
+      <ChartCard
+        title="Revenue Ramp Curve"
+        description="Average revenue by months-since-install"
+        loading={loading}
+        empty={!loading && !hasRampData}
+        emptyMessage="No ramp data available"
+        collapsible
+      >
+        {data && hasRampData && (
           <ChartWrapper>
             <LineChart
               data={data.rampCurve.map((p) => ({
@@ -231,20 +240,19 @@ export default function MaturityPage() {
               />
             </LineChart>
           </ChartWrapper>
-        ) : (
-          <EmptyState message="No ramp data available" />
         )}
-      </SectionAccordion>
+      </ChartCard>
 
       {/* C. Install Month Cohorts */}
-      <SectionAccordion title="Install Month Cohorts">
-        {loading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 rounded-md" />
-            ))}
-          </div>
-        ) : data && data.installCohorts.length > 0 ? (
+      <ChartCard
+        title="Install Month Cohorts"
+        description="Average monthly revenue by install cohort"
+        loading={loading}
+        empty={!loading && !hasCohortData}
+        emptyMessage="No install cohort data available"
+        collapsible
+      >
+        {data && hasCohortData && (
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead>
@@ -280,13 +288,18 @@ export default function MaturityPage() {
               </tbody>
             </table>
           </div>
-        ) : (
-          <EmptyState message="No install cohort data available" />
         )}
-      </SectionAccordion>
+      </ChartCard>
 
       {/* D. Plateau Detection */}
-      <SectionAccordion title="Plateau Detection">
+      <ChartCard
+        title="Plateau Detection"
+        description="Comparing 90+ day avg revenue vs 31-60 day avg revenue"
+        loading={loading}
+        empty={!loading && !data}
+        emptyMessage="No plateau data available"
+        collapsible
+      >
         {loading ? (
           <Skeleton className="h-20 rounded-lg" />
         ) : data ? (
@@ -297,7 +310,10 @@ export default function MaturityPage() {
                 className="rounded-lg border px-4 py-3"
                 style={{ borderLeftWidth: 4, borderLeftColor: insight.color }}
               >
-                <p className="text-sm font-medium" style={{ color: insight.color }}>
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: insight.color }}
+                >
                   {insight.text}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -307,7 +323,7 @@ export default function MaturityPage() {
             );
           })()
         ) : null}
-      </SectionAccordion>
+      </ChartCard>
     </div>
   );
 }
