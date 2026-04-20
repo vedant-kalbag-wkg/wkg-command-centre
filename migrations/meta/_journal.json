@@ -131,8 +131,15 @@
     {
       "idx": 18,
       "version": "7",
+      "when": 1777336700000,
+      "tag": "0018_location_kiosk_config_group",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
       "when": 1777336800000,
-      "tag": "0018_internal_poc_kiosks_installations",
+      "tag": "0019_internal_poc_kiosks_installations",
       "breakpoints": true
     }
   ]
