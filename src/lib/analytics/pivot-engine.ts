@@ -25,26 +25,35 @@ import type {
 
 // ─── Column Allowlists ──────────────────────────────────────────────────────
 
-/** Maps logical column names to qualified SQL expressions (using table aliases). */
+/**
+ * Maps logical column names to qualified SQL expressions.
+ *
+ * IMPORTANT: These use fully-qualified table names (NOT aliases) because the
+ * WHERE clause is built by shared Drizzle helpers in `queries/shared.ts` which
+ * emit references like `"sales_records"."transaction_date"`. Mixing aliases
+ * in the FROM/SELECT with full table names in the WHERE triggers Postgres
+ * error 42P01 ("invalid reference to FROM-clause entry"). Keeping both sides
+ * un-aliased avoids that mismatch.
+ */
 export const ALLOWED_COLUMNS = new Map<string, string>([
-  ["product_name", "p.name"],
-  ["outlet_code", "l.outlet_code"],
-  ["hotel_name", "l.name"],
-  ["hotel_group", "l.hotel_group"],
-  ["region", "l.region"],
-  ["location_group", "l.location_group"],
-  ["gross_amount", "sr.gross_amount::numeric"],
-  ["quantity", "sr.quantity"],
-  ["booking_fee", "sr.booking_fee::numeric"],
-  ["sale_commission", "sr.sale_commission::numeric"],
-  ["discount_amount", "sr.discount_amount::numeric"],
+  ["product_name", "products.name"],
+  ["outlet_code", "locations.outlet_code"],
+  ["hotel_name", "locations.name"],
+  ["hotel_group", "locations.hotel_group"],
+  ["region", "locations.region"],
+  ["location_group", "locations.location_group"],
+  ["gross_amount", "sales_records.gross_amount::numeric"],
+  ["quantity", "sales_records.quantity"],
+  ["booking_fee", "sales_records.booking_fee::numeric"],
+  ["sale_commission", "sales_records.sale_commission::numeric"],
+  ["discount_amount", "sales_records.discount_amount::numeric"],
 ]);
 
 /** Derived group columns that require SQL expressions (not simple column refs). */
 export const DERIVED_GROUP_COLUMNS = new Map<string, string>([
-  ["sale_month", "TO_CHAR(sr.transaction_date, 'Mon YYYY')"],
-  ["sale_year", "EXTRACT(YEAR FROM sr.transaction_date)::TEXT"],
-  ["sale_hour", "EXTRACT(HOUR FROM sr.transaction_time)::TEXT"],
+  ["sale_month", "TO_CHAR(sales_records.transaction_date, 'Mon YYYY')"],
+  ["sale_year", "EXTRACT(YEAR FROM sales_records.transaction_date)::TEXT"],
+  ["sale_hour", "EXTRACT(HOUR FROM sales_records.transaction_time)::TEXT"],
 ]);
 
 /** All columns that can appear as dimension fields (GROUP BY targets). */
@@ -196,11 +205,14 @@ export function buildPivotSQL(
     }
   }
 
-  // FROM with JOINs (always join locations + products)
+  // FROM with JOINs (always join locations + products).
+  // Uses un-aliased table names so that the WHERE clause built by shared
+  // Drizzle helpers (which reference e.g. "sales_records"."transaction_date")
+  // resolves correctly. See ALLOWED_COLUMNS comment above.
   const fromClause = [
-    "sales_records sr",
-    "INNER JOIN locations l ON sr.location_id = l.id",
-    "INNER JOIN products p ON sr.product_id = p.id",
+    "sales_records",
+    "INNER JOIN locations ON sales_records.location_id = locations.id",
+    "INNER JOIN products ON sales_records.product_id = products.id",
   ].join("\n    ");
 
   // WHERE
