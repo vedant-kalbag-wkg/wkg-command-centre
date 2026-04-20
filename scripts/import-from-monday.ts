@@ -254,6 +254,7 @@ async function importKiosks(items: MondayItem[]) {
 
     const outletCode = getColumnText(item, "outlet_code1");
     const hardwareModel = getColumnText(item, "label3");
+    const hardwareSerialNumber = getColumnText(item, "1466686598");
     const cmsConfigStatus = getColumnText(item, "status_1");
     const currentLocation = getColumnText(item, "color");
 
@@ -297,6 +298,7 @@ async function importKiosks(items: MondayItem[]) {
       kioskId,
       outletCode: outletCode ?? null,
       hardwareModel,
+      hardwareSerialNumber: hardwareSerialNumber ?? null,
       cmsConfigStatus,
       regionGroup,
       pipelineStageId,

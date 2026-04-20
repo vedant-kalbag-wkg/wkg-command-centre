@@ -131,12 +131,7 @@ on the base seeds from Step 6 — run them in order.
 npm run db:import:monday
 ```
 
-Prereqs: `MONDAY_API_TOKEN` and `MONDAY_BOARD_ID` in `.env.local`. Note that
-the current import script does **not** populate `hardware_serial_number` (the
-"Asset" column on `/kiosks`) — rows imported from Monday will have that field
-blank until the import is extended (see bug-report.md A.3). If you need
-populated asset IDs for QA, run `db:seed:kiosks` on a fresh DB instead of
-importing from Monday.
+Prereqs: `MONDAY_API_TOKEN` and `MONDAY_BOARD_ID` in `.env.local`.
 
 ## 7. Run the dev server
 
