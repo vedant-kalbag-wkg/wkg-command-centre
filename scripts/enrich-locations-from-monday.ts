@@ -308,7 +308,7 @@ async function enrichLocations(hotels: HotelItem[]) {
   const kcgMap = new Map(kcgRows.map((r) => [r.name, r.id]));
 
   // Load all locations
-  const allLocs = await db
+  let allLocs = await db
     .select({
       id: locations.id,
       name: locations.name,
@@ -316,6 +316,35 @@ async function enrichLocations(hotels: HotelItem[]) {
       address: locations.address,
     })
     .from(locations);
+
+  // Create stub locations for any Monday outlet code we don't have yet.
+  // Without this pass, hotels added to Monday after the initial Supabase
+  // seed never surface in our DB, and their kiosks import but never get
+  // an assignment (symptom: outlet 2W = ibis Berlin Kurfuerstendamm).
+  const existingOutletCodes = new Set(
+    allLocs.map((l) => l.outletCode).filter((c): c is string => c !== null),
+  );
+  let createdStubs = 0;
+  for (const [outletCode, hotel] of outletToHotel) {
+    if (existingOutletCodes.has(outletCode)) continue;
+    const [row] = await db
+      .insert(locations)
+      .values({ name: hotel.name, outletCode })
+      .returning({
+        id: locations.id,
+        name: locations.name,
+        outletCode: locations.outletCode,
+        address: locations.address,
+      });
+    if (row) {
+      allLocs.push(row);
+      existingOutletCodes.add(outletCode);
+      createdStubs++;
+    }
+  }
+  if (createdStubs > 0) {
+    log("ENRICH", `Created ${createdStubs} new location stubs from Monday`);
+  }
 
   let updated = 0;
   let skippedNoMatch = 0;
