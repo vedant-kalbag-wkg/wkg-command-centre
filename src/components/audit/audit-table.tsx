@@ -167,7 +167,7 @@ export function AuditTable() {
               ...actors.map((a) => ({ value: a.id ?? "", label: a.name ?? "" })),
             ]}
           >
-            <SelectTrigger className="h-8 w-full text-sm bg-white">
+            <SelectTrigger className="h-8 w-full text-sm bg-background">
               <SelectValue placeholder="All users" />
             </SelectTrigger>
             <SelectContent>
@@ -193,7 +193,7 @@ export function AuditTable() {
               { value: "location", label: "Location" },
             ]}
           >
-            <SelectTrigger className="h-8 w-full text-sm bg-white">
+            <SelectTrigger className="h-8 w-full text-sm bg-background">
               <SelectValue placeholder="All" />
             </SelectTrigger>
             <SelectContent>
@@ -213,7 +213,7 @@ export function AuditTable() {
               setFilters((prev) => ({ ...prev, actorUserType: (val as string) ?? "all" }))
             }
           >
-            <SelectTrigger id="filter-user-type" className="h-8 w-full text-sm bg-white">
+            <SelectTrigger id="filter-user-type" className="h-8 w-full text-sm bg-background">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -231,7 +231,7 @@ export function AuditTable() {
             type="date"
             value={filters.dateFrom}
             onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
-            className="h-8 text-sm bg-white"
+            className="h-8 text-sm bg-background"
           />
         </div>
 
@@ -242,7 +242,7 @@ export function AuditTable() {
             type="date"
             value={filters.dateTo}
             onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))}
-            className="h-8 text-sm bg-white"
+            className="h-8 text-sm bg-background"
           />
         </div>
 
