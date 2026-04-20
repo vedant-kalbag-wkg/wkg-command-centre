@@ -64,6 +64,11 @@ export async function getRevenueByMaturityBucket(
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
 
+  // Bucket kiosks by how mature they were on the user-selected end date
+  // (filters.dateTo), not NOW(). Using NOW() would classify every kiosk by
+  // its maturity today, ignoring the selected reporting window.
+  const referenceDate = sql`${filters.dateTo}::timestamp`;
+
   const rows = await db.execute<{
     bucket: string;
     location_count: string;
@@ -72,9 +77,9 @@ export async function getRevenueByMaturityBucket(
   }>(sql`
     SELECT
       CASE
-        WHEN EXTRACT(EPOCH FROM (NOW() - ${kioskLiveDateSubquery})) / 86400 <= 30 THEN '0-30d'
-        WHEN EXTRACT(EPOCH FROM (NOW() - ${kioskLiveDateSubquery})) / 86400 <= 60 THEN '31-60d'
-        WHEN EXTRACT(EPOCH FROM (NOW() - ${kioskLiveDateSubquery})) / 86400 <= 90 THEN '61-90d'
+        WHEN EXTRACT(EPOCH FROM (${referenceDate} - ${kioskLiveDateSubquery})) / 86400 <= 30 THEN '0-30d'
+        WHEN EXTRACT(EPOCH FROM (${referenceDate} - ${kioskLiveDateSubquery})) / 86400 <= 60 THEN '31-60d'
+        WHEN EXTRACT(EPOCH FROM (${referenceDate} - ${kioskLiveDateSubquery})) / 86400 <= 90 THEN '61-90d'
         ELSE '90+d'
       END AS bucket,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,

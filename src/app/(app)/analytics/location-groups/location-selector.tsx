@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,14 @@ export function LocationSelector({
   onSelect,
   loading = false,
 }: LocationSelectorProps) {
+  // base-ui's Select renders the raw `value` inside <SelectValue /> unless an
+  // `items` map is supplied to <Select.Root>. Without it, the trigger shows
+  // the selected group's UUID instead of its name.
+  const items = useMemo(
+    () => groups.map((g) => ({ value: g.id, label: groupLabel(g) })),
+    [groups],
+  );
+
   if (loading) {
     return <Skeleton className="h-9 w-full max-w-md rounded-lg" />;
   }
@@ -41,6 +50,7 @@ export function LocationSelector({
   return (
     <Select
       value={selectedId ?? undefined}
+      items={items}
       onValueChange={(value) => {
         if (typeof value === "string") onSelect(value);
       }}

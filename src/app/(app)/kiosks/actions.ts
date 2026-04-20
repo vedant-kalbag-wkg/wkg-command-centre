@@ -7,6 +7,7 @@ import {
   kioskAssignments,
   pipelineStages,
   locations,
+  user,
 } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
@@ -94,6 +95,8 @@ export type KioskListItem = {
   pipelineStageName: string | null;
   pipelineStageColor: string | null;
   venueName: string | null;
+  internalPocId: string | null;
+  internalPocName: string | null;
   createdAt: Date;
   archivedAt: Date | null;
 };
@@ -257,6 +260,27 @@ export async function getKiosk(id: string): Promise<
   }
 }
 
+const EDITABLE_KIOSK_FIELDS = [
+  "kioskId",
+  "outletCode",
+  "hardwareModel",
+  "hardwareSerialNumber",
+  "softwareVersion",
+  "cmsConfigStatus",
+  "installationDate",
+  "deploymentPhaseTags",
+  "maintenanceFee",
+  "freeTrialStatus",
+  "freeTrialEndDate",
+  "regionGroup",
+  "pipelineStageId",
+  "kioskConfigGroupId",
+  "internalPocId",
+  "notes",
+] as const;
+
+export type EditableKioskField = (typeof EDITABLE_KIOSK_FIELDS)[number];
+
 export async function updateKioskField(
   kioskId: string,
   field: string,
@@ -265,6 +289,13 @@ export async function updateKioskField(
 ) {
   try {
     const session = await requireRole("admin", "member");
+
+    // Narrow arbitrary string `field` to the editable allow-list. Rejects
+    // id/createdAt/updatedAt/archivedAt/customFields and any unknown key.
+    if (!(EDITABLE_KIOSK_FIELDS as readonly string[]).includes(field)) {
+      return { error: `Invalid field: ${field}` };
+    }
+    const validField = field as EditableKioskField;
 
     // Get current kiosk name for audit log
     const [row] = await db
@@ -281,23 +312,24 @@ export async function updateKioskField(
     };
 
     // Handle typed fields
-    if (field === "installationDate" || field === "freeTrialEndDate") {
-      updateData[
-        field === "installationDate" ? "installationDate" : "freeTrialEndDate"
-      ] = value ? new Date(value as string) : null;
-    } else if (field === "freeTrialStatus") {
+    if (validField === "installationDate" || validField === "freeTrialEndDate") {
+      updateData[validField] = value ? new Date(value as string) : null;
+    } else if (validField === "freeTrialStatus") {
       updateData.freeTrialStatus = Boolean(value);
-    } else if (field === "cmsConfigStatus") {
+    } else if (validField === "cmsConfigStatus") {
       // cmsConfigStatus stored as text, but toggled as boolean in UI
       updateData.cmsConfigStatus = value ? "configured" : "not_configured";
-    } else if (field === "maintenanceFee") {
+    } else if (validField === "maintenanceFee") {
       updateData.maintenanceFee = value as string;
-    } else if (field === "deploymentPhaseTags") {
+    } else if (validField === "deploymentPhaseTags") {
       updateData.deploymentPhaseTags = value
         ? (value as string).split(",").map((t) => t.trim()).filter(Boolean)
         : [];
+    } else if (validField === "internalPocId") {
+      // FK to user — empty string or null means "unassigned"
+      updateData.internalPocId = value && value !== "" ? (value as string) : null;
     } else {
-      updateData[field] = value as string;
+      updateData[validField] = value as string;
     }
 
     await db.update(kiosks).set(updateData).where(eq(kiosks.id, kioskId));
@@ -309,7 +341,7 @@ export async function updateKioskField(
       entityId: kioskId,
       entityName: row.kioskId,
       action: "update",
-      field,
+      field: validField,
       oldValue: oldValue,
       newValue: value !== null && value !== undefined ? String(value) : undefined,
     });
@@ -513,11 +545,14 @@ export async function listKiosks(): Promise<KioskListItem[]> {
         pipelineStageId: kiosks.pipelineStageId,
         stageName: pipelineStages.name,
         stageColor: pipelineStages.color,
+        internalPocId: kiosks.internalPocId,
+        internalPocName: user.name,
         createdAt: kiosks.createdAt,
         archivedAt: kiosks.archivedAt,
       })
       .from(kiosks)
       .leftJoin(pipelineStages, eq(kiosks.pipelineStageId, pipelineStages.id))
+      .leftJoin(user, eq(kiosks.internalPocId, user.id))
       .where(isNull(kiosks.archivedAt))
       .orderBy(desc(kiosks.createdAt));
 
@@ -554,6 +589,8 @@ export async function listKiosks(): Promise<KioskListItem[]> {
       pipelineStageName: r.stageName ?? null,
       pipelineStageColor: r.stageColor ?? null,
       venueName: venueMap.get(r.id) ?? null,
+      internalPocId: r.internalPocId ?? null,
+      internalPocName: r.internalPocName ?? null,
       createdAt: r.createdAt,
       archivedAt: r.archivedAt,
     }));
@@ -575,4 +612,27 @@ export async function listLocationsForSelect() {
     .from(locations)
     .where(isNull(locations.archivedAt))
     .orderBy(locations.name);
+}
+
+/**
+ * Users available as an internal POC / assignee on a kiosk. Admin/member
+ * users only (viewers cannot be accountable). Available to any signed-in
+ * caller to keep the dropdown snappy for members.
+ */
+export async function listKioskPocCandidates(): Promise<
+  Array<{ id: string; name: string; email: string }>
+> {
+  try {
+    await requireRole("admin", "member", "viewer");
+    const rows = await db
+      .select({ id: user.id, name: user.name, email: user.email, role: user.role })
+      .from(user)
+      .orderBy(user.name);
+
+    return rows
+      .filter((r) => r.role === "admin" || r.role === "member")
+      .map((r) => ({ id: r.id, name: r.name, email: r.email }));
+  } catch {
+    return [];
+  }
 }

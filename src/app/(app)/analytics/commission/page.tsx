@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   BarChart,
   Bar,
@@ -16,6 +16,7 @@ import {
   Hash,
 } from "lucide-react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { ChartCard } from "@/components/ui/chart-card";
 import { KpiCard } from "@/components/analytics/kpi-card";
@@ -85,46 +86,38 @@ export default function CommissionPage() {
   const [error, setError] = useState<string | null>(null);
 
   const filtersJson = JSON.stringify(filters);
-  const abortRef = useRef<AbortController | null>(null);
+
+  // Discard stale server-action results on unmount / newer dispatch.
+  const fetchSummary = useAbortableAction(fetchCommissionSummary);
 
   const loadData = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setLoading(true);
     setError(null);
 
     try {
       const parsed = JSON.parse(filtersJson);
       const [summary, byLocation, byProduct, monthlyTrend] = await Promise.all([
-        fetchCommissionSummary(parsed),
+        fetchSummary(parsed),
         fetchCommissionByLocation(parsed),
         fetchCommissionByProduct(parsed),
         fetchCommissionMonthlyTrend(parsed),
       ]);
 
-      if (!controller.signal.aborted) {
-        setData({ summary, byLocation, byProduct, monthlyTrend });
-      }
+      // `null` from the abortable dispatcher means a newer call superseded
+      // this one (or the component unmounted) — discard this batch.
+      if (summary === null) return;
+      setData({ summary, byLocation, byProduct, monthlyTrend });
     } catch (err) {
-      if (!controller.signal.aborted) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load commission data",
-        );
-      }
+      setError(
+        err instanceof Error ? err.message : "Failed to load commission data",
+      );
     } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [filtersJson]);
+  }, [filtersJson, fetchSummary]);
 
   useEffect(() => {
     loadData();
-    return () => {
-      abortRef.current?.abort();
-    };
   }, [loadData]);
 
   const d = data ?? emptyData;

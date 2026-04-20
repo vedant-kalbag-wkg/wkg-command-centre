@@ -128,7 +128,7 @@ export function ProductsTable({ data }: ProductsTableProps) {
                       className="min-h-[44px] min-w-[44px]"
                       onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
-                        toast.info("Edit product coming soon");
+                        router.push(`/products/${row.original.id}`);
                       }}
                     />
                   }

@@ -234,6 +234,8 @@ async function importKiosks(items: MondayItem[]) {
   let updated = 0;
   let skipped = 0;
   let assignmentsCreated = 0;
+  let missingAssetId = 0;
+  let missingVenue = 0;
 
   for (const item of items) {
     const kioskId = item.name?.trim();
@@ -254,7 +256,11 @@ async function importKiosks(items: MondayItem[]) {
 
     const outletCode = getColumnText(item, "outlet_code1");
     const hardwareModel = getColumnText(item, "label3");
-    const hardwareSerialNumber = getColumnText(item, "1466686598");
+    // On the Assets board (1426737864) the item's Name IS the asset ID
+    // (e.g. "WKG-POS-341"). There is no separate "asset id" column — the
+    // earlier attempt to read column "1466686598" was wrong (that is a
+    // different board's id, not a column id on this board).
+    const hardwareSerialNumber = item.name?.trim() || null;
     const cmsConfigStatus = getColumnText(item, "status_1");
     const currentLocation = getColumnText(item, "color");
 
@@ -327,8 +333,10 @@ async function importKiosks(items: MondayItem[]) {
     }
 
     // Create assignment if outletCode links to a known location
+    let venueLinked = false;
     if (outletCode && locMap.has(outletCode)) {
       const locationId = locMap.get(outletCode)!;
+      venueLinked = true;
 
       // Check if an active assignment already exists
       const existingAssignment = await db
@@ -356,6 +364,30 @@ async function importKiosks(items: MondayItem[]) {
         });
         assignmentsCreated++;
       }
+
+    }
+
+    // Structured audit log for outlets where asset-ID or venue linkage failed.
+    // Production reads these to tell "Monday source data is empty" apart from
+    // "our extractor missed a row" (e.g. outlet 2W symptom on Vercel).
+    const assetMissing = !hardwareSerialNumber;
+    const venueMissing = !venueLinked; // either no outletCode, or no matching location
+    if (assetMissing || venueMissing) {
+      if (assetMissing) missingAssetId++;
+      if (venueMissing) missingVenue++;
+      const parts: string[] = [];
+      if (assetMissing) parts.push("assetId=null");
+      if (venueMissing) {
+        parts.push(
+          outletCode
+            ? `venue=null (no location for outletCode=${outletCode})`
+            : `venue=null (no outletCode on Monday row)`,
+        );
+      }
+      log(
+        "MONDAY-IMPORT",
+        `outlet=${outletCode ?? "<none>"} kiosk=${kioskId} group="${groupTitle}" missing: ${parts.join(" ")}`,
+      );
     }
 
     if ((inserted + updated) % 50 === 0) {
@@ -365,6 +397,7 @@ async function importKiosks(items: MondayItem[]) {
 
   log("IMPORT", `Done: ${inserted} inserted, ${updated} updated, ${skipped} skipped`);
   log("IMPORT", `Assignments created: ${assignmentsCreated}`);
+  log("IMPORT", `Missing after extraction: assetId=${missingAssetId}, venue=${missingVenue}`);
 }
 
 // ──────────────────────────────────────────────────────────────

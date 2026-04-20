@@ -36,10 +36,15 @@ test("@analytics/hotel-groups dropdown renders and selection reveals analytics p
 
   // Dropdown trigger should be rendered (labelled "Select a hotel group").
   const trigger = page.getByLabel("Select a hotel group");
-  await expect(trigger).toBeVisible();
+  await expect(trigger).toBeVisible({ timeout: 15_000 });
 
-  // After the list loads the page auto-selects the first group; the analytics
-  // sections ("Group Metrics", "Hotels in Group", "Daily Trends") must render.
+  // Nothing is pre-selected — picking the first option should reveal the
+  // analytics sections ("Group Metrics", "Hotels in Group", "Daily Trends").
+  await trigger.click();
+  const firstOption = page.getByRole("option").first();
+  await expect(firstOption).toBeVisible();
+  await firstOption.click();
+
   await expect(
     page.getByRole("button", { name: /Group Metrics/ }),
   ).toBeVisible({ timeout: 15_000 });

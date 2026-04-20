@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   useReactTable,
   getCoreRowModel,
@@ -28,117 +30,155 @@ import Link from "next/link";
 import { Plus, Package } from "lucide-react";
 import { DraggableTableHead } from "@/components/table/draggable-header";
 import { format } from "date-fns";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableHeader,
   TableBody,
-  TableHead,
   TableRow,
   TableCell,
 } from "@/components/ui/table";
 import type { InstallationWithRelations } from "@/app/(app)/installations/actions";
+import {
+  updateInstallationField,
+  listInstallationPocCandidates,
+} from "@/app/(app)/installations/actions";
+import {
+  EditableCell,
+  type EditableCellOption,
+} from "@/components/table/editable-cell";
 
 // ---------------------------------------------------------------------------
-// Status badge
+// Status options (enum on installations.status)
 // ---------------------------------------------------------------------------
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    planned: "bg-secondary text-secondary-foreground border-0",
-    active: "bg-primary text-primary-foreground border-0",
-    complete: "bg-[--color-wk-success] text-foreground border-0",
-  };
-
-  const labels: Record<string, string> = {
-    planned: "Planned",
-    active: "Active",
-    complete: "Complete",
-  };
-
-  return (
-    <Badge className={styles[status] ?? styles.planned}>
-      {labels[status] ?? status}
-    </Badge>
-  );
-}
+const STATUS_OPTIONS: EditableCellOption[] = [
+  { value: "planned", label: "Planned" },
+  { value: "active", label: "Active" },
+  { value: "complete", label: "Complete" },
+];
 
 // ---------------------------------------------------------------------------
 // Column definitions
 // ---------------------------------------------------------------------------
 
-const columns: ColumnDef<InstallationWithRelations>[] = [
-  {
-    accessorKey: "name",
-    header: "Name",
-    cell: ({ row }) => (
-      <Link
-        href={`/installations/${row.original.id}`}
-        className="font-medium text-foreground hover:text-primary hover:underline"
-      >
-        {row.original.name}
-      </Link>
-    ),
-  },
-  {
-    accessorKey: "region",
-    header: "Region",
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.original.region ?? "—"}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "status",
-    header: "Status",
-    cell: ({ row }) => <StatusBadge status={row.original.status} />,
-  },
-  {
-    accessorKey: "plannedStart",
-    header: "Planned Start",
-    cell: ({ row }) =>
-      row.original.plannedStart ? (
-        <span className="text-sm text-muted-foreground">
-          {format(row.original.plannedStart, "dd MMM yyyy")}
-        </span>
-      ) : (
-        <span className="text-sm text-muted-foreground">—</span>
+function makeColumns(
+  pocOptions: EditableCellOption[]
+): ColumnDef<InstallationWithRelations>[] {
+  return [
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row, table }) => (
+        <div className="flex items-center gap-2 min-w-0">
+          <EditableCell
+            value={row.original.name}
+            rowId={row.original.id}
+            columnId="name"
+            table={table}
+            placeholder="—"
+          />
+          <Link
+            href={`/installations/${row.original.id}`}
+            className="shrink-0 text-[11px] text-muted-foreground hover:text-primary hover:underline"
+            aria-label={`Open ${row.original.name}`}
+            title="Open detail"
+          >
+            open
+          </Link>
+        </div>
       ),
-  },
-  {
-    accessorKey: "plannedEnd",
-    header: "Planned End",
-    cell: ({ row }) =>
-      row.original.plannedEnd ? (
-        <span className="text-sm text-muted-foreground">
-          {format(row.original.plannedEnd, "dd MMM yyyy")}
-        </span>
-      ) : (
-        <span className="text-sm text-muted-foreground">—</span>
+    },
+    {
+      accessorKey: "region",
+      header: "Region",
+      cell: ({ row, table }) => (
+        <EditableCell
+          value={row.original.region}
+          rowId={row.original.id}
+          columnId="region"
+          table={table}
+          placeholder="—"
+        />
       ),
-  },
-  {
-    id: "team",
-    header: "Team",
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.original.members.length}
-      </span>
-    ),
-  },
-  {
-    id: "milestones",
-    header: "Milestones",
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.original.milestones.length}
-      </span>
-    ),
-  },
-];
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row, table }) => (
+        <EditableCell
+          value={row.original.status}
+          rowId={row.original.id}
+          columnId="status"
+          table={table}
+          type="select"
+          options={STATUS_OPTIONS}
+          placeholder="planned"
+        />
+      ),
+    },
+    {
+      accessorKey: "plannedStart",
+      header: "Planned Start",
+      cell: ({ row }) =>
+        row.original.plannedStart ? (
+          <span className="text-sm text-muted-foreground">
+            {format(row.original.plannedStart, "dd MMM yyyy")}
+          </span>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        ),
+    },
+    {
+      accessorKey: "plannedEnd",
+      header: "Planned End",
+      cell: ({ row }) =>
+        row.original.plannedEnd ? (
+          <span className="text-sm text-muted-foreground">
+            {format(row.original.plannedEnd, "dd MMM yyyy")}
+          </span>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        ),
+    },
+    // Internal POC / assignee — inline-editable user picker
+    {
+      accessorKey: "internalPocId",
+      header: "Internal POC",
+      cell: ({ row, table }) => (
+        <EditableCell
+          value={row.original.internalPocId}
+          rowId={row.original.id}
+          columnId="internalPocId"
+          table={table}
+          type="select"
+          options={pocOptions}
+          displayValue={row.original.internalPocName}
+          placeholder="Unassigned"
+        />
+      ),
+    },
+    {
+      id: "team",
+      header: "Team",
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.members.length}
+        </span>
+      ),
+    },
+    {
+      id: "milestones",
+      header: "Milestones",
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.milestones.length}
+        </span>
+      ),
+    },
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // DnD constants
@@ -155,7 +195,25 @@ interface InstallationTableProps {
 }
 
 export function InstallationTable({ data }: InstallationTableProps) {
+  const router = useRouter();
   const [columnSizing, setColumnSizing] = React.useState<ColumnSizingState>({});
+
+  const [pocOptions, setPocOptions] = React.useState<EditableCellOption[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    listInstallationPocCandidates().then((users) => {
+      if (cancelled) return;
+      setPocOptions(
+        users.map((u) => ({ value: u.id, label: u.name || u.email }))
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const columns = React.useMemo(() => makeColumns(pocOptions), [pocOptions]);
+
   const [columnOrder, setColumnOrder] = React.useState<string[]>(() =>
     columns.map((c) => ("accessorKey" in c ? String(c.accessorKey) : c.id ?? ""))
   );
@@ -176,6 +234,25 @@ export function InstallationTable({ data }: InstallationTableProps) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    meta: {
+      updateField: async (rowId, columnId, value) => {
+        const row = data.find((d) => d.id === rowId);
+        const oldValue = row
+          ? String((row as Record<string, unknown>)[columnId] ?? "")
+          : undefined;
+        const result = await updateInstallationField(
+          rowId,
+          columnId,
+          value,
+          oldValue
+        );
+        if ("error" in result) {
+          toast.error(result.error);
+        } else {
+          router.refresh();
+        }
+      },
+    },
   });
 
   const handleColumnDragEnd = React.useCallback(

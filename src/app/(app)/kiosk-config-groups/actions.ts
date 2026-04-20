@@ -6,8 +6,8 @@ import {
   kiosks,
   kioskAssignments,
   locationProducts,
+  locations,
 } from "@/db/schema";
-import { requireRole } from "@/lib/rbac";
 import { eq, sql } from "drizzle-orm";
 
 export type ConfigGroupListItem = {
@@ -16,6 +16,11 @@ export type ConfigGroupListItem = {
   productAvailability: number;
   hotelCount: number;
   kioskCount: number;
+  // Locations now own the group link (Phase 4.x — Monday col 1466686598).
+  // `linkedLocationCount` counts locations.kiosk_config_group_id = group.id
+  // directly; `hotelCount` above is the legacy kiosk-assignment-derived count
+  // and is kept for backwards compatibility with the existing Kiosks column.
+  linkedLocationCount: number;
 };
 
 export async function listConfigGroups(): Promise<ConfigGroupListItem[]> {
@@ -42,6 +47,12 @@ export async function listConfigGroups(): Promise<ConfigGroupListItem[]> {
       .innerJoin(kioskAssignments, eq(kiosks.id, kioskAssignments.kioskId))
       .where(eq(kiosks.kioskConfigGroupId, group.id));
 
+    // Count locations directly linked via locations.kiosk_config_group_id
+    const linkedLocationResult = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(locations)
+      .where(eq(locations.kioskConfigGroupId, group.id));
+
     // Count distinct products available across locations that have kiosks in this group
     const locationIds = await db
       .selectDistinct({ locationId: kioskAssignments.locationId })
@@ -67,6 +78,7 @@ export async function listConfigGroups(): Promise<ConfigGroupListItem[]> {
       productAvailability: productCount,
       kioskCount: kioskCountResult[0]?.count ?? 0,
       hotelCount: hotelCountResult[0]?.count ?? 0,
+      linkedLocationCount: linkedLocationResult[0]?.count ?? 0,
     });
   }
   return result;

@@ -63,14 +63,19 @@ async function buildPivotWhereString(
   // Serialize the Drizzle SQL object to a raw string via db query builder.
   // We use sql`...`.getSQL() pattern, but since Drizzle doesn't have a simple
   // .toString(), we use the query compiler to get the raw SQL.
+  //
+  // NOTE: use un-aliased table name here so Drizzle emits references like
+  // `"sales_records"."transaction_date"`. The pivot SQL in `pivot-engine.ts`
+  // also uses un-aliased tables, so the resulting WHERE clause resolves
+  // correctly against the pivot query's FROM.
   const query = db
     .select({ v: sql`1` })
-    .from(sql`sales_records sr`)
+    .from(sql`sales_records`)
     .where(combined)
     .toSQL();
 
   // Extract just the WHERE clause from the generated SQL.
-  // The Drizzle output is: SELECT 1 FROM sales_records sr WHERE <condition>
+  // The Drizzle output is: SELECT 1 FROM sales_records WHERE <condition>
   // We want just the <condition> part.
   const fullSql = query.sql;
   const whereIdx = fullSql.indexOf(" where ");

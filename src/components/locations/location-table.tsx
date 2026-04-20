@@ -32,7 +32,7 @@ import { DraggableTableHead } from "@/components/table/draggable-header";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { LocationListItem } from "@/app/(app)/locations/actions";
-import { updateLocationField } from "@/app/(app)/locations/actions";
+import { updateLocationField, listPocCandidates } from "@/app/(app)/locations/actions";
 import { bulkUpdateLocations, bulkArchiveLocations } from "@/app/(app)/locations/bulk-actions";
 import {
   saveView,
@@ -45,11 +45,12 @@ import { BulkToolbar } from "@/components/table/bulk-toolbar";
 import { MergeDialog } from "@/components/table/merge-dialog";
 import { mergeLocationsAction } from "@/app/(app)/locations/merge-action";
 import {
-  locationColumns,
+  makeLocationColumns,
   locationDefaultColumnVisibility,
   locationGroupableColumns,
   locationFilterableColumns,
 } from "@/components/locations/location-columns";
+import type { EditableCellOption } from "@/components/table/editable-cell";
 import { ViewToolbar } from "@/components/table/view-toolbar";
 import { SavedViewsBar } from "@/components/table/saved-views-bar";
 import {
@@ -71,6 +72,28 @@ interface LocationTableProps {
 export function LocationTable({ data }: LocationTableProps) {
   const router = useRouter();
   const store = useLocationViewStore;
+
+  // Load POC (user) candidates once on mount — used by the Internal POC
+  // inline-edit select. No separate loading UI: the cell just shows the
+  // denormalised internalPocName until options arrive.
+  const [pocOptions, setPocOptions] = React.useState<EditableCellOption[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    listPocCandidates().then((users) => {
+      if (cancelled) return;
+      setPocOptions(
+        users.map((u) => ({ value: u.id, label: u.name || u.email }))
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const columns = React.useMemo(
+    () => makeLocationColumns(pocOptions),
+    [pocOptions]
+  );
 
   const {
     columnFilters,
@@ -104,11 +127,11 @@ export function LocationTable({ data }: LocationTableProps) {
 
   const effectiveColumnOrder = columnOrder.length > 0
     ? columnOrder
-    : locationColumns.map((c) => ("accessorKey" in c ? String(c.accessorKey) : c.id ?? ""));
+    : columns.map((c) => ("accessorKey" in c ? String(c.accessorKey) : c.id ?? ""));
 
   const table = useReactTable({
     data,
-    columns: locationColumns,
+    columns,
     state: {
       columnFilters,
       sorting,
@@ -327,7 +350,7 @@ export function LocationTable({ data }: LocationTableProps) {
                         onClick={() => row.toggleExpanded()}
                       >
                         <TableCell
-                          colSpan={locationColumns.length}
+                          colSpan={columns.length}
                           className="py-2 px-3"
                         >
                           <span className="inline-flex items-center gap-2 font-medium text-sm text-foreground">

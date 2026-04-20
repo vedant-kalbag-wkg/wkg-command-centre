@@ -64,6 +64,22 @@ export function ConfigGroupsTable({ data }: ConfigGroupsTableProps) {
           );
         },
       }),
+      columnHelper.accessor("linkedLocationCount", {
+        header: "Linked Locations",
+        cell: ({ getValue, row }) => {
+          const count = getValue();
+          return count > 0 ? (
+            <Link
+              href={`/locations?kioskConfigGroup=${row.original.id}`}
+              className={buttonVariants({ variant: "link" })}
+            >
+              {count}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground tabular-nums">0</span>
+          );
+        },
+      }),
       columnHelper.accessor("kioskCount", {
         header: "Kiosks",
         cell: ({ getValue, row }) => {

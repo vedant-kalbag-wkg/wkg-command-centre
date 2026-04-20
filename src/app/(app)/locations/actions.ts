@@ -5,7 +5,6 @@ import { db } from "@/db";
 import { locations, kioskAssignments, kiosks, user } from "@/db/schema";
 import {
   requireRole,
-  canAccessSensitiveFields,
   redactSensitiveFields,
   type Role,
 } from "@/lib/rbac";
@@ -197,6 +196,49 @@ export async function getLocation(id: string): Promise<
   }
 }
 
+// Fields admins/members can inline-edit via updateLocationField. Banking is
+// gated separately (sensitive). System columns (id/createdAt/updatedAt/
+// archivedAt) are never edited through this path, nor are
+// operatingGroupId/customFields (managed by dedicated flows).
+const EDITABLE_LOCATION_FIELDS = [
+  "name",
+  "address",
+  "latitude",
+  "longitude",
+  "starRating",
+  "roomCount",
+  "customerCode",
+  "outletCode",
+  "hotelGroup",
+  "sourcedBy",
+  "contractValue",
+  "contractStartDate",
+  "contractEndDate",
+  "contractTerms",
+  "maintenanceFee",
+  "freeTrialEndDate",
+  "hardwareAssets",
+  "notes",
+  "region",
+  "locationGroup",
+  "internalPocId",
+  "status",
+  "numRooms",
+  "hotelAddress",
+  "liveDate",
+  "launchPhase",
+  "keyContactName",
+  "keyContactEmail",
+  "financeContact",
+] as const;
+
+export type EditableLocationField = (typeof EDITABLE_LOCATION_FIELDS)[number];
+
+const updateLocationFieldSchema = z.object({
+  field: z.enum(EDITABLE_LOCATION_FIELDS),
+  value: z.string().nullable(),
+});
+
 export async function updateLocationField(
   locationId: string,
   field: string,
@@ -206,16 +248,14 @@ export async function updateLocationField(
   try {
     const session = await requireRole("admin", "member");
 
-    // Banking fields require canAccessSensitiveFields check
-    const bankingFields = ["bankingDetails"];
-    if (bankingFields.includes(field)) {
-      const userType =
-        (session.user as { userType?: "internal" | "external" }).userType ?? "internal";
-      const role = (session.user.role as Role | null) ?? "viewer";
-      if (!canAccessSensitiveFields({ userType, role })) {
-        return { error: "Forbidden: insufficient permissions for banking fields" };
-      }
+    // Narrow arbitrary string `field` via zod so only whitelisted columns reach
+    // the DB. Rejects e.g. "id", "createdAt", "bankingDetails" (use dedicated
+    // action), and any unknown attribute.
+    const parsed = updateLocationFieldSchema.safeParse({ field, value });
+    if (!parsed.success) {
+      return { error: `Invalid field: ${field}` };
     }
+    const validField = parsed.data.field;
 
     const [row] = await db
       .select({ name: locations.name })
@@ -230,14 +270,31 @@ export async function updateLocationField(
       updatedAt: new Date(),
     };
 
-    if (field === "contractStartDate" || field === "contractEndDate") {
-      updateData[field] = value ? new Date(value) : null;
-    } else if (field === "latitude" || field === "longitude" || field === "contractValue") {
-      updateData[field] = value ? Number(value) : null;
-    } else if (field === "starRating" || field === "roomCount") {
-      updateData[field] = value ? parseInt(value, 10) : null;
+    if (
+      validField === "contractStartDate" ||
+      validField === "contractEndDate" ||
+      validField === "liveDate" ||
+      validField === "freeTrialEndDate"
+    ) {
+      updateData[validField] = value ? new Date(value) : null;
+    } else if (
+      validField === "latitude" ||
+      validField === "longitude" ||
+      validField === "contractValue" ||
+      validField === "maintenanceFee"
+    ) {
+      updateData[validField] = value ? Number(value) : null;
+    } else if (
+      validField === "starRating" ||
+      validField === "roomCount" ||
+      validField === "numRooms"
+    ) {
+      updateData[validField] = value ? parseInt(value, 10) : null;
+    } else if (validField === "internalPocId") {
+      // FK to user — null means "unassigned"
+      updateData[validField] = value && value !== "" ? value : null;
     } else {
-      updateData[field] = value;
+      updateData[validField] = value;
     }
 
     await db.update(locations).set(updateData).where(eq(locations.id, locationId));
@@ -249,7 +306,7 @@ export async function updateLocationField(
       entityId: locationId,
       entityName: row.name,
       action: "update",
-      field,
+      field: validField,
       oldValue: oldValue,
       newValue: value !== null && value !== undefined ? String(value) : undefined,
     });
@@ -310,6 +367,7 @@ export async function listLocations(): Promise<LocationListItem[]> {
         maintenanceFee: locations.maintenanceFee,
         customerCode: locations.customerCode,
         keyContacts: locations.keyContacts,
+        keyContactNameCol: locations.keyContactName,
         region: locations.region,
         locationGroup: locations.locationGroup,
         internalPocId: locations.internalPocId,
@@ -339,10 +397,16 @@ export async function listLocations(): Promise<LocationListItem[]> {
       countMap.set(a.locationId, (countMap.get(a.locationId) ?? 0) + 1);
     }
 
-    return rows.map(({ keyContacts, ...r }) => ({
+    return rows.map(({ keyContacts, keyContactNameCol, ...r }) => ({
       ...r,
       kioskCount: countMap.get(r.id) ?? 0,
-      keyContactName: (keyContacts as Array<{ name: string }> | null)?.[0]?.name ?? null,
+      // Prefer the denormalised top-level column (editable inline); fall back
+      // to the first entry of the JSONB contacts blob for legacy rows that
+      // haven't been touched since the denormalisation was added.
+      keyContactName:
+        keyContactNameCol ??
+        (keyContacts as Array<{ name: string }> | null)?.[0]?.name ??
+        null,
       internalPocName: r.internalPocName ?? null,
     }));
   } catch {
@@ -562,5 +626,28 @@ export async function updateBankingDetails(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update banking details";
     return { error: message };
+  }
+}
+
+/**
+ * List users that can be assigned as an internal POC / assignee on a location.
+ * Admin and member roles are allowed candidates; viewers are excluded since
+ * they cannot act on records. Available to admin + member callers only.
+ */
+export async function listPocCandidates(): Promise<
+  Array<{ id: string; name: string; email: string }>
+> {
+  try {
+    await requireRole("admin", "member", "viewer");
+    const rows = await db
+      .select({ id: user.id, name: user.name, email: user.email, role: user.role })
+      .from(user)
+      .orderBy(user.name);
+
+    return rows
+      .filter((r) => r.role === "admin" || r.role === "member")
+      .map((r) => ({ id: r.id, name: r.name, email: r.email }));
+  } catch {
+    return [];
   }
 }

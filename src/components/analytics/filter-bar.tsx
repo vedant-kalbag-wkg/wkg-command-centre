@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 import { getDimensionOptions } from "@/app/(app)/analytics/actions";
@@ -23,9 +23,12 @@ export function AnalyticsFilterBar({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [options, setOptions] = useState<DimensionOptions | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const store = useAnalyticsFilterStore();
+  // Track mount so the initial store state (post URL hydration) does not
+  // immediately stomp the URL on first render.
+  const hasHydratedRef = useRef(false);
 
   // Load dimension options on mount
   useEffect(() => {
@@ -41,16 +44,34 @@ export function AnalyticsFilterBar({
     if (parsed) {
       useAnalyticsFilterStore.setState(parsed);
     }
+    hasHydratedRef.current = true;
     // Only run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleApply() {
-    const params = filtersToSearchParams(
-      useAnalyticsFilterStore.getState() as Parameters<typeof filtersToSearchParams>[0]
-    );
-    router.replace(`?${params.toString()}`);
-  }
+  // Auto-apply filters: when any filter slice changes, debounce a URL replace.
+  // Serialized deps keep the effect stable across reference-only re-renders.
+  const filterSignature = JSON.stringify({
+    from: store.dateRange.from,
+    to: store.dateRange.to,
+    hotel: store.hotelFilter,
+    product: store.productFilter,
+    hotelGroup: store.hotelGroupFilter,
+    region: store.regionFilter,
+    locationGroup: store.locationGroupFilter,
+    maturity: store.maturityFilter,
+  });
+
+  useEffect(() => {
+    if (!hasHydratedRef.current) return;
+    const id = setTimeout(() => {
+      const params = filtersToSearchParams(
+        useAnalyticsFilterStore.getState() as Parameters<typeof filtersToSearchParams>[0]
+      );
+      router.replace(`?${params.toString()}`);
+    }, 150);
+    return () => clearTimeout(id);
+  }, [filterSignature, router]);
 
   function handleReset() {
     store.clearAllFilters();
@@ -149,14 +170,6 @@ export function AnalyticsFilterBar({
         >
           <RotateCcw className="size-3.5" />
           Reset
-        </Button>
-        <Button
-          size="sm"
-          className="h-8"
-          onClick={handleApply}
-          disabled={isPending}
-        >
-          Apply Filters
         </Button>
       </div>
     </div>

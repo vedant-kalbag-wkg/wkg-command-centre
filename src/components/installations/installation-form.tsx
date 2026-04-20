@@ -101,7 +101,8 @@ export function InstallationForm({
           );
         } else {
           toast.success("Installation created");
-          router.push(`/installations/${result.id}`);
+          router.push("/installations");
+          router.refresh();
         }
       }
     });
