@@ -80,7 +80,7 @@ function MilestoneDiamondEvent({ event }: { event: CalendarEventData }) {
           flexShrink: 0,
         }}
       />
-      <span className="text-xs text-wk-graphite truncate">{event.title}</span>
+      <span className="text-xs text-foreground truncate">{event.title}</span>
     </span>
   );
 }
@@ -99,7 +99,7 @@ function TrialExpiryDotEvent({ event }: { event: CalendarEventData }) {
           flexShrink: 0,
         }}
       />
-      <span className="text-xs text-wk-graphite truncate">{event.title}</span>
+      <span className="text-xs text-foreground truncate">{event.title}</span>
     </span>
   );
 }
@@ -123,7 +123,7 @@ function eventPropGetter(event: CalendarEventData) {
         ev.type === "installation"
           ? `${ev.regionColor}cc` // 80% opacity hex suffix
           : "transparent",
-      color: ev.type === "installation" ? "white" : "#121212",
+      color: ev.type === "installation" ? "white" : "var(--color-wk-graphite)",
       border: ev.type === "installation" ? "none" : undefined,
       borderRadius: ev.type === "installation" ? "4px" : undefined,
     },
@@ -269,12 +269,12 @@ export function CalendarView({ installations, kiosks }: CalendarViewProps) {
 
         {/* Empty state — overlays only the grid area, not the toolbar */}
         {visibleRangeEmpty && (
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded pointer-events-none" style={{ top: toolbarHeight }}>
-            <div className="text-center px-6 py-8 rounded-lg bg-white/90 shadow-sm border border-wk-light-grey max-w-sm pointer-events-auto">
-              <p className="text-base font-semibold text-wk-graphite">
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded pointer-events-none" style={{ top: toolbarHeight }}>
+            <div className="text-center px-6 py-8 rounded-lg bg-card shadow-sm border border-border max-w-sm pointer-events-auto">
+              <p className="text-base font-semibold text-foreground">
                 Nothing scheduled for this period
               </p>
-              <p className="text-sm text-wk-night-grey mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Add installations and milestones to see them here. Trial expiry
                 dates appear automatically from your kiosk records.
               </p>

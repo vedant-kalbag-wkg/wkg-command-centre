@@ -177,7 +177,7 @@ export function SavedViewsBar({
       {/* Scrollable pills area */}
       <div className="flex-1 overflow-x-auto pb-1 scrollbar-hide">
         {!loading && views.length === 0 && (
-          <p className="text-[12px] text-wk-night-grey whitespace-nowrap">No saved views</p>
+          <p className="text-[12px] text-muted-foreground whitespace-nowrap">No saved views</p>
         )}
         {!loading && views.length > 0 && (
           <div className="flex items-center gap-1.5 flex-nowrap">
@@ -192,8 +192,8 @@ export function SavedViewsBar({
                       inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap
                       ${
                         isActive
-                          ? "bg-wk-azure text-white"
-                          : "bg-wk-light-grey text-wk-graphite hover:bg-wk-sky-blue"
+                          ? "bg-primary text-white"
+                          : "bg-muted text-foreground hover:bg-primary/10"
                       }
                     `}
                   >
@@ -204,7 +204,7 @@ export function SavedViewsBar({
                       render={
                         <button
                           type="button"
-                          className="hidden group-hover:inline-flex h-5 w-5 items-center justify-center rounded-full text-wk-night-grey hover:text-wk-graphite text-[10px]"
+                          className="hidden group-hover:inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground text-[10px]"
                           aria-label={`Options for view "${view.name}"`}
                         />
                       }
@@ -241,7 +241,7 @@ export function SavedViewsBar({
           render={
             <button
               type="button"
-              className="shrink-0 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-wk-azure hover:bg-wk-sky-blue transition-colors"
+              className="shrink-0 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-primary hover:bg-primary/10 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
               Save view
@@ -265,7 +265,7 @@ export function SavedViewsBar({
               size="sm"
               onClick={handleSave}
               disabled={saving || !saveName.trim()}
-              className="w-full h-8 bg-wk-azure text-white hover:bg-wk-azure/90 text-xs"
+              className="w-full h-8 bg-primary text-white hover:bg-primary/90 text-xs"
             >
               {saving ? "Saving..." : "Save"}
             </Button>

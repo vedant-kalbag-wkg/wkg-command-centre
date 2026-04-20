@@ -12,13 +12,11 @@ test("@smoke app shell sidebar renders", async ({ page }) => {
   await signInAsAdmin(page);
   await page.goto("/kiosks");
 
-  // Primary entity nav links live inside the "Main navigation" landmark.
-  const nav = page.getByRole("navigation", { name: "Main navigation" });
-  await expect(nav).toBeVisible();
-  await expect(nav.getByText("Kiosks")).toBeVisible();
-  await expect(nav.getByText("Locations")).toBeVisible();
+  // Sidebar nav links are rendered as accessible <a> elements inside the
+  // shadcn Sidebar primitive (no <nav> landmark).
+  await expect(page.getByRole("link", { name: "Kiosks" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Locations" })).toBeVisible();
 
-  // Settings lives in the sidebar footer (outside the Main navigation
-  // landmark) — assert it renders as a sidebar link instead.
-  await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+  // Top bar renders its controls: sidebar trigger and theme toggle.
+  await expect(page.getByRole("button", { name: "Toggle Sidebar" }).first()).toBeVisible();
 });

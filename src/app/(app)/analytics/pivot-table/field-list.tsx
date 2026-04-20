@@ -30,8 +30,8 @@ function DraggableChip({ field }: { field: FieldDefinition }) {
       {...attributes}
       className={`cursor-grab rounded-md border px-3 py-1.5 text-xs font-medium select-none transition-colors ${
         field.type === "dimension"
-          ? "border-[#00A6D3]/30 bg-[#00A6D3]/10 text-[#00A6D3] hover:bg-[#00A6D3]/20"
-          : "border-[#121212]/20 bg-[#121212]/5 text-[#121212] hover:bg-[#121212]/10"
+          ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+          : "border-foreground/20 bg-foreground/5 text-foreground hover:bg-foreground/10"
       }`}
     >
       {field.label}

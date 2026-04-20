@@ -42,8 +42,8 @@ function RoleBadge({ role }: { role: string }) {
   const label = role.charAt(0).toUpperCase() + role.slice(1);
 
   const styles: Record<string, string> = {
-    admin: "bg-[#121212] text-white",
-    member: "bg-[#F4F4F4] text-[#121212]",
+    admin: "bg-secondary text-secondary-foreground",
+    member: "bg-[#F4F4F4] text-foreground",
     viewer: "bg-[#E5F1F9] text-[#575A5C]",
   };
 
@@ -162,7 +162,7 @@ export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
 
   if (users.length === 0) {
     return (
-      <div className="flex items-center justify-center py-16 text-wk-night-grey">
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
         No users yet. Invite your first team member to get started.
       </div>
     );
@@ -200,7 +200,7 @@ export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
             variant="outline"
             size="sm"
             onClick={() => setDeleteOpen(true)}
-            className="h-7 gap-1.5 text-xs text-[#F41E56] border-[#F41E56]/30 hover:bg-[#F41E56]/10 hover:text-[#D91A4B]"
+            className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive/90"
           >
             <Trash2 className="h-3 w-3" />
             Delete
@@ -275,10 +275,10 @@ export function UserTable({ users, isAdmin, onRefresh }: UserTableProps) {
                     Inactive
                   </span>
                 ) : (
-                  <span className="text-sm text-wk-night-grey">Active</span>
+                  <span className="text-sm text-muted-foreground">Active</span>
                 )}
               </TableCell>
-              <TableCell className="text-wk-night-grey">
+              <TableCell className="text-muted-foreground">
                 {formatDate(user.createdAt)}
               </TableCell>
               <TableCell>

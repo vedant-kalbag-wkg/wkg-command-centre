@@ -79,7 +79,7 @@ export function DeleteUserDialog({
           <Button
             onClick={handleConfirm}
             disabled={isSubmitting}
-            className="bg-[#F41E56] text-white hover:bg-[#D91A4B]"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             {isSubmitting && <Loader2 className="size-4 animate-spin" />}
             Delete {isBulk ? `${users.length} users` : "user"}

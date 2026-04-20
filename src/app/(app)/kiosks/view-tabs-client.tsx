@@ -1,10 +1,11 @@
 "use client";
 
 import { useTransition } from "react";
-import { Loader2 } from "lucide-react";
+import { Calendar, GanttChart, Loader2 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/ui/empty-state";
 import { KioskTable } from "@/components/kiosks/kiosk-table";
 
 const KioskKanban = dynamic(
@@ -15,7 +16,7 @@ const KioskKanban = dynamic(
 function TabLoadingPlaceholder() {
   return (
     <div className="flex items-center justify-center py-24">
-      <Loader2 className="animate-spin size-5 text-wk-azure" />
+      <Loader2 className="animate-spin size-5 text-primary" />
     </div>
   );
 }
@@ -53,15 +54,17 @@ export function ViewTabsClient({
 
   return (
     <Tabs value={activeView} onValueChange={handleTabChange}>
-      <TabsList variant="line" className="mb-4">
+      <TabsList className="mb-4">
         <TabsTrigger value="table">Table</TabsTrigger>
         <TabsTrigger value="kanban">Kanban</TabsTrigger>
+        <TabsTrigger value="gantt">Gantt</TabsTrigger>
+        <TabsTrigger value="calendar">Calendar</TabsTrigger>
       </TabsList>
 
       <div className="relative">
         {isPending && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 pointer-events-none">
-            <Loader2 className="animate-spin size-5 text-wk-azure" />
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 pointer-events-none">
+            <Loader2 className="animate-spin size-5 text-primary" />
             <span className="sr-only">Loading...</span>
           </div>
         )}
@@ -71,6 +74,24 @@ export function ViewTabsClient({
           </TabsContent>
           <TabsContent value="kanban">
             {activeView === "kanban" && <KioskKanban kiosks={kiosks} stages={stages} />}
+          </TabsContent>
+          <TabsContent value="gantt">
+            {activeView === "gantt" && (
+              <EmptyState
+                icon={GanttChart}
+                title="Gantt view coming soon"
+                description="The gantt timeline view for kiosks will be wired up in a later phase. For installation timelines, see the installations page."
+              />
+            )}
+          </TabsContent>
+          <TabsContent value="calendar">
+            {activeView === "calendar" && (
+              <EmptyState
+                icon={Calendar}
+                title="Calendar view coming soon"
+                description="The calendar view for kiosks will be wired up in a later phase. For installation schedules, see the installations page."
+              />
+            )}
           </TabsContent>
         </div>
       </div>

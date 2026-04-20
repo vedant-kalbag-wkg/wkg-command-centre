@@ -25,11 +25,12 @@ import {
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Package } from "lucide-react";
 import { DraggableTableHead } from "@/components/table/draggable-header";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableHeader,
@@ -46,9 +47,9 @@ import type { InstallationWithRelations } from "@/app/(app)/installations/action
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    planned: "bg-wk-mid-grey text-white border-0",
-    active: "bg-wk-azure text-white border-0",
-    complete: "bg-[#68D871] text-wk-graphite border-0",
+    planned: "bg-secondary text-secondary-foreground border-0",
+    active: "bg-primary text-primary-foreground border-0",
+    complete: "bg-[--color-wk-success] text-foreground border-0",
   };
 
   const labels: Record<string, string> = {
@@ -75,7 +76,7 @@ const columns: ColumnDef<InstallationWithRelations>[] = [
     cell: ({ row }) => (
       <Link
         href={`/installations/${row.original.id}`}
-        className="font-medium text-wk-graphite hover:text-wk-azure hover:underline"
+        className="font-medium text-foreground hover:text-primary hover:underline"
       >
         {row.original.name}
       </Link>
@@ -85,7 +86,7 @@ const columns: ColumnDef<InstallationWithRelations>[] = [
     accessorKey: "region",
     header: "Region",
     cell: ({ row }) => (
-      <span className="text-sm text-wk-night-grey">
+      <span className="text-sm text-muted-foreground">
         {row.original.region ?? "—"}
       </span>
     ),
@@ -100,11 +101,11 @@ const columns: ColumnDef<InstallationWithRelations>[] = [
     header: "Planned Start",
     cell: ({ row }) =>
       row.original.plannedStart ? (
-        <span className="text-sm text-wk-night-grey">
+        <span className="text-sm text-muted-foreground">
           {format(row.original.plannedStart, "dd MMM yyyy")}
         </span>
       ) : (
-        <span className="text-sm text-wk-mid-grey">—</span>
+        <span className="text-sm text-muted-foreground">—</span>
       ),
   },
   {
@@ -112,18 +113,18 @@ const columns: ColumnDef<InstallationWithRelations>[] = [
     header: "Planned End",
     cell: ({ row }) =>
       row.original.plannedEnd ? (
-        <span className="text-sm text-wk-night-grey">
+        <span className="text-sm text-muted-foreground">
           {format(row.original.plannedEnd, "dd MMM yyyy")}
         </span>
       ) : (
-        <span className="text-sm text-wk-mid-grey">—</span>
+        <span className="text-sm text-muted-foreground">—</span>
       ),
   },
   {
     id: "team",
     header: "Team",
     cell: ({ row }) => (
-      <span className="text-sm text-wk-night-grey">
+      <span className="text-sm text-muted-foreground">
         {row.original.members.length}
       </span>
     ),
@@ -132,7 +133,7 @@ const columns: ColumnDef<InstallationWithRelations>[] = [
     id: "milestones",
     header: "Milestones",
     cell: ({ row }) => (
-      <span className="text-sm text-wk-night-grey">
+      <span className="text-sm text-muted-foreground">
         {row.original.milestones.length}
       </span>
     ),
@@ -195,22 +196,21 @@ export function InstallationTable({ data }: InstallationTableProps) {
   const hasData = data.length > 0;
 
   return (
-    <div className="rounded-lg border border-wk-mid-grey overflow-hidden">
+    <div className="rounded-lg border border-border overflow-hidden">
       {!hasData ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <h3 className="text-base font-semibold text-wk-graphite">
-            No installations yet
-          </h3>
-          <p className="mt-1 text-sm text-wk-night-grey">
-            Create an installation to start planning deployment timelines.
-          </p>
-          <Link href="/installations/new" className="mt-4">
-            <Button className="bg-wk-azure text-white hover:bg-wk-azure/90">
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add installation
-            </Button>
-          </Link>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="No installations yet"
+          description="Create an installation to start planning deployment timelines."
+          action={
+            <Link href="/installations/new">
+              <Button size="sm">
+                <Plus className="size-4" />
+                Add installation
+              </Button>
+            </Link>
+          }
+        />
       ) : (
         <DndContext
           id="installation-table-dnd"
@@ -219,12 +219,12 @@ export function InstallationTable({ data }: InstallationTableProps) {
           modifiers={DND_MODIFIERS}
           onDragEnd={handleColumnDragEnd}
         >
-        <Table className="table-fixed" style={{ width: table.getCenterTotalSize() }}>
+        <Table className="table-fixed" style={{ width: `max(100%, ${table.getCenterTotalSize()}px)` }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow
                 key={headerGroup.id}
-                className="bg-wk-light-grey hover:bg-wk-light-grey border-b border-wk-mid-grey"
+                className="bg-muted hover:bg-muted border-b border-border"
               >
                 <SortableContext
                   items={headerGroup.headers.map((h) => h.id)}
@@ -241,7 +241,7 @@ export function InstallationTable({ data }: InstallationTableProps) {
             {table.getRowModel().rows.map((row) => (
               <TableRow
                 key={row.id}
-                className="transition-colors hover:bg-wk-sky-blue"
+                className="transition-colors hover:bg-primary/10"
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell

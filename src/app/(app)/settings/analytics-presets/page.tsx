@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
-import { AppShell } from "@/components/layout/app-shell";
+import { ArrowLeft, Plus, SlidersHorizontal } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PresetsTable } from "./presets-table";
 import { PresetForm } from "./preset-form";
 import {
@@ -69,32 +70,45 @@ export default function AnalyticsPresetsPage() {
   };
 
   return (
-    <AppShell
-      title="Analytics Presets"
-      action={
-        <Link href="/settings">
-          <Button variant="ghost" size="sm" className="text-wk-night-grey">
-            <ArrowLeft className="mr-1.5 h-4 w-4" />
-            Back to Settings
-          </Button>
-        </Link>
-      }
-    >
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Saved filter configurations for analytics views.
-          </p>
-          <Button onClick={handleCreate} size="sm">
-            <Plus className="size-4" />
-            Create Preset
-          </Button>
-        </div>
-
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title="Analytics Presets"
+        description="Saved filter configurations for analytics views."
+        count={loading ? undefined : presets.length}
+        actions={
+          <>
+            <Link href="/settings">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+              >
+                <ArrowLeft className="mr-1.5 h-4 w-4" />
+                Back to Settings
+              </Button>
+            </Link>
+            <Button onClick={handleCreate} size="sm">
+              <Plus className="size-4" />
+              Create Preset
+            </Button>
+          </>
+        }
+      />
+      <div className="flex-1 overflow-auto p-4 md:p-6">
         {loading ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">
-            Loading...
-          </p>
+          <EmptyState icon={SlidersHorizontal} title="Loading presets…" />
+        ) : presets.length === 0 ? (
+          <EmptyState
+            icon={SlidersHorizontal}
+            title="No presets yet"
+            description="Save the current analytics filter configuration so you can recall it with one click."
+            action={
+              <Button onClick={handleCreate} size="sm">
+                <Plus className="size-4" />
+                Create Preset
+              </Button>
+            }
+          />
         ) : (
           <PresetsTable
             presets={presets}
@@ -110,6 +124,6 @@ export default function AnalyticsPresetsPage() {
         preset={editing}
         onSubmit={handleSubmit}
       />
-    </AppShell>
+    </div>
   );
 }

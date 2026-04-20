@@ -27,9 +27,10 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
-import { ChevronRight, ChevronDown, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, MapPin } from "lucide-react";
 import { DraggableTableHead } from "@/components/table/draggable-header";
 import Link from "next/link";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { LocationListItem } from "@/app/(app)/locations/actions";
 import { updateLocationField } from "@/app/(app)/locations/actions";
 import { bulkUpdateLocations, bulkArchiveLocations } from "@/app/(app)/locations/bulk-actions";
@@ -252,44 +253,43 @@ export function LocationTable({ data }: LocationTableProps) {
       />
 
       {/* Table */}
-      <div className="mt-2 rounded-lg border border-wk-mid-grey overflow-x-auto">
+      <div className="mt-2 rounded-lg border border-border overflow-x-auto">
         {!hasData ? (
           /* Empty state — no records */
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <h3 className="text-base font-semibold text-wk-graphite">
-              No locations yet
-            </h3>
-            <p className="mt-1 text-sm text-wk-night-grey">
-              Add your first location to assign kiosks to venues.
-            </p>
-            <Link href="/locations/new" className="mt-4">
-              <Button className="bg-wk-azure text-white hover:bg-wk-azure/90">
-                <Plus className="mr-1.5 h-4 w-4" />
-                Add location
-              </Button>
-            </Link>
-          </div>
+          <EmptyState
+            icon={MapPin}
+            title="No locations yet"
+            description="Add your first location to assign kiosks to venues."
+            action={
+              <Link href="/locations/new">
+                <Button size="sm">
+                  <Plus className="size-4" />
+                  Add location
+                </Button>
+              </Link>
+            }
+          />
         ) : !hasFilteredRows ? (
           /* Empty state — filters applied, no results */
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <h3 className="text-base font-semibold text-wk-graphite">
-              No locations match your filters
-            </h3>
-            <p className="mt-1 text-sm text-wk-night-grey">
-              Try adjusting or clearing your filters to see more results.
-            </p>
-            {isFiltering && (
-              <button
-                type="button"
-                onClick={() => {
-                  useLocationViewStore.getState().resetToDefaults();
-                }}
-                className="mt-4 text-sm text-wk-azure hover:underline"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={MapPin}
+            title="No locations match your filters"
+            description="Try adjusting or clearing your filters to see more results."
+            action={
+              isFiltering ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    useLocationViewStore.getState().resetToDefaults();
+                  }}
+                >
+                  Clear filters
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             <DndContext
@@ -299,12 +299,12 @@ export function LocationTable({ data }: LocationTableProps) {
               modifiers={DND_MODIFIERS}
               onDragEnd={handleColumnDragEnd}
             >
-            <Table className="table-fixed" style={{ width: table.getCenterTotalSize() }}>
+            <Table className="table-fixed" style={{ width: `max(100%, ${table.getCenterTotalSize()}px)` }}>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow
                     key={headerGroup.id}
-                    className="bg-wk-light-grey hover:bg-wk-light-grey border-b border-wk-mid-grey"
+                    className="bg-muted hover:bg-muted border-b border-border"
                   >
                     <SortableContext
                       items={headerGroup.headers.map((h) => h.id)}
@@ -323,21 +323,21 @@ export function LocationTable({ data }: LocationTableProps) {
                     return (
                       <TableRow
                         key={row.id}
-                        className="bg-wk-light-grey/50 hover:bg-wk-light-grey cursor-pointer"
+                        className="bg-muted/50 hover:bg-muted cursor-pointer"
                         onClick={() => row.toggleExpanded()}
                       >
                         <TableCell
                           colSpan={locationColumns.length}
                           className="py-2 px-3"
                         >
-                          <span className="inline-flex items-center gap-2 font-medium text-sm text-wk-graphite">
+                          <span className="inline-flex items-center gap-2 font-medium text-sm text-foreground">
                             {row.getIsExpanded() ? (
-                              <ChevronDown className="h-4 w-4 text-wk-night-grey" />
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
                             ) : (
-                              <ChevronRight className="h-4 w-4 text-wk-night-grey" />
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
                             )}
                             {row.groupingValue as string ?? "—"}
-                            <span className="text-xs text-wk-night-grey font-normal">
+                            <span className="text-xs text-muted-foreground font-normal">
                               ({row.subRows.length})
                             </span>
                           </span>
@@ -352,8 +352,8 @@ export function LocationTable({ data }: LocationTableProps) {
                       className={`
                         transition-colors min-h-[44px]
                         ${row.getIsSelected()
-                          ? "bg-[var(--color-wk-azure-20)] hover:bg-[var(--color-wk-azure-20)]"
-                          : "hover:bg-wk-sky-blue"
+                          ? "bg-primary/20 hover:bg-primary/20"
+                          : "hover:bg-primary/10"
                         }
                       `}
                     >
@@ -378,8 +378,8 @@ export function LocationTable({ data }: LocationTableProps) {
 
             {/* Pagination */}
             {table.getPageCount() > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-wk-mid-grey">
-                <span className="text-xs text-wk-night-grey">
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                <span className="text-xs text-muted-foreground">
                   Page {table.getState().pagination.pageIndex + 1} of{" "}
                   {table.getPageCount()} — {table.getFilteredRowModel().rows.length} total
                 </span>

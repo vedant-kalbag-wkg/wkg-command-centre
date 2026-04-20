@@ -10,7 +10,6 @@ import {
   Legend,
 } from "recharts";
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
-import { EmptyState } from "@/components/analytics/empty-state";
 import { EventAnnotations } from "@/app/(app)/analytics/trend-builder/event-annotations";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
 import type { DailyTrendRow, BusinessEventDisplay } from "@/lib/analytics/types";
@@ -28,10 +27,6 @@ export function DailyTrends({
   events = [],
   activeEventCategories = [],
 }: DailyTrendsProps) {
-  if (!loading && data.length === 0) {
-    return <EmptyState message="No trend data for selected filters" />;
-  }
-
   return (
     <ChartWrapper loading={loading}>
       <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>

@@ -5,7 +5,8 @@ import { useAnalyticsFilterStore } from "@/lib/stores/analytics-filter-store";
 import { useTrendStore } from "@/lib/stores/trend-store";
 import { toLocalISODate } from "@/lib/analytics/formatters";
 import { resolveWeatherLocation } from "@/lib/weather/region-coordinates";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/layout/page-header";
+import { ChartCard } from "@/components/ui/chart-card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -166,108 +167,120 @@ export default function TrendBuilderPage() {
     return transformed;
   }, [seriesData, rollingAverage]);
 
+  const hasSeries = appliedSeries.length > 0;
+
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Trend Builder
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Build custom multi-series trend charts with weather and event overlays
-        </p>
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title="Trend Builder"
+        description="Build custom multi-series trend charts with weather and event overlays"
+        toolbar={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <GranularitySelector value={granularity} onChange={setGranularity} />
+
+            <div className="flex items-center gap-1 rounded-md border p-0.5">
+              {([null, 7, 30] as RollingWindow[]).map((w) => {
+                const label = w === null ? "Raw" : w === 7 ? "7d Avg" : "30d Avg";
+                const isActive = rollingAverage === w;
+                return (
+                  <Button
+                    key={label}
+                    variant={isActive ? "default" : "ghost"}
+                    size="sm"
+                    className={
+                      isActive
+                        ? "h-7 px-2 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                        : "h-7 px-2 text-xs"
+                    }
+                    onClick={() => setRollingAverage(w)}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-weather"
+                checked={showWeather}
+                onCheckedChange={setShowWeather}
+              />
+              <Label htmlFor="show-weather" className="text-xs">
+                Weather
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-events"
+                checked={showEvents}
+                onCheckedChange={setShowEvents}
+              />
+              <Label htmlFor="show-events" className="text-xs">
+                Events
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-yoy"
+                checked={showYoY}
+                onCheckedChange={setShowYoY}
+              />
+              <Label htmlFor="show-yoy" className="text-xs">
+                YoY Overlay
+              </Label>
+            </div>
+          </div>
+        }
+      />
+
+      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
+        {error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        {/* Main trend chart */}
+        <ChartCard
+          title="Trend"
+          description="Applied series over the selected date range"
+          loading={loading}
+          empty={!loading && !hasSeries}
+          emptyMessage="Add a series in the Builder Panel below to see a trend"
+          collapsible
+        >
+          <TrendChart
+            allData={chartData}
+            yoyData={yoyData}
+            appliedSeries={appliedSeries}
+            granularity={granularity}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            events={events}
+            showEvents={showEvents}
+            activeEventCategories={activeEventCategories}
+            onToggleHidden={toggleAppliedHidden}
+          />
+        </ChartCard>
+
+        {/* Weather mini chart (below main chart, synced) */}
+        {showWeather && (
+          <ChartCard
+            title="Weather"
+            description="Daily precipitation and temperature for the selected range"
+            loading={loading}
+            collapsible
+          >
+            <WeatherMiniChart data={weatherData} loading={false} />
+          </ChartCard>
+        )}
+
+        {/* Series Builder */}
+        <SeriesBuilderPanel />
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      {/* Controls bar */}
-      <div className="flex items-center justify-end gap-2">
-        <GranularitySelector value={granularity} onChange={setGranularity} />
-
-        <div className="flex items-center gap-1 rounded-md border p-0.5">
-          {([null, 7, 30] as RollingWindow[]).map((w) => {
-            const label = w === null ? "Raw" : w === 7 ? "7d Avg" : "30d Avg";
-            const isActive = rollingAverage === w;
-            return (
-              <Button
-                key={label}
-                variant={isActive ? "default" : "ghost"}
-                size="sm"
-                className={
-                  isActive
-                    ? "h-7 px-2 text-xs bg-[#00A6D3] hover:bg-[#00A6D3]/90"
-                    : "h-7 px-2 text-xs"
-                }
-                onClick={() => setRollingAverage(w)}
-              >
-                {label}
-              </Button>
-            );
-          })}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Switch
-            id="show-weather"
-            checked={showWeather}
-            onCheckedChange={setShowWeather}
-          />
-          <Label htmlFor="show-weather" className="text-xs">
-            Weather
-          </Label>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Switch
-            id="show-events"
-            checked={showEvents}
-            onCheckedChange={setShowEvents}
-          />
-          <Label htmlFor="show-events" className="text-xs">
-            Events
-          </Label>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Switch
-            id="show-yoy"
-            checked={showYoY}
-            onCheckedChange={setShowYoY}
-          />
-          <Label htmlFor="show-yoy" className="text-xs">
-            YoY Overlay
-          </Label>
-        </div>
-      </div>
-
-      {/* Main chart */}
-      {loading ? (
-        <Skeleton className="h-[380px] w-full rounded-lg" />
-      ) : (
-        <TrendChart
-          allData={chartData}
-          yoyData={yoyData}
-          appliedSeries={appliedSeries}
-          granularity={granularity}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          events={events}
-          showEvents={showEvents}
-          activeEventCategories={activeEventCategories}
-          onToggleHidden={toggleAppliedHidden}
-        />
-      )}
-
-      {/* Weather mini chart (below main chart, synced) */}
-      {showWeather && (
-        <WeatherMiniChart data={weatherData} loading={loading} />
-      )}
-
-      {/* Series Builder */}
-      <SeriesBuilderPanel />
     </div>
   );
 }

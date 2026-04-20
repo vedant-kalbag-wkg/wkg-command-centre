@@ -36,7 +36,7 @@ function DraggableTableHeadInner<TData>({
   return (
     <TableHead
       ref={setNodeRef}
-      className="text-xs font-medium text-wk-graphite uppercase tracking-wide select-none group/header"
+      className="text-xs font-medium text-foreground uppercase tracking-wide select-none group/header"
       style={style}
     >
       <div className="flex items-center gap-0.5">
@@ -47,7 +47,7 @@ function DraggableTableHeadInner<TData>({
             {...listeners}
             className="cursor-grab active:cursor-grabbing opacity-0 group-hover/header:opacity-50 hover:!opacity-100 transition-opacity shrink-0"
           >
-            <GripVertical className="size-3.5 text-wk-night-grey" />
+            <GripVertical className="size-3.5 text-muted-foreground" />
           </span>
         )}
 
@@ -74,8 +74,8 @@ function DraggableTableHeadInner<TData>({
           onTouchStart={header.getResizeHandler()}
           className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
             header.column.getIsResizing()
-              ? "bg-wk-azure"
-              : "bg-transparent hover:bg-wk-azure/40"
+              ? "bg-primary"
+              : "bg-transparent hover:bg-primary/40"
           }`}
         />
       )}

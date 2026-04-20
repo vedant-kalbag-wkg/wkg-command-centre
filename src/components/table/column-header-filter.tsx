@@ -52,12 +52,12 @@ export function ColumnHeaderFilter({ column, label }: ColumnHeaderFilterProps) {
       <button
         type="button"
         onClick={handleLabelClick}
-        className="inline-flex items-center gap-1 text-xs font-medium text-wk-graphite uppercase tracking-wide hover:text-wk-azure transition-colors cursor-pointer"
+        className="inline-flex items-center gap-1 text-xs font-medium text-foreground uppercase tracking-wide hover:text-primary transition-colors cursor-pointer"
       >
         <span>{label}</span>
         <SortIcon
           className={`h-3 w-3 shrink-0 ${
-            sortState ? "text-wk-azure" : "text-wk-night-grey/50"
+            sortState ? "text-primary" : "text-muted-foreground/50"
           }`}
         />
       </button>
@@ -70,7 +70,7 @@ export function ColumnHeaderFilter({ column, label }: ColumnHeaderFilterProps) {
           onChange={(e) => setFilterValue(e.target.value)}
           onClick={(e) => e.stopPropagation()}
           placeholder="Filter..."
-          className="h-6 text-xs border-wk-mid-grey/60 focus-visible:ring-wk-azure focus-visible:border-wk-azure placeholder:text-wk-night-grey/50 px-1.5 py-0"
+          className="h-6 text-xs border-border/60 focus-visible:ring-ring focus-visible:border-primary placeholder:text-muted-foreground/50 px-1.5 py-0"
         />
       )}
     </div>

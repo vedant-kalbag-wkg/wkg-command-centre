@@ -191,10 +191,10 @@ function SortableStageItem({
 
   return (
     <div ref={setNodeRef} style={style} className="flex flex-col">
-      <div className="flex items-center gap-2 py-2 px-1 rounded-md hover:bg-wk-light-grey group">
+      <div className="flex items-center gap-2 py-2 px-1 rounded-md hover:bg-muted group">
         {/* Drag handle */}
         <button
-          className="flex-shrink-0 w-5 h-5 text-wk-mid-grey hover:text-wk-night-grey cursor-grab active:cursor-grabbing touch-none"
+          className="flex-shrink-0 w-5 h-5 text-muted-foreground hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
           {...attributes}
           {...listeners}
           aria-label="Drag to reorder"
@@ -204,7 +204,7 @@ function SortableStageItem({
 
         {/* Color dot */}
         <button
-          className="flex-shrink-0 w-3 h-3 rounded-full border border-wk-mid-grey/40 cursor-pointer"
+          className="flex-shrink-0 w-3 h-3 rounded-full border border-border/40 cursor-pointer"
           style={{ backgroundColor: localColor }}
           onClick={() => setShowColorPicker((v) => !v)}
           aria-label="Change color"
@@ -223,7 +223,7 @@ function SortableStageItem({
           />
         ) : (
           <span
-            className="flex-1 text-sm cursor-pointer hover:text-wk-azure"
+            className="flex-1 text-sm cursor-pointer hover:text-primary"
             onClick={() => {
               setEditName(stage.name);
               onStartEdit(stage.id);
@@ -280,7 +280,7 @@ function SortableStageItem({
 
       {/* Color picker panel (inline) */}
       {showColorPicker && (
-        <div className="ml-9 mb-2 p-3 border border-wk-mid-grey/30 rounded-lg bg-white shadow-sm">
+        <div className="ml-9 mb-2 p-3 border border-border/30 rounded-lg bg-white shadow-sm">
           {/* Brand preset swatches */}
           <div className="flex flex-wrap gap-2 mb-3">
             {BRAND_PRESETS.map((preset) => (
@@ -289,13 +289,13 @@ function SortableStageItem({
                 className="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-transform hover:scale-110"
                 style={{
                   backgroundColor: preset.color,
-                  borderColor: localColor === preset.color ? "#00A6D3" : "transparent",
+                  borderColor: localColor === preset.color ? "var(--color-wk-azure)" : "transparent",
                 }}
                 title={preset.label}
                 onClick={() => handleColorSelect(preset.color)}
               >
                 {localColor === preset.color && (
-                  <Check className="w-3 h-3" style={{ color: preset.color === "#E5F1F9" ? "#121212" : "#fff" }} />
+                  <Check className="w-3 h-3" style={{ color: preset.color === "#E5F1F9" ? "var(--color-wk-graphite)" : "#fff" }} />
                 )}
               </button>
             ))}
@@ -333,7 +333,7 @@ function SortableStageItem({
 
       {/* Delete confirmation (inline) */}
       {deleteState === "confirm" && (
-        <div className="ml-9 mb-2 px-3 py-2 border border-wk-mid-grey/30 rounded-lg bg-wk-light-grey text-sm">
+        <div className="ml-9 mb-2 px-3 py-2 border border-border/30 rounded-lg bg-muted text-sm">
           <p className="mb-2">
             Delete <span className="font-medium">&ldquo;{stage.name}&rdquo;</span>?
           </p>
@@ -361,9 +361,9 @@ function SortableStageItem({
 
       {/* Reassignment flow (stage has kiosks) */}
       {deleteState === "reassign" && (
-        <div className="ml-9 mb-2 px-3 py-2 border border-wk-mid-grey/30 rounded-lg bg-wk-light-grey text-sm">
-          <p className="mb-2 text-wk-night-grey">
-            Move kiosks from <span className="font-medium text-wk-graphite">{stage.name}</span> to another stage before deleting.
+        <div className="ml-9 mb-2 px-3 py-2 border border-border/30 rounded-lg bg-muted text-sm">
+          <p className="mb-2 text-muted-foreground">
+            Move kiosks from <span className="font-medium text-foreground">{stage.name}</span> to another stage before deleting.
           </p>
           <div className="flex gap-2 items-center mb-2">
             <Select value={reassignTarget} onValueChange={(v) => setReassignTarget(v ?? "")}>
@@ -376,7 +376,7 @@ function SortableStageItem({
                     <span className="flex items-center gap-2">
                       <span
                         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: s.color ?? "#00A6D3" }}
+                        style={{ backgroundColor: s.color ?? "var(--color-wk-azure)" }}
                       />
                       {s.name}
                     </span>
@@ -539,7 +539,7 @@ export function ManageStagesModal({
         </div>
 
         {/* Add stage button */}
-        <div className="border-t border-wk-mid-grey/30 pt-3">
+        <div className="border-t border-border/30 pt-3">
           <Button
             variant="outline"
             size="sm"

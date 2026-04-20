@@ -97,7 +97,7 @@ export const EditableCell = React.memo(function EditableCell({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         onClick={(e) => e.stopPropagation()}
-        className="h-8 text-sm border-wk-mid-grey focus-visible:ring-wk-azure focus-visible:border-wk-azure px-2 py-0 min-w-[80px]"
+        className="h-8 text-sm border-border focus-visible:ring-ring focus-visible:border-primary px-2 py-0 min-w-[80px]"
       />
     );
   }
@@ -106,7 +106,7 @@ export const EditableCell = React.memo(function EditableCell({
     value !== null && value !== undefined && String(value) !== "" ? (
       <span className="text-sm truncate">{String(value)}</span>
     ) : (
-      <span className="text-wk-mid-grey text-sm">{placeholder}</span>
+      <span className="text-muted-foreground text-sm">{placeholder}</span>
     );
 
   return (
@@ -120,7 +120,7 @@ export const EditableCell = React.memo(function EditableCell({
           setIsEditing(true);
         }
       }}
-      className="inline-flex items-center min-w-[60px] max-w-full cursor-text rounded px-1 -mx-1 hover:bg-wk-mid-grey/20 transition-colors overflow-hidden"
+      className="inline-flex items-center min-w-[60px] max-w-full cursor-text rounded px-1 -mx-1 hover:bg-border/20 transition-colors overflow-hidden"
       title="Click to edit"
     >
       {displayValue}

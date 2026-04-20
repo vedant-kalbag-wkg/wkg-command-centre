@@ -77,11 +77,11 @@ export function SetPasswordForm() {
   return (
     <div className="flex flex-col gap-4">
       {inviteCtx && inviteCtx.scopes.length > 0 && (
-        <div className="rounded-lg border border-[#00A6D3]/20 bg-[#00A6D3]/5 p-4">
-          <p className="text-sm font-medium text-wk-graphite mb-2">
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <p className="text-sm font-medium text-foreground mb-2">
             You&apos;ll have access to:
           </p>
-          <ul className="text-sm text-wk-night-grey space-y-1">
+          <ul className="text-sm text-muted-foreground space-y-1">
             {inviteCtx.scopes.map((s, i) => (
               <li key={i}>
                 &bull; {s.dimensionName}{" "}
@@ -94,15 +94,15 @@ export function SetPasswordForm() {
         </div>
       )}
 
-      <h2 className="text-xl font-bold tracking-[-0.01em] text-wk-graphite">
+      <h2 className="text-xl font-bold tracking-[-0.01em] text-foreground">
         {isInvite ? "Welcome — set your password" : "Set your password"}
       </h2>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <Label htmlFor="password" className="text-sm text-wk-graphite">
+          <Label htmlFor="password" className="text-sm text-foreground">
             New password
-            <span className="text-wk-night-grey ml-0.5">*</span>
+            <span className="text-muted-foreground ml-0.5">*</span>
           </Label>
           <div className="relative">
             <Input
@@ -110,13 +110,13 @@ export function SetPasswordForm() {
               type={showPassword ? "text" : "password"}
               placeholder="Enter new password"
               aria-invalid={!!errors.password}
-              className="border-wk-mid-grey pr-10 focus:border-wk-azure focus:ring-wk-azure"
+              className="border-border pr-10 focus:border-primary focus:ring-ring"
               {...register("password")}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-wk-night-grey hover:text-wk-graphite"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? (
@@ -126,9 +126,9 @@ export function SetPasswordForm() {
               )}
             </button>
           </div>
-          <p className="text-xs text-wk-night-grey">At least 8 characters</p>
+          <p className="text-xs text-muted-foreground">At least 8 characters</p>
           {errors.password && (
-            <p className="flex items-center gap-1 text-xs text-wk-destructive" role="alert">
+            <p className="flex items-center gap-1 text-xs text-destructive" role="alert">
               <AlertCircle className="size-3.5 shrink-0" />
               {errors.password.message}
             </p>
@@ -138,10 +138,10 @@ export function SetPasswordForm() {
         <div className="flex flex-col gap-2">
           <Label
             htmlFor="confirmPassword"
-            className="text-sm text-wk-graphite"
+            className="text-sm text-foreground"
           >
             Confirm password
-            <span className="text-wk-night-grey ml-0.5">*</span>
+            <span className="text-muted-foreground ml-0.5">*</span>
           </Label>
           <div className="relative">
             <Input
@@ -149,13 +149,13 @@ export function SetPasswordForm() {
               type={showConfirmPassword ? "text" : "password"}
               placeholder="Confirm your password"
               aria-invalid={!!errors.confirmPassword}
-              className="border-wk-mid-grey pr-10 focus:border-wk-azure focus:ring-wk-azure"
+              className="border-border pr-10 focus:border-primary focus:ring-ring"
               {...register("confirmPassword")}
             />
             <button
               type="button"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-wk-night-grey hover:text-wk-graphite"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               aria-label={
                 showConfirmPassword ? "Hide password" : "Show password"
               }
@@ -168,7 +168,7 @@ export function SetPasswordForm() {
             </button>
           </div>
           {errors.confirmPassword && (
-            <p className="flex items-center gap-1 text-xs text-wk-destructive" role="alert">
+            <p className="flex items-center gap-1 text-xs text-destructive" role="alert">
               <AlertCircle className="size-3.5 shrink-0" />
               {errors.confirmPassword.message}
             </p>
@@ -178,7 +178,7 @@ export function SetPasswordForm() {
         <Button
           type="submit"
           disabled={isLoading}
-          className="w-full h-11 bg-wk-azure text-white hover:bg-wk-sea-blue font-medium"
+          className="w-full h-11 bg-primary text-white hover:bg-primary font-medium"
           style={{ borderRadius: "8px" }}
         >
           {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}

@@ -44,13 +44,13 @@ import { cn } from "@/lib/utils";
 function SectionHeader({ title, open }: { title: string; open: boolean }) {
   return (
     <div className="flex items-center justify-between py-3">
-      <h3 className="text-sm font-medium uppercase tracking-wide text-wk-night-grey">
+      <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
         {title}
       </h3>
       {open ? (
-        <ChevronUp className="h-4 w-4 text-wk-mid-grey" />
+        <ChevronUp className="h-4 w-4 text-muted-foreground" />
       ) : (
-        <ChevronDown className="h-4 w-4 text-wk-mid-grey" />
+        <ChevronDown className="h-4 w-4 text-muted-foreground" />
       )}
     </div>
   );
@@ -69,7 +69,7 @@ function FieldRow({
 }) {
   return (
     <div className="grid grid-cols-[180px_1fr] items-start gap-4 py-2">
-      <Label className="pt-1 text-[12px] font-normal text-wk-night-grey">{label}</Label>
+      <Label className="pt-1 text-[12px] font-normal text-muted-foreground">{label}</Label>
       <div>{children}</div>
     </div>
   );
@@ -92,7 +92,7 @@ function DetailSection({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="w-full border-b border-wk-mid-grey text-left">
+      <CollapsibleTrigger className="w-full border-b border-border text-left">
         <SectionHeader title={title} open={open} />
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -108,9 +108,9 @@ function DetailSection({
 
 function RestrictedBadge() {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-md bg-wk-light-grey px-2 py-1">
-      <Lock className="h-3.5 w-3.5 text-wk-night-grey" />
-      <span className="text-[12px] text-wk-night-grey">
+    <div className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1">
+      <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-[12px] text-muted-foreground">
         Restricted — contact your admin for access.
       </span>
     </div>
@@ -196,7 +196,7 @@ function NewLocationForm() {
           <select
             value={fields.starRating}
             onChange={(e) => setFields((prev) => ({ ...prev, starRating: e.target.value }))}
-            className="h-8 w-full rounded-lg border border-wk-mid-grey px-2 text-sm"
+            className="h-8 w-full rounded-lg border border-border px-2 text-sm"
           >
             <option value="">Select rating</option>
             {[1, 2, 3, 4, 5].map((n) => (
@@ -212,7 +212,7 @@ function NewLocationForm() {
       </DetailSection>
 
       <DetailSection title="Key Contacts">
-        <p className="text-[12px] text-wk-night-grey py-2">
+        <p className="text-[12px] text-muted-foreground py-2">
           Key contacts can be added after creating the location.
         </p>
       </DetailSection>
@@ -226,7 +226,7 @@ function NewLocationForm() {
             value={fields.contractTerms}
             onChange={(e) => setFields((prev) => ({ ...prev, contractTerms: e.target.value }))}
             rows={3}
-            className="w-full rounded-md border border-wk-mid-grey px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-wk-azure resize-y"
+            className="w-full rounded-md border border-border px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring resize-y"
           />
         </FieldRow>
         <FieldRow label="Notes">
@@ -234,13 +234,13 @@ function NewLocationForm() {
             value={fields.notes}
             onChange={(e) => setFields((prev) => ({ ...prev, notes: e.target.value }))}
             rows={3}
-            className="w-full rounded-md border border-wk-mid-grey px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-wk-azure resize-y"
+            className="w-full rounded-md border border-border px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring resize-y"
           />
         </FieldRow>
       </DetailSection>
 
       <DetailSection title="Banking">
-        <p className="text-[12px] text-wk-night-grey py-2">
+        <p className="text-[12px] text-muted-foreground py-2">
           Banking details can be added after creating the location.
         </p>
       </DetailSection>
@@ -251,7 +251,7 @@ function NewLocationForm() {
         <Button
           onClick={handleCreate}
           disabled={isPending || !fields.name.trim()}
-          className="bg-wk-azure text-white hover:bg-wk-azure/90"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           {isPending ? "Creating…" : "Create location"}
         </Button>
@@ -340,7 +340,7 @@ function ExistingLocationForm({
           <DialogHeader>
             <DialogTitle>Archive this location?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-wk-night-grey">
+          <p className="text-sm text-muted-foreground">
             This location will be hidden from all views. You can restore it by filtering for
             archived records.
           </p>
@@ -517,7 +517,7 @@ function ExistingLocationForm({
 
         {/* Contract Documents */}
         <div className="mt-4 space-y-2">
-          <p className="text-[12px] font-medium uppercase tracking-wide text-wk-night-grey">
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
             Contract Documents
           </p>
           {canSeeSensitive ? (
@@ -583,7 +583,7 @@ function ExistingLocationForm({
                 size="sm"
                 onClick={handleSaveBanking}
                 disabled={isSavingBanking}
-                className="bg-wk-azure text-white hover:bg-wk-azure/90"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {isSavingBanking ? "Saving…" : "Save banking details"}
               </Button>
@@ -614,7 +614,7 @@ export function LocationDetailForm({ location, canSeeSensitive }: LocationDetail
     <Tabs defaultValue="details">
       <TabsList
         variant="line"
-        className="mb-6 border-b border-wk-mid-grey w-full rounded-none justify-start"
+        className="mb-6 border-b border-border w-full rounded-none justify-start"
       >
         <TabsTrigger value="details">Details</TabsTrigger>
         <TabsTrigger value="kiosks">Kiosks</TabsTrigger>

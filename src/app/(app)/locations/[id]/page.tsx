@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { AppShell } from "@/components/layout/app-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import { LocationDetailForm } from "@/components/locations/location-detail-form";
 import { getLocation } from "@/app/(app)/locations/actions";
 import { getSessionOrThrow, canAccessSensitiveFields, type Role } from "@/lib/rbac";
@@ -26,13 +26,19 @@ export default async function LocationDetailPage({ params }: LocationDetailPageP
   const role = (session.user.role as Role | null) ?? "viewer";
 
   return (
-    <AppShell title={location.name}>
-      <div className="mx-auto max-w-3xl">
-        <LocationDetailForm
-          location={location}
-          canSeeSensitive={canAccessSensitiveFields({ userType, role })}
-        />
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title={location.name}
+        description={location.address ?? undefined}
+      />
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="mx-auto max-w-3xl">
+          <LocationDetailForm
+            location={location}
+            canSeeSensitive={canAccessSensitiveFields({ userType, role })}
+          />
+        </div>
       </div>
-    </AppShell>
+    </div>
   );
 }

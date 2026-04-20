@@ -30,7 +30,7 @@ function DropZone({
       ref={setNodeRef}
       className={`min-h-[56px] rounded-lg border-2 border-dashed p-2 transition-colors ${
         isOver
-          ? "border-[#00A6D3] bg-[#00A6D3]/5"
+          ? "border-primary bg-primary/5"
           : "border-muted-foreground/20 bg-background"
       }`}
     >
@@ -56,8 +56,8 @@ function PlacedChip({
     <span
       className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${
         def?.type === "metric"
-          ? "bg-[#121212]/5 text-[#121212]"
-          : "bg-[#00A6D3]/10 text-[#00A6D3]"
+          ? "bg-foreground/5 text-foreground"
+          : "bg-primary/10 text-primary"
       }`}
     >
       {def?.label ?? fieldId}
@@ -89,7 +89,7 @@ function ValueChip({
 }) {
   const def = AVAILABLE_FIELDS.find((f) => f.id === field);
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-[#121212]/5 px-1.5 py-0.5 text-xs font-medium text-[#121212]">
+    <span className="inline-flex items-center gap-1 rounded-md bg-foreground/5 px-1.5 py-0.5 text-xs font-medium text-foreground">
       <Select
         value={aggregation}
         onValueChange={(v) => onChangeAggregation(v as PivotAggregation)}

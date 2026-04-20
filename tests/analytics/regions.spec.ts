@@ -1,33 +1,64 @@
 import { test, expect } from "@playwright/test";
 import { signInAsAdmin } from "../helpers/auth";
 
-test.describe("Regions", () => {
-  test("page loads and shows region list", async ({ page }) => {
-    await signInAsAdmin(page);
-    await page.goto("/analytics/regions?from=2025-01-01&to=2025-12-31");
+test("@analytics/regions renders PageHeader with title", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/regions");
 
-    await expect(
-      page.getByRole("heading", { name: "Regions" }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Performance analysis by geographic region"),
-    ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Regions", level: 1 }),
+  ).toBeVisible();
+});
 
-    // Wait for regions to load — Region Metrics section appears once a region auto-selects
-    await expect(page.getByText("Region Metrics")).toBeVisible({
-      timeout: 15000,
-    });
+test("@analytics/regions page does not throw", async ({ page }) => {
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (err) => pageErrors.push(err));
+
+  await signInAsAdmin(page);
+  await page.goto("/analytics/regions");
+
+  await expect(
+    page.getByRole("heading", { name: "Regions", level: 1 }),
+  ).toBeVisible();
+
+  expect(pageErrors).toEqual([]);
+});
+
+test("@analytics/regions shows EmptyState prompt when no region is selected", async ({
+  page,
+}) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/regions");
+
+  await expect(
+    page.getByRole("heading", { name: "Regions", level: 1 }),
+  ).toBeVisible();
+
+  // No region is selected on mount — the EmptyState prompt should be visible.
+  await expect(
+    page.getByText("Select a region to see its performance metrics."),
+  ).toBeVisible();
+});
+
+test("@analytics/regions dark-mode toggle does not throw", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/regions");
+
+  await expect(
+    page.getByRole("heading", { name: "Regions", level: 1 }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    document.documentElement.classList.toggle("dark");
   });
+  await expect(
+    page.getByRole("heading", { name: "Regions", level: 1 }),
+  ).toBeVisible();
 
-  test("clicking a region shows breakdowns", async ({ page }) => {
-    await signInAsAdmin(page);
-    await page.goto("/analytics/regions?from=2025-01-01&to=2025-12-31");
-
-    // Wait for detail sections to render (auto-selects first region)
-    await expect(page.getByText("Region Metrics")).toBeVisible({
-      timeout: 15000,
-    });
-    await expect(page.getByText("Hotel Groups in Region")).toBeVisible();
-    await expect(page.getByText("Location Groups in Region")).toBeVisible();
+  await page.evaluate(() => {
+    document.documentElement.classList.toggle("dark");
   });
+  await expect(
+    page.getByRole("heading", { name: "Regions", level: 1 }),
+  ).toBeVisible();
 });

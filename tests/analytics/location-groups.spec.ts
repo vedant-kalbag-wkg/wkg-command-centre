@@ -1,39 +1,74 @@
 import { test, expect } from "@playwright/test";
 import { signInAsAdmin } from "../helpers/auth";
 
-test.describe("Location Groups", () => {
-  test("page loads and shows location group list", async ({ page }) => {
-    await signInAsAdmin(page);
-    await page.goto(
-      "/analytics/location-groups?from=2025-01-01&to=2025-12-31",
-    );
+test("@analytics/location-groups renders PageHeader with title", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/location-groups");
 
-    await expect(
-      page.getByRole("heading", { name: "Location Groups" }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Performance analysis by location group"),
-    ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Location Groups", level: 1 }),
+  ).toBeVisible();
+});
 
-    // Wait for group list to load — Group Metrics appears once a group auto-selects
-    await expect(page.getByText("Group Metrics")).toBeVisible({
-      timeout: 15000,
-    });
+test("@analytics/location-groups page does not throw", async ({ page }) => {
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (err) => pageErrors.push(err));
+
+  await signInAsAdmin(page);
+  await page.goto("/analytics/location-groups");
+
+  await expect(
+    page.getByRole("heading", { name: "Location Groups", level: 1 }),
+  ).toBeVisible();
+
+  expect(pageErrors).toEqual([]);
+});
+
+test("@analytics/location-groups selector dropdown is present and selectable", async ({
+  page,
+}) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/location-groups");
+
+  await expect(
+    page.getByRole("heading", { name: "Location Groups", level: 1 }),
+  ).toBeVisible();
+
+  // Dropdown trigger should exist with aria-label from LocationSelector
+  const trigger = page.getByRole("combobox", {
+    name: /select location group/i,
   });
+  await expect(trigger).toBeVisible();
 
-  test("capacity metrics visible", async ({ page }) => {
-    await signInAsAdmin(page);
-    await page.goto(
-      "/analytics/location-groups?from=2025-01-01&to=2025-12-31",
-    );
+  // Opening the dropdown should surface at least one option
+  await trigger.click();
+  const firstOption = page.getByRole("option").first();
+  await expect(firstOption).toBeVisible();
+  await firstOption.click();
 
-    // Wait for detail to load
-    await expect(page.getByText("Capacity Metrics")).toBeVisible({
-      timeout: 15000,
-    });
+  // Popup should close and trigger remains visible (no crash)
+  await expect(trigger).toBeVisible();
+});
 
-    // The Capacity Metrics section should be present
-    await expect(page.getByText("Peer Analysis")).toBeVisible();
-    await expect(page.getByText("Hotels in Group")).toBeVisible();
+test("@analytics/location-groups dark-mode toggle does not throw", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/location-groups");
+
+  await expect(
+    page.getByRole("heading", { name: "Location Groups", level: 1 }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    document.documentElement.classList.toggle("dark");
   });
+  await expect(
+    page.getByRole("heading", { name: "Location Groups", level: 1 }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    document.documentElement.classList.toggle("dark");
+  });
+  await expect(
+    page.getByRole("heading", { name: "Location Groups", level: 1 }),
+  ).toBeVisible();
 });

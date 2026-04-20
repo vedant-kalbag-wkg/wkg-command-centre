@@ -9,7 +9,6 @@ import {
   Tooltip,
 } from "recharts";
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
-import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency } from "@/lib/analytics/formatters";
 import type { CategoryPerformanceRow } from "@/lib/analytics/types";
 
@@ -22,10 +21,6 @@ export function CategoryPerformance({
   data,
   loading = false,
 }: CategoryPerformanceProps) {
-  if (!loading && data.length === 0) {
-    return <EmptyState message="No category data for selected filters" />;
-  }
-
   return (
     <ChartWrapper loading={loading} minHeight={Math.max(300, data.length * 40)}>
       <BarChart

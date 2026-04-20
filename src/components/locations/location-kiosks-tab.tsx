@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
+import { Monitor } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 
 type KioskAssignment = {
   assignmentId: string;
@@ -21,12 +23,11 @@ interface LocationKiosksTabProps {
 export function LocationKiosksTab({ assignments }: LocationKiosksTabProps) {
   if (assignments.length === 0) {
     return (
-      <div className="py-12 text-center">
-        <p className="text-sm text-wk-night-grey">No kiosks assigned.</p>
-        <p className="mt-1 text-[12px] text-wk-mid-grey">
-          Kiosks assigned to this location will appear here.
-        </p>
-      </div>
+      <EmptyState
+        icon={Monitor}
+        title="No kiosks assigned"
+        description="Kiosks assigned to this location will appear here."
+      />
     );
   }
 
@@ -41,20 +42,20 @@ export function LocationKiosksTab({ assignments }: LocationKiosksTabProps) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-wk-mid-grey text-left">
-            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-wk-night-grey">
+          <tr className="border-b border-border text-left">
+            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
               Kiosk ID
             </th>
-            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-wk-night-grey">
+            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
               Status
             </th>
-            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-wk-night-grey">
+            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
               Assigned Date
             </th>
-            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-wk-night-grey">
+            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
               Unassigned Date
             </th>
-            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-wk-night-grey">
+            <th className="pb-3 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
               Reason
             </th>
           </tr>
@@ -63,12 +64,12 @@ export function LocationKiosksTab({ assignments }: LocationKiosksTabProps) {
           {sorted.map((a) => (
             <tr
               key={a.assignmentId}
-              className="border-b border-wk-light-grey hover:bg-wk-light-grey/50"
+              className="border-b border-border hover:bg-muted/50"
             >
               <td className="py-3 pr-4">
                 <Link
                   href={`/kiosks/${a.kioskId}`}
-                  className="font-medium text-wk-azure hover:underline"
+                  className="font-medium text-primary hover:underline"
                 >
                   {a.kioskDisplayId}
                 </Link>
@@ -76,26 +77,26 @@ export function LocationKiosksTab({ assignments }: LocationKiosksTabProps) {
               <td className="py-3 pr-4">
                 {!a.unassignedAt ? (
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-wk-azure" />
-                    <span className="text-wk-graphite">Current</span>
+                    <span className="h-2 w-2 rounded-full bg-primary" />
+                    <span className="text-foreground">Current</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-wk-mid-grey" />
-                    <span className="text-wk-night-grey">Historical</span>
+                    <span className="h-2 w-2 rounded-full bg-border" />
+                    <span className="text-muted-foreground">Historical</span>
                   </span>
                 )}
               </td>
-              <td className="py-3 pr-4 text-wk-graphite">
+              <td className="py-3 pr-4 text-foreground">
                 {format(new Date(a.assignedAt), "dd MMM yyyy")}
               </td>
-              <td className="py-3 pr-4 text-wk-graphite">
+              <td className="py-3 pr-4 text-foreground">
                 {a.unassignedAt
                   ? format(new Date(a.unassignedAt), "dd MMM yyyy")
-                  : <span className="text-wk-mid-grey">Current</span>}
+                  : <span className="text-muted-foreground">Current</span>}
               </td>
-              <td className="py-3 text-wk-night-grey">
-                {a.reason ?? <span className="text-wk-mid-grey">—</span>}
+              <td className="py-3 text-muted-foreground">
+                {a.reason ?? <span className="text-muted-foreground">—</span>}
               </td>
             </tr>
           ))}

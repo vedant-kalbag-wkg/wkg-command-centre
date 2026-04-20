@@ -86,7 +86,7 @@ export function MilestoneQuickAddPopover({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="inline-flex items-center gap-1.5 h-7 px-3 rounded text-xs font-medium text-wk-night-grey border border-dashed border-border hover:bg-wk-light-grey transition-colors">
+      <PopoverTrigger className="inline-flex items-center gap-1.5 h-7 px-3 rounded text-xs font-medium text-muted-foreground border border-dashed border-border hover:bg-muted transition-colors">
         <Plus className="h-3 w-3" aria-hidden="true" />
         Add milestone
       </PopoverTrigger>
@@ -94,10 +94,10 @@ export function MilestoneQuickAddPopover({
       <PopoverContent className="w-80" align="start">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <h3 className="text-sm font-medium text-wk-graphite">
+            <h3 className="text-sm font-medium text-foreground">
               Add milestone
             </h3>
-            <p className="text-xs text-wk-night-grey mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {installationName}
             </p>
           </div>
@@ -134,7 +134,7 @@ export function MilestoneQuickAddPopover({
                 )
               }
               disabled={saving}
-              className="w-full h-8 text-sm bg-white border border-border rounded px-2 text-wk-graphite focus:outline-none focus:ring-1 focus:ring-wk-azure"
+              className="w-full h-8 text-sm bg-white border border-border rounded px-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
               {MILESTONE_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -159,12 +159,12 @@ export function MilestoneQuickAddPopover({
             />
           </div>
 
-          {error && <p className="text-xs text-wk-destructive">{error}</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
 
           <Button
             type="submit"
             disabled={saving || !name.trim()}
-            className="w-full h-8 bg-wk-azure hover:bg-wk-azure/90 text-white text-sm"
+            className="w-full h-8 bg-primary hover:bg-primary/90 text-primary-foreground text-sm"
           >
             {saving ? "Adding..." : "Add milestone"}
           </Button>

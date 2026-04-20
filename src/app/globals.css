@@ -62,6 +62,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-surface-elevated: var(--surface-elevated);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -78,6 +79,7 @@
   --card-foreground: var(--color-wk-graphite);
   --popover: var(--color-wk-white);
   --popover-foreground: var(--color-wk-graphite);
+  --surface-elevated: var(--color-wk-white);
   --primary: var(--color-wk-azure);
   --primary-foreground: var(--color-wk-white);
   --secondary: var(--color-wk-light-grey);
@@ -97,16 +99,53 @@
   --chart-5: #ADADAD;
   --radius: 0.5rem;
 
-  /* Sidebar */
-  --sidebar: var(--color-wk-graphite);
+  /* Sidebar — light mode (flips with theme per design Q3) */
+  --sidebar: var(--color-wk-light-grey);
+  --sidebar-foreground: var(--color-wk-graphite);
+  --sidebar-primary: var(--color-wk-azure);
+  --sidebar-primary-foreground: var(--color-wk-white);
+  --sidebar-accent: rgba(0, 166, 211, 0.1);
+  --sidebar-accent-foreground: var(--color-wk-graphite);
+  --sidebar-border: rgba(0, 0, 0, 0.06);
+  --sidebar-ring: var(--color-wk-azure);
+  --sidebar-background: var(--color-wk-light-grey);
+}
+
+.dark {
+  --background: #0A0A0A;
+  --foreground: var(--color-wk-white);
+  --card: #141414;
+  --card-foreground: var(--color-wk-white);
+  --popover: #161616;
+  --popover-foreground: var(--color-wk-white);
+  --surface-elevated: #1A1A1A;
+  --primary: var(--color-wk-azure);
+  --primary-foreground: var(--color-wk-white);
+  --secondary: #1F1F1F;
+  --secondary-foreground: var(--color-wk-white);
+  --muted: #1A1A1A;
+  --muted-foreground: var(--color-wk-mid-grey);
+  --accent: #1F1F1F;
+  --accent-foreground: var(--color-wk-white);
+  --destructive: var(--color-wk-destructive);
+  --border: #262626;
+  --input: #262626;
+  --ring: var(--color-wk-azure);
+  --chart-1: #00A6D3;
+  --chart-2: #33B8DB;
+  --chart-3: #66CAE3;
+  --chart-4: #ADADAD;
+  --chart-5: #575A5C;
+
+  --sidebar: #0A0A0A;
   --sidebar-foreground: var(--color-wk-white);
   --sidebar-primary: var(--color-wk-azure);
   --sidebar-primary-foreground: var(--color-wk-white);
   --sidebar-accent: rgba(0, 166, 211, 0.15);
   --sidebar-accent-foreground: var(--color-wk-white);
-  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-border: #1F1F1F;
   --sidebar-ring: var(--color-wk-azure);
-  --sidebar-background: var(--color-wk-graphite);
+  --sidebar-background: #0A0A0A;
 }
 
 @layer base {
@@ -153,6 +192,19 @@
   border: 2px dashed #00A6D3 !important;
 }
 
+/* Dark-mode overrides */
+.dark .gantt-wk {
+  --wx-gantt-task-color: #00A6D3;
+  --wx-gantt-task-fill-color: #00A6D3;
+  --wx-gantt-milestone-color: #00A6D3;
+
+  --wx-grid-header-font-color: var(--color-wk-white);
+  --wx-grid-body-font-color: var(--color-wk-white);
+
+  --wx-timescale-font-color: var(--color-wk-mid-grey);
+  --wx-gantt-border: 1px solid #262626;
+}
+
 /* ==========================================================================
    react-big-calendar — WeKnow brand overrides (scoped to .rbc-calendar-wk)
    ========================================================================== */
@@ -180,6 +232,31 @@
 
 .rbc-calendar-wk .rbc-toolbar button:hover {
   background-color: rgba(0, 166, 211, 0.1);
+}
+
+/* Dark-mode overrides */
+.dark .rbc-calendar-wk .rbc-calendar {
+  color: var(--color-wk-white);
+}
+
+.dark .rbc-calendar-wk .rbc-header {
+  color: var(--color-wk-mid-grey);
+  border-bottom: 1px solid #262626;
+}
+
+.dark .rbc-calendar-wk .rbc-today {
+  background-color: rgba(0, 166, 211, 0.12);
+}
+
+.dark .rbc-calendar-wk .rbc-off-range-bg {
+  background-color: #141414;
+}
+
+.dark .rbc-calendar-wk .rbc-day-bg + .rbc-day-bg,
+.dark .rbc-calendar-wk .rbc-month-row + .rbc-month-row,
+.dark .rbc-calendar-wk .rbc-time-content > * + * > *,
+.dark .rbc-calendar-wk .rbc-time-header-content {
+  border-color: #262626;
 }
 
 /* Milestone diamond marker */

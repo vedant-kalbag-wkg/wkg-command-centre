@@ -53,10 +53,10 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
       return (
         <Link
           href={`/kiosks/${row.original.id}`}
-          className="font-medium text-wk-azure hover:underline"
+          className="font-medium text-primary hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
-          {val ?? <span className="text-wk-mid-grey">—</span>}
+          {val ?? <span className="text-muted-foreground">—</span>}
         </Link>
       );
     },
@@ -91,7 +91,7 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
       return val ? (
         <span className="truncate block" title={val}>{val}</span>
       ) : (
-        <span className="text-wk-mid-grey">Unassigned</span>
+        <span className="text-muted-foreground">Unassigned</span>
       );
     },
   },
@@ -143,7 +143,7 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
     cell: ({ row }) => {
       const name = row.original.pipelineStageName;
       const color = row.original.pipelineStageColor;
-      if (!name) return <span className="text-wk-mid-grey">—</span>;
+      if (!name) return <span className="text-muted-foreground">—</span>;
       return (
         <span className="inline-flex items-center gap-1.5">
           <span
@@ -166,12 +166,12 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
       const val = getValue() as string | null;
       if (val === "configured") {
         return (
-          <Badge className="bg-wk-success/10 text-wk-success border-wk-success/20">
+          <Badge className="bg-[--color-wk-success]/10 text-[--color-wk-success] border-[--color-wk-success]/20">
             Configured
           </Badge>
         );
       }
-      return <span className="text-xs text-wk-night-grey">Not configured</span>;
+      return <span className="text-xs text-muted-foreground">Not configured</span>;
     },
   },
   // 8. Installation Date — non-editable (date field, leave for detail page)
@@ -182,7 +182,7 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
     enableSorting: true,
     cell: ({ getValue }) => {
       const val = getValue() as Date | null;
-      if (!val) return <span className="text-wk-mid-grey">—</span>;
+      if (!val) return <span className="text-muted-foreground">—</span>;
       return new Date(val).toLocaleDateString("en-GB");
     },
   },
@@ -199,7 +199,7 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
     cell: ({ row }) => (
       <Link
         href={`/kiosks/${row.original.id}`}
-        className="font-medium text-wk-azure hover:underline"
+        className="font-medium text-primary hover:underline"
         onClick={(e) => e.stopPropagation()}
       >
         {row.getValue("kioskId")}
@@ -249,7 +249,7 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
     enableHiding: true,
     cell: ({ getValue }) => {
       const val = getValue() as string | null;
-      if (!val) return <span className="text-wk-mid-grey">—</span>;
+      if (!val) return <span className="text-muted-foreground">—</span>;
       return `$${parseFloat(val).toFixed(2)}`;
     },
   },
@@ -275,7 +275,7 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
     enableHiding: true,
     cell: ({ getValue }) => {
       const val = getValue() as Date | null;
-      if (!val) return <span className="text-wk-mid-grey">—</span>;
+      if (!val) return <span className="text-muted-foreground">—</span>;
       return new Date(val).toLocaleDateString("en-GB");
     },
   },

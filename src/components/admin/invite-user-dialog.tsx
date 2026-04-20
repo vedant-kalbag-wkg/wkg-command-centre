@@ -132,7 +132,7 @@ export function InviteUserDialog({
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="invite-email">
-              Email address <span className="text-wk-night-grey">*</span>
+              Email address <span className="text-muted-foreground">*</span>
             </Label>
             <Input
               id="invite-email"
@@ -142,7 +142,7 @@ export function InviteUserDialog({
               aria-invalid={!!errors.email}
             />
             {errors.email && (
-              <p className="text-xs text-[#F41E56]" role="alert">
+              <p className="text-xs text-destructive" role="alert">
                 {errors.email.message}
               </p>
             )}
@@ -150,7 +150,7 @@ export function InviteUserDialog({
 
           <div className="grid gap-2">
             <Label htmlFor="invite-role">
-              Role <span className="text-wk-night-grey">*</span>
+              Role <span className="text-muted-foreground">*</span>
             </Label>
             <Select
               value={selectedRole}
@@ -172,7 +172,7 @@ export function InviteUserDialog({
               </SelectContent>
             </Select>
             {errors.role && (
-              <p className="text-xs text-[#F41E56]" role="alert">
+              <p className="text-xs text-destructive" role="alert">
                 {errors.role.message}
               </p>
             )}
@@ -209,7 +209,7 @@ export function InviteUserDialog({
             <div className="grid gap-3 rounded-lg border p-3">
               <div className="text-sm font-medium">
                 Scopes{" "}
-                <span className="text-wk-night-grey font-normal">
+                <span className="text-muted-foreground font-normal">
                   (required for external users)
                 </span>
               </div>
@@ -303,7 +303,7 @@ export function InviteUserDialog({
               </div>
 
               {scopeError && (
-                <p className="text-xs text-[#F41E56]" role="alert">
+                <p className="text-xs text-destructive" role="alert">
                   {scopeError}
                 </p>
               )}

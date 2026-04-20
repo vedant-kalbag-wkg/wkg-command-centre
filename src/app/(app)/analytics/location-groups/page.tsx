@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { PageHeader } from "@/components/layout/page-header";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchLocationGroupsList, fetchLocationGroupDetail } from "./actions";
@@ -127,82 +128,87 @@ export default function LocationGroupsPage() {
   const groupDetail = detail ?? emptyDetail;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Location Groups
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Performance analysis by location group with capacity metrics
-        </p>
-      </div>
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title="Location Groups"
+        description="Performance analysis by location group with capacity metrics"
+        count={groups.length}
+      />
 
-      {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
+      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
+        {error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <label
+            htmlFor="location-group-select"
+            className="text-sm font-semibold"
+          >
+            Location Group
+          </label>
+          <LocationSelector
+            groups={groups}
+            selectedId={selectedGroupId}
+            onSelect={setSelectedGroupId}
+            loading={listLoading}
+          />
         </div>
-      )}
 
-      <SectionAccordion title="Location Groups">
-        <LocationSelector
-          groups={groups}
-          selectedId={selectedGroupId}
-          onSelect={setSelectedGroupId}
-          loading={listLoading}
-        />
-      </SectionAccordion>
+        {selectedGroupId && (
+          <>
+            <SectionAccordion title="Group Metrics">
+              {detailLoading ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-24 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                <LocationMetrics detail={groupDetail} />
+              )}
+            </SectionAccordion>
 
-      {selectedGroupId && (
-        <>
-          <SectionAccordion title="Group Metrics">
-            {detailLoading ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-24 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <LocationMetrics detail={groupDetail} />
-            )}
-          </SectionAccordion>
+            <SectionAccordion title="Capacity Metrics">
+              {detailLoading ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} className="h-24 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                <CapacityMetrics capacityMetrics={groupDetail.capacityMetrics} />
+              )}
+            </SectionAccordion>
 
-          <SectionAccordion title="Capacity Metrics">
-            {detailLoading ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-24 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <CapacityMetrics capacityMetrics={groupDetail.capacityMetrics} />
-            )}
-          </SectionAccordion>
+            <SectionAccordion title="Peer Analysis">
+              {detailLoading ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-24 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                <PeerAnalysis data={groupDetail.peerAnalysis} />
+              )}
+            </SectionAccordion>
 
-          <SectionAccordion title="Peer Analysis">
-            {detailLoading ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-24 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <PeerAnalysis data={groupDetail.peerAnalysis} />
-            )}
-          </SectionAccordion>
-
-          <SectionAccordion title="Hotels in Group">
-            {detailLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <HotelBreakdown hotels={groupDetail.hotelBreakdown} />
-            )}
-          </SectionAccordion>
-        </>
-      )}
+            <SectionAccordion title="Hotels in Group">
+              {detailLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                <HotelBreakdown hotels={groupDetail.hotelBreakdown} />
+              )}
+            </SectionAccordion>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -41,9 +41,10 @@ export function InstallationDetailActions({
     <>
       <Button
         variant="destructive"
+        size="sm"
         onClick={() => setShowDeleteDialog(true)}
       >
-        <Trash2 className="mr-1.5 h-4 w-4" />
+        <Trash2 className="size-4" />
         Delete installation
       </Button>
 
@@ -57,7 +58,7 @@ export function InstallationDetailActions({
           <DialogHeader>
             <DialogTitle>Delete installation?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-wk-night-grey">
+          <p className="text-sm text-muted-foreground">
             This will permanently delete the installation and its milestones.
             Linked kiosks will not be affected.
           </p>

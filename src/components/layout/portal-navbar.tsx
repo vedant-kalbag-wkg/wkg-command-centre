@@ -107,7 +107,7 @@ function NavDropdown({
         className={cn(
           "flex items-center gap-1 px-3 py-2 text-sm font-medium transition-colors",
           active
-            ? "text-[#00A6D3] border-b-2 border-[#00A6D3]"
+            ? "text-primary border-b-2 border-primary"
             : "text-foreground/70 hover:text-foreground",
         )}
       >
@@ -125,7 +125,7 @@ function NavDropdown({
                 href={item.href}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors",
-                  itemActive && "bg-accent text-[#00A6D3] font-medium",
+                  itemActive && "bg-accent text-primary font-medium",
                 )}
               >
                 <Icon className="size-4 text-muted-foreground" />
@@ -146,9 +146,9 @@ function NavDropdown({
 function RoleBadge({ role }: { role: string }) {
   const label = role.charAt(0).toUpperCase() + role.slice(1);
   const styles: Record<string, string> = {
-    admin: "bg-wk-graphite text-white",
-    member: "bg-wk-light-grey text-wk-graphite",
-    viewer: "bg-wk-sky-blue text-wk-night-grey",
+    admin: "bg-secondary text-secondary-foreground",
+    member: "bg-muted text-muted-foreground",
+    viewer: "bg-muted text-muted-foreground",
   };
 
   return (
@@ -186,7 +186,7 @@ export function PortalNavbar({ user }: PortalNavbarProps) {
         {/* Left: Logo + nav */}
         <div className="flex items-center gap-1">
           <Link href="/portal" className="flex items-center gap-2 mr-4">
-            <span className="text-lg font-bold text-[#00A6D3] tracking-[-0.01em]">
+            <span className="text-lg font-bold text-primary tracking-[-0.01em]">
               WK
             </span>
             <span className="hidden sm:inline-block text-sm text-foreground/70">
@@ -213,7 +213,7 @@ export function PortalNavbar({ user }: PortalNavbarProps) {
                 }
               >
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="text-white text-xs font-medium bg-[#00A6D3]">
+                  <AvatarFallback className="text-white text-xs font-medium bg-primary">
                     {getInitials(user.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -254,7 +254,7 @@ export function PortalNavbar({ user }: PortalNavbarProps) {
             <SheetContent side="top" showCloseButton={true}>
               <SheetHeader>
                 <SheetTitle>
-                  <span className="text-lg font-bold text-[#00A6D3]">WK</span>
+                  <span className="text-lg font-bold text-primary">WK</span>
                   <span className="ml-2 text-sm text-foreground/70">Portal</span>
                 </SheetTitle>
               </SheetHeader>
@@ -273,7 +273,7 @@ export function PortalNavbar({ user }: PortalNavbarProps) {
                         onClick={() => setMobileOpen(false)}
                         className={cn(
                           "flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors",
-                          active && "bg-accent text-[#00A6D3] font-medium",
+                          active && "bg-accent text-primary font-medium",
                         )}
                       >
                         <Icon className="size-4 text-muted-foreground" />
@@ -287,7 +287,7 @@ export function PortalNavbar({ user }: PortalNavbarProps) {
                   <div className="border-t pt-4 space-y-3">
                     <div className="flex items-center gap-2 px-3">
                       <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-white text-xs font-medium bg-[#00A6D3]">
+                        <AvatarFallback className="text-white text-xs font-medium bg-primary">
                           {getInitials(user.name)}
                         </AvatarFallback>
                       </Avatar>

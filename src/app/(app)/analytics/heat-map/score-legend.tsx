@@ -7,11 +7,11 @@ interface ScoreLegendProps {
 }
 
 const WEIGHT_CONFIG: { key: keyof ScoreWeights; label: string; color: string }[] = [
-  { key: "revenue", label: "Revenue", color: "bg-[#00A6D3]" },
-  { key: "transactions", label: "Transactions", color: "bg-[#00A6D3]/80" },
-  { key: "revenuePerRoom", label: "Rev / Room", color: "bg-[#00A6D3]/60" },
-  { key: "txnPerKiosk", label: "Txn / Kiosk", color: "bg-[#00A6D3]/40" },
-  { key: "basketValue", label: "Avg Basket", color: "bg-[#00A6D3]/20" },
+  { key: "revenue", label: "Revenue", color: "bg-primary" },
+  { key: "transactions", label: "Transactions", color: "bg-primary/80" },
+  { key: "revenuePerRoom", label: "Rev / Room", color: "bg-primary/60" },
+  { key: "txnPerKiosk", label: "Txn / Kiosk", color: "bg-primary/40" },
+  { key: "basketValue", label: "Avg Basket", color: "bg-primary/20" },
 ];
 
 export function ScoreLegend({ weights }: ScoreLegendProps) {

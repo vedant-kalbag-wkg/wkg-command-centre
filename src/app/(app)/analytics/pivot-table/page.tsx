@@ -11,7 +11,13 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { usePivotFilters } from "@/lib/stores/analytics-filter-store";
-import { usePivotStore, AVAILABLE_FIELDS, type FieldDefinition } from "@/lib/stores/pivot-store";
+import {
+  usePivotStore,
+  type FieldDefinition,
+} from "@/lib/stores/pivot-store";
+import { PageHeader } from "@/components/layout/page-header";
+import { ChartCard } from "@/components/ui/chart-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FieldList } from "./field-list";
 import { DropZones } from "./drop-zones";
@@ -72,7 +78,7 @@ export default function PivotTablePage() {
     }
   }
 
-  // ─── Run Pivot ──────────────���─────────────────────��────────────────────
+  // ─── Run Pivot ─────────────────────────────────────────────────────────
 
   const runPivot = useCallback(async () => {
     if (values.length === 0) return;
@@ -102,12 +108,10 @@ export default function PivotTablePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Pivot Table</h1>
-        <p className="text-sm text-muted-foreground">
-          Drag dimensions and metrics to build custom cross-tabulations
-        </p>
-      </div>
+      <PageHeader
+        title="Pivot Table"
+        description="Drag dimensions and metrics to build custom cross-tabulations"
+      />
 
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -123,20 +127,24 @@ export default function PivotTablePage() {
         <div className="flex gap-6">
           {/* Left panel: field list */}
           <div className="w-1/4 shrink-0">
-            <div className="sticky top-4 rounded-lg border bg-card p-4">
-              <h2 className="mb-3 text-sm font-semibold">Fields</h2>
-              <FieldList />
+            <div className="sticky top-4">
+              <ChartCard title="Fields" description="Drag fields into rows, columns, or values">
+                <FieldList />
+              </ChartCard>
             </div>
           </div>
 
           {/* Right panel: drop zones + results */}
           <div className="flex flex-1 flex-col gap-4">
-            <div className="rounded-lg border bg-card p-4">
+            <ChartCard
+              title="Pivot Builder"
+              description="Configure rows, columns, values, and comparisons"
+            >
               <DropZones />
               <div className="mt-3 border-t pt-3">
                 <PivotToolbar onRunPivot={runPivot} loading={loading} />
               </div>
-            </div>
+            </ChartCard>
 
             {/* Results */}
             {loading ? (
@@ -144,10 +152,13 @@ export default function PivotTablePage() {
             ) : result ? (
               <PivotResultTable data={result} />
             ) : (
-              <div className="flex h-48 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-                Drag fields into the zones above, then click &quot;Run
-                Pivot&quot; to see results.
-              </div>
+              <EmptyState
+                title="No pivot results yet"
+                description={
+                  'Drag fields into the zones above, then click "Run Analysis" to see results.'
+                }
+                className="rounded-lg border border-dashed"
+              />
             )}
           </div>
         </div>
@@ -158,8 +169,8 @@ export default function PivotTablePage() {
             <div
               className={`rounded-md border px-3 py-1.5 text-xs font-medium shadow-lg ${
                 activeField.type === "dimension"
-                  ? "border-[#00A6D3]/30 bg-[#00A6D3]/10 text-[#00A6D3]"
-                  : "border-[#121212]/20 bg-[#121212]/5 text-[#121212]"
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-foreground/20 bg-foreground/5 text-foreground"
               }`}
             >
               {activeField.label}

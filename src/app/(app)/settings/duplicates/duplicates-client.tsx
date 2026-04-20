@@ -3,9 +3,10 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, X, Search } from "lucide-react";
+import { Loader2, X, Search, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { EmptyState } from "@/components/ui/empty-state";
 import { MergeDialog } from "@/components/table/merge-dialog";
 import { mergeLocationsAction } from "@/app/(app)/locations/merge-action";
 import {
@@ -73,11 +74,7 @@ export function DuplicatesClient() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-end gap-4">
-        <Button
-          onClick={handleScan}
-          disabled={isScanning}
-          className="bg-wk-azure text-white hover:bg-wk-azure/90"
-        >
+        <Button onClick={handleScan} disabled={isScanning}>
           {isScanning ? (
             <Loader2 className="size-4 animate-spin mr-1.5" />
           ) : (
@@ -88,10 +85,10 @@ export function DuplicatesClient() {
 
         <div className="flex-1 max-w-md">
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium text-wk-night-grey">
+            <label className="text-xs font-medium text-muted-foreground">
               Confidence threshold
             </label>
-            <span className="text-xs font-mono text-wk-graphite">
+            <span className="text-xs font-mono text-foreground">
               {threshold.toFixed(2)}
             </span>
           </div>
@@ -109,13 +106,17 @@ export function DuplicatesClient() {
       </div>
 
       {candidates === null ? (
-        <p className="text-sm text-wk-night-grey">
-          Press <strong>Scan</strong> to find candidate duplicate locations.
-        </p>
+        <EmptyState
+          icon={Search}
+          title="Ready to scan"
+          description="Press Scan to find candidate duplicate locations."
+        />
       ) : visible.length === 0 ? (
-        <p className="text-sm text-wk-night-grey">
-          No pairs above the current threshold. Lower the slider to see weaker matches.
-        </p>
+        <EmptyState
+          icon={Copy}
+          title="No pairs above threshold"
+          description="Lower the slider to see weaker matches."
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {visible.map((pair) => {
@@ -123,32 +124,32 @@ export function DuplicatesClient() {
             return (
               <li
                 key={key}
-                className="flex items-center gap-3 rounded-lg border border-wk-mid-grey bg-white p-3"
+                className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
               >
                 <div className="flex-1 grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <div className="font-medium text-wk-graphite">{pair.a.name}</div>
+                    <div className="font-medium text-foreground">{pair.a.name}</div>
                     {pair.a.address && (
-                      <div className="text-xs text-wk-night-grey">{pair.a.address}</div>
+                      <div className="text-xs text-muted-foreground">{pair.a.address}</div>
                     )}
                   </div>
                   <div>
-                    <div className="font-medium text-wk-graphite">{pair.b.name}</div>
+                    <div className="font-medium text-foreground">{pair.b.name}</div>
                     {pair.b.address && (
-                      <div className="text-xs text-wk-night-grey">{pair.b.address}</div>
+                      <div className="text-xs text-muted-foreground">{pair.b.address}</div>
                     )}
                   </div>
                 </div>
 
                 <div className="flex flex-col items-end gap-1.5 min-w-[140px]">
-                  <span className="text-xs font-mono text-wk-azure">
+                  <span className="text-xs font-mono text-primary">
                     {(pair.score * 100).toFixed(0)}%
                   </span>
                   <div className="flex flex-wrap gap-1 justify-end">
                     {pair.reasons.map((r) => (
                       <span
                         key={r}
-                        className="px-1.5 py-0.5 rounded bg-wk-sky-blue text-[10px] text-wk-azure"
+                        className="px-1.5 py-0.5 rounded bg-primary/10 text-[10px] text-primary"
                       >
                         {r === "geo" && pair.distanceMeters != null
                           ? `~${Math.round(pair.distanceMeters)}m`

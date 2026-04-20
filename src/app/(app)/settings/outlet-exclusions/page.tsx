@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { AppShell } from "@/components/layout/app-shell";
+import { ArrowLeft, Ban } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ExclusionsList } from "./exclusions-list";
 import { ExclusionForm } from "./exclusion-form";
 import {
@@ -67,37 +68,41 @@ export default function OutletExclusionsPage() {
   };
 
   return (
-    <AppShell
-      title="Outlet Exclusions"
-      action={
-        <Link href="/settings">
-          <Button variant="ghost" size="sm" className="text-wk-night-grey">
-            <ArrowLeft className="mr-1.5 h-4 w-4" />
-            Back to Settings
-          </Button>
-        </Link>
-      }
-    >
-      <div className="space-y-6">
-        <p className="text-sm text-muted-foreground">
-          Exclude outlet codes from analytics calculations using exact matches or
-          regex patterns.
-        </p>
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title="Outlet Exclusions"
+        description="Exclude outlet codes from analytics calculations using exact matches or regex patterns."
+        count={loading ? undefined : exclusions.length}
+        actions={
+          <Link href="/settings">
+            <Button variant="ghost" size="sm" className="text-muted-foreground">
+              <ArrowLeft className="mr-1.5 h-4 w-4" />
+              Back to Settings
+            </Button>
+          </Link>
+        }
+      />
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="space-y-6">
+          <ExclusionForm onSubmit={handleCreate} />
 
-        <ExclusionForm onSubmit={handleCreate} />
-
-        {loading ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">
-            Loading...
-          </p>
-        ) : (
-          <ExclusionsList
-            exclusions={exclusions}
-            matchCounts={matchCounts}
-            onDelete={handleDelete}
-          />
-        )}
+          {loading ? (
+            <EmptyState icon={Ban} title="Loading exclusions…" />
+          ) : exclusions.length === 0 ? (
+            <EmptyState
+              icon={Ban}
+              title="No exclusion rules defined"
+              description="Add an exact match or regex pattern above to filter outlet codes from analytics."
+            />
+          ) : (
+            <ExclusionsList
+              exclusions={exclusions}
+              matchCounts={matchCounts}
+              onDelete={handleDelete}
+            />
+          )}
+        </div>
       </div>
-    </AppShell>
+    </div>
   );
 }

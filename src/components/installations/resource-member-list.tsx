@@ -43,7 +43,7 @@ const roleItems = [
 
 function RoleBadge({ role }: { role: string }) {
   return (
-    <Badge variant="outline" className="text-xs font-normal text-wk-night-grey border-wk-mid-grey">
+    <Badge variant="outline" className="text-xs font-normal text-muted-foreground border-border">
       {roleLabels[role] ?? role}
     </Badge>
   );
@@ -121,13 +121,13 @@ export function ResourceMemberList({
     <div className="flex flex-col gap-3">
       {/* Member list */}
       {members.length === 0 ? (
-        <p className="text-sm text-wk-night-grey py-2">No team members yet.</p>
+        <p className="text-sm text-muted-foreground py-2">No team members yet.</p>
       ) : (
-        <ul className="divide-y divide-wk-mid-grey">
+        <ul className="divide-y divide-border">
           {members.map((member) => (
             <li key={member.userId} className="flex items-center justify-between py-2.5">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-wk-graphite">
+                <span className="text-sm font-medium text-foreground">
                   {member.userName}
                 </span>
                 <RoleBadge role={member.role} />
@@ -136,7 +136,7 @@ export function ResourceMemberList({
                 type="button"
                 onClick={() => handleRemove(member.userId)}
                 disabled={isPending}
-                className="p-1 text-wk-mid-grey hover:text-wk-destructive transition-colors disabled:opacity-40"
+                className="p-1 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
                 aria-label={`Remove ${member.userName}`}
               >
                 <X className="h-4 w-4" />
@@ -149,7 +149,7 @@ export function ResourceMemberList({
       {/* Add member popover */}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
-          className="flex items-center gap-1.5 text-sm text-wk-azure hover:underline"
+          className="flex items-center gap-1.5 text-sm text-primary hover:underline"
           onClick={() => setOpen(!open)}
         >
           <Plus className="h-4 w-4" />
@@ -157,10 +157,10 @@ export function ResourceMemberList({
         </PopoverTrigger>
         <PopoverContent className="w-72 p-4" align="start">
           <div className="flex flex-col gap-3">
-            <h4 className="text-sm font-semibold text-wk-graphite">Add team member</h4>
+            <h4 className="text-sm font-semibold text-foreground">Add team member</h4>
 
             {availableToAdd.length === 0 ? (
-              <p className="text-sm text-wk-night-grey">All users have been added.</p>
+              <p className="text-sm text-muted-foreground">All users have been added.</p>
             ) : (
               <>
                 <div className="flex flex-col gap-1">
@@ -211,7 +211,7 @@ export function ResourceMemberList({
                     size="sm"
                     onClick={handleAdd}
                     disabled={!selectedUserId || isPending}
-                    className="bg-wk-azure text-white hover:bg-wk-azure/90"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
                   >
                     {isPending ? (
                       <>

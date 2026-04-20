@@ -8,8 +8,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
 import type { HighPerformerPatterns as HighPerformerPatternsData } from "@/lib/analytics/types";
 
@@ -20,28 +18,8 @@ interface HighPerformerPatternsProps {
 
 export function HighPerformerPatterns({
   data,
-  loading = false,
 }: HighPerformerPatternsProps) {
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-6 w-64" />
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-4 w-full max-w-md" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <Skeleton className="h-32" />
-          <Skeleton className="h-32" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!data || (data.greenCount === 0 && data.totalCount === 0)) {
-    return <EmptyState message="No performance data for selected filters" />;
-  }
+  if (!data) return null;
 
   return (
     <div className="space-y-6">

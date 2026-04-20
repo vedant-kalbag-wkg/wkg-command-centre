@@ -112,7 +112,7 @@ export function InstallationForm({
       {/* Name */}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="name">
-          Name <span className="text-wk-destructive">*</span>
+          Name <span className="text-destructive">*</span>
         </Label>
         <Input
           id="name"
@@ -121,7 +121,7 @@ export function InstallationForm({
           aria-invalid={!!errors.name}
         />
         {errors.name && (
-          <p className="text-xs text-wk-destructive">{errors.name.message}</p>
+          <p className="text-xs text-destructive">{errors.name.message}</p>
         )}
       </div>
 
@@ -188,7 +188,7 @@ export function InstallationForm({
         <Button
           type="submit"
           disabled={isPending}
-          className="bg-wk-azure text-white hover:bg-wk-azure/90"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           {isPending
             ? isEdit

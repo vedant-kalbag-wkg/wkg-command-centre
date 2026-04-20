@@ -1,36 +1,75 @@
 import { test, expect } from "@playwright/test";
 import { signInAsAdmin } from "../helpers/auth";
 
-test.describe("Hotel Groups", () => {
-  test("page loads and shows hotel group list with 2025 data", async ({
-    page,
-  }) => {
-    await signInAsAdmin(page);
-    await page.goto("/analytics/hotel-groups?from=2025-01-01&to=2025-12-31");
+test("@analytics/hotel-groups renders PageHeader with title", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/hotel-groups");
 
-    await expect(
-      page.getByRole("heading", { name: "Hotel Groups" }),
-    ).toBeVisible();
-    await expect(page.getByText("Hotel Groups").first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Hotel Groups", level: 1 }),
+  ).toBeVisible();
+});
 
-    // Wait for groups list to load — should show at least one group
-    // The GroupSelector renders group items; once loaded, skeleton disappears
-    await expect(page.getByText("Group Metrics")).toBeVisible({
-      timeout: 15000,
-    });
+test("@analytics/hotel-groups page does not throw", async ({ page }) => {
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (err) => pageErrors.push(err));
+
+  await signInAsAdmin(page);
+  await page.goto("/analytics/hotel-groups");
+
+  await expect(
+    page.getByRole("heading", { name: "Hotel Groups", level: 1 }),
+  ).toBeVisible();
+
+  expect(pageErrors).toEqual([]);
+});
+
+test("@analytics/hotel-groups dropdown renders and selection reveals analytics panel", async ({
+  page,
+}) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/hotel-groups");
+
+  await expect(
+    page.getByRole("heading", { name: "Hotel Groups", level: 1 }),
+  ).toBeVisible();
+
+  // Dropdown trigger should be rendered (labelled "Select a hotel group").
+  const trigger = page.getByLabel("Select a hotel group");
+  await expect(trigger).toBeVisible();
+
+  // After the list loads the page auto-selects the first group; the analytics
+  // sections ("Group Metrics", "Hotels in Group", "Daily Trends") must render.
+  await expect(
+    page.getByRole("button", { name: /Group Metrics/ }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("button", { name: /Hotels in Group/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Daily Trends/ }),
+  ).toBeVisible();
+});
+
+test("@analytics/hotel-groups dark-mode toggle does not throw", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/hotel-groups");
+
+  await expect(
+    page.getByRole("heading", { name: "Hotel Groups", level: 1 }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    document.documentElement.classList.toggle("dark");
   });
+  await expect(
+    page.getByRole("heading", { name: "Hotel Groups", level: 1 }),
+  ).toBeVisible();
 
-  test("selecting a group shows detail view with KPI cards", async ({
-    page,
-  }) => {
-    await signInAsAdmin(page);
-    await page.goto("/analytics/hotel-groups?from=2025-01-01&to=2025-12-31");
-
-    // Wait for the detail sections to render (auto-selects first group)
-    await expect(page.getByText("Group Metrics")).toBeVisible({
-      timeout: 15000,
-    });
-    await expect(page.getByText("Hotels in Group")).toBeVisible();
-    await expect(page.getByText("Daily Trends")).toBeVisible();
+  await page.evaluate(() => {
+    document.documentElement.classList.toggle("dark");
   });
+  await expect(
+    page.getByRole("heading", { name: "Hotel Groups", level: 1 }),
+  ).toBeVisible();
 });

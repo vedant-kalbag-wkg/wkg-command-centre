@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { AppShell } from "@/components/layout/app-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { listInstallations } from "@/app/(app)/installations/actions";
 import { listKiosks } from "@/app/(app)/kiosks/actions";
@@ -25,22 +25,27 @@ export default async function InstallationsPage({
     : [];
 
   return (
-    <AppShell
-      title="Installations"
-      action={
-        <Link href="/installations/new">
-          <Button className="bg-wk-azure text-white hover:bg-wk-azure/90">
-            <Plus className="mr-1.5 h-4 w-4" />
-            Add installation
-          </Button>
-        </Link>
-      }
-    >
-      <InstallationViewTabsClient
-        activeView={activeView}
-        installations={installations}
-        kiosks={kiosks}
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title="Installations"
+        description="Plan deployment timelines, milestones, and teams"
+        count={installations.length}
+        actions={
+          <Link href="/installations/new">
+            <Button size="sm">
+              <Plus className="size-4" />
+              Add installation
+            </Button>
+          </Link>
+        }
       />
-    </AppShell>
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        <InstallationViewTabsClient
+          activeView={activeView}
+          installations={installations}
+          kiosks={kiosks}
+        />
+      </div>
+    </div>
   );
 }

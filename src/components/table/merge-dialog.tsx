@@ -140,8 +140,8 @@ export function MergeDialog<T>({
                   className={[
                     "w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors",
                     isSelected
-                      ? "border-[#00A6D3] bg-[#00A6D3]/5"
-                      : "border-border hover:border-[#00A6D3]/40",
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40",
                   ].join(" ")}
                 >
                   <span className="font-medium">{getName(record)}</span>
@@ -184,8 +184,8 @@ export function MergeDialog<T>({
                           className={[
                             "px-2.5 py-1 rounded-md border text-xs transition-colors",
                             isSelected
-                              ? "border-[#00A6D3] bg-[#00A6D3]/10 text-[#00A6D3]"
-                              : "border-border hover:border-[#00A6D3]/40",
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border hover:border-primary/40",
                           ].join(" ")}
                         >
                           {val}
@@ -221,7 +221,7 @@ export function MergeDialog<T>({
           <Button
             onClick={handleConfirm}
             disabled={isSubmitting || !targetId}
-            className="bg-[#00A6D3] hover:bg-[#00A6D3]/90 text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {isSubmitting && <Loader2 className="size-4 animate-spin mr-1.5" />}
             Merge {entityLabel}s

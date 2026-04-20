@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
-import { SectionAccordion } from "@/components/analytics/section-accordion";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/layout/page-header";
+import { ChartCard } from "@/components/ui/chart-card";
 import { fetchHeatMapData, fetchThresholdConfig, fetchActiveFlags } from "./actions";
 import { ScoreLegend } from "./score-legend";
 import { PerformanceTable } from "./performance-table";
@@ -76,24 +76,16 @@ export default function HeatMapPage() {
 
   const heatMap = data ?? emptyData;
 
-  const loadingSkeleton = (
-    <div className="space-y-2">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Skeleton key={i} className="h-12 rounded-lg" />
-      ))}
-    </div>
-  );
+  const hasTopData = heatMap.topPerformers.length > 0;
+  const hasBottomData = heatMap.bottomPerformers.length > 0;
+  const hasAllData = heatMap.allPerformers.length > 0;
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Performance Heat Map
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Composite scoring across revenue, transactions, and capacity metrics
-        </p>
-      </div>
+      <PageHeader
+        title="Performance Heat Map"
+        description="Composite scoring across revenue, transactions, and capacity metrics"
+      />
 
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -101,57 +93,68 @@ export default function HeatMapPage() {
         </div>
       )}
 
-      <SectionAccordion title="Score Weights">
-        {loading ? (
-          <Skeleton className="h-16 rounded-lg" />
-        ) : (
-          <ScoreLegend weights={heatMap.scoreWeights} />
-        )}
-      </SectionAccordion>
+      <ChartCard
+        title="Score Weights"
+        description="Composite score formula weights"
+        loading={loading}
+        collapsible
+      >
+        <ScoreLegend weights={heatMap.scoreWeights} />
+      </ChartCard>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SectionAccordion title="Top 20 Performers">
-          {loading ? (
-            loadingSkeleton
-          ) : (
-            <PerformanceTable
-              data={heatMap.topPerformers}
-              title="Top 20 Performers"
-              thresholdConfig={thresholdConfig}
-              flags={flags}
-              onFlagCreated={loadData}
-            />
-          )}
-        </SectionAccordion>
-
-        <SectionAccordion title="Bottom 20 Performers">
-          {loading ? (
-            loadingSkeleton
-          ) : (
-            <PerformanceTable
-              data={heatMap.bottomPerformers}
-              title="Bottom 20 Performers"
-              thresholdConfig={thresholdConfig}
-              flags={flags}
-              onFlagCreated={loadData}
-            />
-          )}
-        </SectionAccordion>
-      </div>
-
-      <SectionAccordion title="All Hotels" defaultOpen={false}>
-        {loading ? (
-          loadingSkeleton
-        ) : (
+        <ChartCard
+          title="Top 20 Performers"
+          description="Highest composite scores for the selected period"
+          loading={loading}
+          empty={!loading && !hasTopData}
+          emptyMessage="No top performer data available"
+          collapsible
+        >
           <PerformanceTable
-            data={heatMap.allPerformers}
-            title="All Hotels"
+            data={heatMap.topPerformers}
+            title="Top 20 Performers"
             thresholdConfig={thresholdConfig}
             flags={flags}
             onFlagCreated={loadData}
           />
-        )}
-      </SectionAccordion>
+        </ChartCard>
+
+        <ChartCard
+          title="Bottom 20 Performers"
+          description="Lowest composite scores for the selected period"
+          loading={loading}
+          empty={!loading && !hasBottomData}
+          emptyMessage="No bottom performer data available"
+          collapsible
+        >
+          <PerformanceTable
+            data={heatMap.bottomPerformers}
+            title="Bottom 20 Performers"
+            thresholdConfig={thresholdConfig}
+            flags={flags}
+            onFlagCreated={loadData}
+          />
+        </ChartCard>
+      </div>
+
+      <ChartCard
+        title="All Hotels"
+        description="Every hotel ranked by composite score"
+        loading={loading}
+        empty={!loading && !hasAllData}
+        emptyMessage="No hotel performance data available"
+        collapsible
+        defaultCollapsed
+      >
+        <PerformanceTable
+          data={heatMap.allPerformers}
+          title="All Hotels"
+          thresholdConfig={thresholdConfig}
+          flags={flags}
+          onFlagCreated={loadData}
+        />
+      </ChartCard>
     </div>
   );
 }

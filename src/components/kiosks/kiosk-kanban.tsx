@@ -82,7 +82,7 @@ function DroppableColumn({ id, children }: DroppableColumnProps) {
   return (
     <div
       ref={setNodeRef}
-      className={isOver ? "ring-2 ring-wk-azure ring-inset rounded-lg" : ""}
+      className={isOver ? "ring-2 ring-ring ring-inset rounded-lg" : ""}
       style={{ minHeight: "100px" }}
     >
       {children}
@@ -245,7 +245,7 @@ export function KioskKanban({ kiosks: initialKiosks, stages }: KioskKanbanProps)
       {/* Header bar */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-wk-night-grey">Group by:</span>
+          <span className="text-sm text-muted-foreground">Group by:</span>
           <Select
             value={groupBy}
             onValueChange={(v) => setGroupBy((v ?? "pipelineStageId") as GroupByValue)}
@@ -278,8 +278,8 @@ export function KioskKanban({ kiosks: initialKiosks, stages }: KioskKanbanProps)
 
       {/* Info banner for non-stage grouping */}
       {!isDragEnabled && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-wk-sky-blue border-l-2 border-wk-azure rounded-r text-sm text-wk-graphite">
-          <Info className="h-4 w-4 text-wk-azure flex-shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-l-2 border-primary rounded-r text-sm text-foreground">
+          <Info className="h-4 w-4 text-primary flex-shrink-0" />
           Switch to stage grouping to drag cards
         </div>
       )}
@@ -303,7 +303,7 @@ export function KioskKanban({ kiosks: initialKiosks, stages }: KioskKanbanProps)
                     style={{ backgroundColor: column.color }}
                   />
                 )}
-                <span className="text-sm font-medium text-wk-graphite flex-1 truncate">
+                <span className="text-sm font-medium text-foreground flex-1 truncate">
                   {column.label}
                 </span>
                 <Badge variant="secondary" className="text-xs">
@@ -322,7 +322,7 @@ export function KioskKanban({ kiosks: initialKiosks, stages }: KioskKanbanProps)
                     <div className="flex flex-col gap-2 p-1">
                       {column.kiosks.length === 0 ? (
                         <div className="flex items-center justify-center py-8">
-                          <span className="text-xs text-wk-mid-grey">
+                          <span className="text-xs text-muted-foreground">
                             No kiosks in this stage
                           </span>
                         </div>

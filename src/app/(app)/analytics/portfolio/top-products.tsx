@@ -8,7 +8,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
 import type { TopProductRow } from "@/lib/analytics/types";
 
@@ -17,11 +16,7 @@ interface TopProductsProps {
   loading?: boolean;
 }
 
-export function TopProducts({ data, loading = false }: TopProductsProps) {
-  if (!loading && data.length === 0) {
-    return <EmptyState message="No product data for selected filters" />;
-  }
-
+export function TopProducts({ data }: TopProductsProps) {
   return (
     <Table>
       <TableHeader>

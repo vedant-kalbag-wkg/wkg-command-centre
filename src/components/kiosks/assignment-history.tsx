@@ -21,7 +21,7 @@ interface AssignmentHistoryProps {
 export function AssignmentHistory({ history }: AssignmentHistoryProps) {
   if (history.length === 0) {
     return (
-      <p className="text-sm text-wk-night-grey">
+      <p className="text-sm text-muted-foreground">
         No previous venues. This kiosk has only been at its current location.
       </p>
     );
@@ -43,29 +43,29 @@ export function AssignmentHistory({ history }: AssignmentHistoryProps) {
               <div
                 className={cn(
                   "mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
-                  isCurrent ? "bg-wk-azure text-white" : "bg-wk-light-grey text-wk-night-grey"
+                  isCurrent ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                 )}
               >
                 <ArrowRightLeft className="h-3 w-3" />
               </div>
               {index < sorted.length - 1 && (
-                <div className="mt-1 h-full w-px bg-wk-mid-grey" />
+                <div className="mt-1 h-full w-px bg-border" />
               )}
             </div>
 
             {/* Content */}
             <div className="pb-4">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-wk-graphite">
+                <span className="text-sm font-medium text-foreground">
                   {entry.locationName}
                 </span>
                 {isCurrent && (
-                  <span className="rounded-full bg-wk-azure-20 px-2 py-0.5 text-[11px] font-medium text-wk-azure">
+                  <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-medium text-primary">
                     Current
                   </span>
                 )}
               </div>
-              <p className="text-[12px] text-wk-night-grey">
+              <p className="text-[12px] text-muted-foreground">
                 {format(new Date(entry.assignedAt), "dd MMM yyyy")}
                 {" — "}
                 {entry.unassignedAt
@@ -73,11 +73,11 @@ export function AssignmentHistory({ history }: AssignmentHistoryProps) {
                   : "Present"}
               </p>
               {entry.reason && (
-                <p className="mt-0.5 text-[12px] text-wk-night-grey">
+                <p className="mt-0.5 text-[12px] text-muted-foreground">
                   Reason: {entry.reason}
                 </p>
               )}
-              <p className="mt-0.5 text-[11px] text-wk-mid-grey">
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
                 Assigned by {entry.assignedByName}
               </p>
             </div>

@@ -9,6 +9,7 @@ import {
   flexRender,
   createColumnHelper,
 } from "@tanstack/react-table";
+import { Layers } from "lucide-react";
 import type { ConfigGroupListItem } from "@/app/(app)/kiosk-config-groups/actions";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -19,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface ConfigGroupsTableProps {
   data: ConfigGroupListItem[];
@@ -32,7 +34,7 @@ export function ConfigGroupsTable({ data }: ConfigGroupsTableProps) {
       columnHelper.accessor("name", {
         header: "Group Name",
         cell: (info) => (
-          <span className="font-medium text-wk-graphite">{info.getValue()}</span>
+          <span className="font-medium text-foreground">{info.getValue()}</span>
         ),
       }),
       columnHelper.accessor("productAvailability", {
@@ -89,46 +91,44 @@ export function ConfigGroupsTable({ data }: ConfigGroupsTableProps) {
     getSortedRowModel: getSortedRowModel(),
   });
 
-  if (data.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <h2 className="text-xl font-bold tracking-[-0.01em] text-wk-graphite mb-2">
-          No config groups yet
-        </h2>
-        <p className="text-wk-graphite/60 text-sm max-w-sm">
-          Kiosk Config Groups are imported from your Monday.com board. Run an import
-          to populate this list.
-        </p>
-      </div>
-    );
-  }
+  const hasData = data.length > 0;
 
   return (
-    <Table>
-      <TableHeader>
-        {table.getHeaderGroups().map((headerGroup) => (
-          <TableRow key={headerGroup.id}>
-            {headerGroup.headers.map((header) => (
-              <TableHead key={header.id}>
-                {header.isPlaceholder
-                  ? null
-                  : flexRender(header.column.columnDef.header, header.getContext())}
-              </TableHead>
+    <div className="rounded-lg border border-border overflow-hidden">
+      {!hasData ? (
+        <EmptyState
+          icon={Layers}
+          title="No config groups yet"
+          description="Kiosk Config Groups are imported from your Monday.com board. Run an import to populate this list."
+        />
+      ) : (
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
             ))}
-          </TableRow>
-        ))}
-      </TableHeader>
-      <TableBody>
-        {table.getRowModel().rows.map((row) => (
-          <TableRow key={row.id} className="hover:bg-muted/50">
-            {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id}>
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </TableCell>
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id} className="hover:bg-muted/50">
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
             ))}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+          </TableBody>
+        </Table>
+      )}
+    </div>
   );
 }

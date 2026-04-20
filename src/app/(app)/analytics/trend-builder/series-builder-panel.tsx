@@ -37,7 +37,7 @@ export function SeriesBuilderPanel() {
   return (
     <div className="rounded-lg border overflow-hidden">
       {/* Panel header with Azure left border */}
-      <div className="border-l-4 border-[#00A6D3] bg-muted/30 px-4 py-3 flex items-center justify-between">
+      <div className="border-l-4 border-primary bg-muted/30 px-4 py-3 flex items-center justify-between">
         <h3 className="text-base font-bold tracking-tight">Builder Panel</h3>
         <button
           type="button"
@@ -118,7 +118,7 @@ export function SeriesBuilderPanel() {
                 <Button
                   size="sm"
                   onClick={applyChanges}
-                  className="bg-[#00A6D3] hover:bg-[#00A6D3]/90"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   Apply
                 </Button>

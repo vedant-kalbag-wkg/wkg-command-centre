@@ -48,8 +48,8 @@ const KioskCardContent = React.memo(function KioskCardContent({
   return (
     <div
       className={cn(
-        "w-full min-h-[80px] p-3 border rounded-lg cursor-pointer select-none bg-white",
-        "border-wk-mid-grey transition-shadow",
+        "w-full min-h-[80px] p-3 border rounded-lg cursor-pointer select-none bg-card",
+        "border-border transition-shadow",
         "hover:shadow-md",
         isDragging
           ? "opacity-80 shadow-xl scale-[1.02]"
@@ -59,13 +59,13 @@ const KioskCardContent = React.memo(function KioskCardContent({
       onClick={handleClick}
     >
       {/* Kiosk ID — 14px Medium */}
-      <p className="text-sm font-semibold text-wk-graphite truncate mb-1">
+      <p className="text-sm font-semibold text-foreground truncate mb-1">
         {kioskId}
       </p>
 
       {/* Venue name — 14px Book */}
       {venueName && (
-        <p className="text-sm text-wk-night-grey truncate mb-1.5">
+        <p className="text-sm text-muted-foreground truncate mb-1.5">
           {venueName}
         </p>
       )}
@@ -87,7 +87,7 @@ const KioskCardContent = React.memo(function KioskCardContent({
         <div
           className={cn(
             "w-2 h-2 rounded-full flex-shrink-0",
-            isCmsConfigured ? "bg-wk-success" : "bg-wk-mid-grey"
+            isCmsConfigured ? "bg-[--color-wk-success]" : "bg-border"
           )}
           title={isCmsConfigured ? "CMS Configured" : "CMS Not Configured"}
         />

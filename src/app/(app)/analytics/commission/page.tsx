@@ -16,10 +16,10 @@ import {
   Hash,
 } from "lucide-react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
-import { SectionAccordion } from "@/components/analytics/section-accordion";
+import { PageHeader } from "@/components/layout/page-header";
+import { ChartCard } from "@/components/ui/chart-card";
 import { KpiCard } from "@/components/analytics/kpi-card";
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
-import { EmptyState } from "@/components/analytics/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatCurrency,
@@ -128,88 +128,90 @@ export default function CommissionPage() {
   }, [loadData]);
 
   const d = data ?? emptyData;
+  const hasLocationData = d.byLocation.length > 0;
+  const hasProductData = d.byProduct.length > 0;
+  const hasMonthlyData = d.monthlyTrend.length > 0;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Commission Analytics
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Commission performance across locations and products
-        </p>
-      </div>
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title="Commission Analytics"
+        description="Commission performance across locations and products"
+      />
 
-      {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
+        {error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
-      {/* KPI Cards */}
-      {loading ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-lg" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <KpiCard
-            title="Total Commission"
-            value={formatCurrency(d.summary.totalCommission)}
-            change={
-              d.summary.commissionDelta !== null
-                ? formatChangeIndicator(d.summary.commissionDelta)
-                : undefined
-            }
-            primary
-            icon={<DollarSign className="size-3.5" />}
-          />
-          <KpiCard
-            title="Commissionable Revenue"
-            value={formatCurrency(d.summary.totalCommissionable)}
-            change={
-              d.summary.commissionableDelta !== null
-                ? formatChangeIndicator(d.summary.commissionableDelta)
-                : undefined
-            }
-            icon={<Receipt className="size-3.5" />}
-          />
-          <KpiCard
-            title="Average Rate"
-            value={`${d.summary.avgRate.toFixed(2)}%`}
-            change={
-              d.summary.rateDelta !== null
-                ? {
-                    text: `${d.summary.rateDelta >= 0 ? "+" : ""}${d.summary.rateDelta.toFixed(2)}pp`,
-                    color: d.summary.rateDelta >= 0 ? "#16A34A" : "#DC2626",
-                    direction: d.summary.rateDelta >= 0 ? "up" : "down",
-                  }
-                : undefined
-            }
-            icon={<Percent className="size-3.5" />}
-          />
-          <KpiCard
-            title="Records with Commission"
-            value={formatNumber(d.summary.recordCount)}
-            change={
-              d.summary.recordDelta !== null
-                ? formatChangeIndicator(d.summary.recordDelta)
-                : undefined
-            }
-            icon={<Hash className="size-3.5" />}
-          />
-        </div>
-      )}
-
-      {/* By Location */}
-      <SectionAccordion title="By Location">
+        {/* KPI Cards */}
         {loading ? (
-          <Skeleton className="h-48 w-full rounded-lg" />
-        ) : d.byLocation.length === 0 ? (
-          <EmptyState message="No commission data by location" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-lg" />
+            ))}
+          </div>
         ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <KpiCard
+              title="Total Commission"
+              value={formatCurrency(d.summary.totalCommission)}
+              change={
+                d.summary.commissionDelta !== null
+                  ? formatChangeIndicator(d.summary.commissionDelta)
+                  : undefined
+              }
+              primary
+              icon={<DollarSign className="size-3.5" />}
+            />
+            <KpiCard
+              title="Commissionable Revenue"
+              value={formatCurrency(d.summary.totalCommissionable)}
+              change={
+                d.summary.commissionableDelta !== null
+                  ? formatChangeIndicator(d.summary.commissionableDelta)
+                  : undefined
+              }
+              icon={<Receipt className="size-3.5" />}
+            />
+            <KpiCard
+              title="Average Rate"
+              value={`${d.summary.avgRate.toFixed(2)}%`}
+              change={
+                d.summary.rateDelta !== null
+                  ? {
+                      text: `${d.summary.rateDelta >= 0 ? "+" : ""}${d.summary.rateDelta.toFixed(2)}pp`,
+                      color: d.summary.rateDelta >= 0 ? "#16A34A" : "#DC2626",
+                      direction: d.summary.rateDelta >= 0 ? "up" : "down",
+                    }
+                  : undefined
+              }
+              icon={<Percent className="size-3.5" />}
+            />
+            <KpiCard
+              title="Records with Commission"
+              value={formatNumber(d.summary.recordCount)}
+              change={
+                d.summary.recordDelta !== null
+                  ? formatChangeIndicator(d.summary.recordDelta)
+                  : undefined
+              }
+              icon={<Hash className="size-3.5" />}
+            />
+          </div>
+        )}
+
+        {/* By Location */}
+        <ChartCard
+          title="By Location"
+          description="Commission totals and effective rates per location"
+          loading={loading}
+          empty={!loading && !hasLocationData}
+          emptyMessage="No commission data by location"
+          collapsible
+        >
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead>
@@ -234,16 +236,17 @@ export default function CommissionPage() {
               </tbody>
             </table>
           </div>
-        )}
-      </SectionAccordion>
+        </ChartCard>
 
-      {/* By Product */}
-      <SectionAccordion title="By Product">
-        {loading ? (
-          <Skeleton className="h-48 w-full rounded-lg" />
-        ) : d.byProduct.length === 0 ? (
-          <EmptyState message="No commission data by product" />
-        ) : (
+        {/* By Product */}
+        <ChartCard
+          title="By Product"
+          description="Commission totals and effective rates per product"
+          loading={loading}
+          empty={!loading && !hasProductData}
+          emptyMessage="No commission data by product"
+          collapsible
+        >
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead>
@@ -266,16 +269,17 @@ export default function CommissionPage() {
               </tbody>
             </table>
           </div>
-        )}
-      </SectionAccordion>
+        </ChartCard>
 
-      {/* Monthly Trend */}
-      <SectionAccordion title="Monthly Trend">
-        {loading ? (
-          <Skeleton className="h-[300px] w-full rounded-lg" />
-        ) : d.monthlyTrend.length === 0 ? (
-          <EmptyState message="No monthly commission data" />
-        ) : (
+        {/* Monthly Trend */}
+        <ChartCard
+          title="Monthly Trend"
+          description="Commission totals across months"
+          loading={loading}
+          empty={!loading && !hasMonthlyData}
+          emptyMessage="No monthly commission data"
+          collapsible
+        >
           <ChartWrapper>
             <BarChart
               data={d.monthlyTrend}
@@ -294,8 +298,8 @@ export default function CommissionPage() {
               <Bar dataKey="commission" fill="#00A6D3" name="Commission" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ChartWrapper>
-        )}
-      </SectionAccordion>
+        </ChartCard>
+      </div>
     </div>
   );
 }

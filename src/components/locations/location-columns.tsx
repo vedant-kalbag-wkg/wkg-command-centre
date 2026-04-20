@@ -51,7 +51,7 @@ export const locationColumns: ColumnDef<LocationListItem>[] = [
     cell: ({ row }) => (
       <Link
         href={`/locations/${row.original.id}`}
-        className="font-medium text-wk-azure hover:underline truncate block"
+        className="font-medium text-primary hover:underline truncate block"
         onClick={(e) => e.stopPropagation()}
         title={row.getValue("name") as string}
       >
@@ -88,9 +88,9 @@ export const locationColumns: ColumnDef<LocationListItem>[] = [
     enableGrouping: true,
     cell: ({ getValue }) => {
       const val = getValue() as number | null;
-      if (!val) return <span className="text-wk-mid-grey">—</span>;
+      if (!val) return <span className="text-muted-foreground">—</span>;
       return (
-        <span className="text-wk-gold" aria-label={`${val} stars`}>
+        <span className="text-amber-600" aria-label={`${val} stars`}>
           {"★".repeat(val)}{"☆".repeat(5 - val)}
         </span>
       );
@@ -171,7 +171,7 @@ export const locationColumns: ColumnDef<LocationListItem>[] = [
     enableGrouping: true,
     cell: ({ getValue }) => {
       const val = getValue() as string | null;
-      if (!val) return <span className="text-wk-mid-grey">—</span>;
+      if (!val) return <span className="text-muted-foreground">—</span>;
       return (
         <Badge variant="secondary" className="capitalize">
           {val}
@@ -223,7 +223,7 @@ export const locationColumns: ColumnDef<LocationListItem>[] = [
     enableSorting: true,
     cell: ({ getValue }) => {
       const val = getValue() as string | null;
-      return val ?? <span className="text-wk-mid-grey">—</span>;
+      return val ?? <span className="text-muted-foreground">—</span>;
     },
   },
   // 13. Region — editable, groupable
@@ -281,7 +281,7 @@ export const locationColumns: ColumnDef<LocationListItem>[] = [
     enableHiding: true,
     cell: ({ getValue }) => {
       const val = getValue() as Date | null;
-      if (!val) return <span className="text-wk-mid-grey">—</span>;
+      if (!val) return <span className="text-muted-foreground">—</span>;
       return new Date(val).toLocaleDateString("en-GB");
     },
   },
@@ -293,7 +293,7 @@ export const locationColumns: ColumnDef<LocationListItem>[] = [
     enableHiding: true,
     cell: ({ getValue }) => {
       const val = getValue() as Date | null;
-      if (!val) return <span className="text-wk-mid-grey">—</span>;
+      if (!val) return <span className="text-muted-foreground">—</span>;
       return new Date(val).toLocaleDateString("en-GB");
     },
   },
