@@ -42,17 +42,36 @@ function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
 function BreadcrumbLink({
   className,
   render,
+  children,
   ...props
 }: useRender.ComponentProps<"a">) {
+  // Base UI's `useRender` replaces the rendered element with the `render`
+  // element when one is supplied — discarding the `children` passed to this
+  // component. To keep composition ergonomic (e.g.
+  // `<BreadcrumbLink render={<Link href="/foo" />}>Text</BreadcrumbLink>`),
+  // forward our `children` into the override element when one is a
+  // `ReactElement` and it doesn't already declare its own children.
+  const resolvedRender = React.useMemo(() => {
+    if (!render) return render
+    if (React.isValidElement(render)) {
+      const renderProps = (render.props ?? {}) as { children?: React.ReactNode }
+      if (renderProps.children === undefined && children !== undefined) {
+        return React.cloneElement(render, undefined, children)
+      }
+    }
+    return render
+  }, [render, children])
+
   return useRender({
     defaultTagName: "a",
     props: mergeProps<"a">(
       {
         className: cn("transition-colors hover:text-foreground", className),
+        children,
       },
       props
     ),
-    render,
+    render: resolvedRender,
     state: {
       slot: "breadcrumb-link",
     },
