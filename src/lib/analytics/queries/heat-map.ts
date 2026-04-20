@@ -30,13 +30,33 @@ const dbAny = db as any;
 
 // ─── Score Weights ──────────────────────────────────────────────────────────
 
-const SCORE_WEIGHTS: ScoreWeights = {
+const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
   revenue: 0.3,
   transactions: 0.2,
   revenuePerRoom: 0.25,
   txnPerKiosk: 0.15,
   basketValue: 0.1,
 };
+
+/**
+ * Accepts fraction weights summing to ~1. If input is missing, invalid, or
+ * sums to zero, falls back to defaults. This is a defensive guard — the UI
+ * already enforces sum=100 before submitting.
+ */
+function resolveWeights(input?: ScoreWeights): ScoreWeights {
+  if (!input) return DEFAULT_SCORE_WEIGHTS;
+  const values = [
+    input.revenue,
+    input.transactions,
+    input.revenuePerRoom,
+    input.txnPerKiosk,
+    input.basketValue,
+  ];
+  if (values.some((v) => !Number.isFinite(v) || v < 0)) return DEFAULT_SCORE_WEIGHTS;
+  const total = values.reduce((a, b) => a + b, 0);
+  if (total <= 0) return DEFAULT_SCORE_WEIGHTS;
+  return input;
+}
 
 // ─── Internal: build WHERE clause ───────────────────────────────────────────
 
@@ -75,7 +95,9 @@ function minMaxNormalize(value: number | null, min: number, max: number): number
 export async function getHeatMapData(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
+  weightsInput?: ScoreWeights,
 ): Promise<HeatMapData> {
+  const SCORE_WEIGHTS = resolveWeights(weightsInput);
   const whereClause = await buildHeatMapWhere(filters, userCtx);
 
   // 1. Query sales grouped by location
