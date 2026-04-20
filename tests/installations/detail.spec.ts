@@ -6,19 +6,22 @@ test("@installations installation detail renders PageHeader with breadcrumb + de
 }) => {
   await signInAsAdmin(page);
 
-  // Create a lightweight test installation via the UI so we have something
-  // to navigate to — the sweep is presentation-only, so we rely on
-  // the existing create flow.
-  const testName = `UI-KIT-DETAIL-${Date.now()}`;
-  await page.goto("/installations/new");
-  await page.getByLabel(/name/i).first().fill(testName);
-  await page.getByRole("button", { name: /create installation/i }).click();
+  // Navigate via the list — pick the first existing installation row instead
+  // of creating test data (avoids orphans). Mirrors the kiosk detail spec.
+  await page.goto("/installations");
+  const firstRow = page.locator("table tbody tr").first();
+  if (!(await firstRow.isVisible().catch(() => false))) {
+    test.skip(true, "No installations seeded");
+  }
 
-  // Should redirect to the detail page.
+  const firstRowLink = firstRow.getByRole("link").first();
+  await expect(firstRowLink).toBeVisible();
+  await firstRowLink.click();
+
   await page.waitForURL(/\/installations\/[^/]+$/, { timeout: 10000 });
 
   // Heading (title in PageHeader)
-  await expect(page.getByRole("heading", { name: testName, level: 1 })).toBeVisible();
+  await expect(page.locator("h1")).toBeVisible();
 
   // Breadcrumb back-link to Installations list
   await expect(
