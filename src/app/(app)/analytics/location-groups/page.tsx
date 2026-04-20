@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { MapPin } from "lucide-react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { fetchLocationGroupsList, fetchLocationGroupDetail } from "./actions";
 import { LocationSelector } from "./location-selector";
 import { LocationMetrics } from "./location-metrics";
@@ -40,12 +42,11 @@ export default function LocationGroupsPage() {
       const result = await fetchLocationGroupsList(parsed);
       if (!controller.signal.aborted) {
         setGroups(result);
-        if (result.length > 0) {
-          const stillValid = result.some((g) => g.id === selectedGroupId);
-          if (!stillValid) {
-            setSelectedGroupId(result[0].id);
-          }
-        } else {
+        // Do NOT auto-select — the user must pick a group explicitly, which
+        // drives the "no group selected" EmptyState below. Clear selection
+        // only if it is no longer in the filtered result set.
+        const stillValid = result.some((g) => g.id === selectedGroupId);
+        if (!stillValid) {
           setSelectedGroupId(null);
           setDetail(null);
         }
@@ -142,20 +143,22 @@ export default function LocationGroupsPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <label
-            htmlFor="location-group-select"
-            className="text-sm font-semibold"
-          >
-            Location Group
-          </label>
+        <SectionAccordion title="Location Groups">
           <LocationSelector
             groups={groups}
             selectedId={selectedGroupId}
             onSelect={setSelectedGroupId}
             loading={listLoading}
           />
-        </div>
+        </SectionAccordion>
+
+        {!selectedGroupId && !listLoading && groups.length > 0 && (
+          <EmptyState
+            icon={MapPin}
+            title="No location group selected"
+            description="Select a location group to view reports"
+          />
+        )}
 
         {selectedGroupId && (
           <>

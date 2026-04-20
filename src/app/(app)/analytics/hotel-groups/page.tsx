@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { Building2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { fetchHotelGroupsList, fetchHotelGroupDetail } from "./actions";
 import { GroupSelector } from "./group-selector";
 import { GroupMetrics } from "./group-metrics";
@@ -45,13 +47,11 @@ export default function HotelGroupsPage() {
       const result = await fetchHotelGroupsList(parsed);
       if (!controller.signal.aborted) {
         setGroups(result);
-        // Auto-select first group if none selected or selection no longer valid
-        if (result.length > 0) {
-          const stillValid = result.some((g) => g.id === selectedGroupId);
-          if (!stillValid) {
-            setSelectedGroupId(result[0].id);
-          }
-        } else {
+        // Do NOT auto-select — the user must pick a group explicitly, which
+        // drives the "no group selected" EmptyState below. Clear selection
+        // only if it is no longer in the filtered result set.
+        const stillValid = result.some((g) => g.id === selectedGroupId);
+        if (!stillValid) {
           setSelectedGroupId(null);
           setDetail(null);
         }
@@ -140,18 +140,28 @@ export default function HotelGroupsPage() {
           </div>
         )}
 
-        <GroupSelector
-          groups={groups}
-          selectedId={selectedGroupId}
-          onSelect={(id) => {
-            setSelectedGroupId(id);
-            // Preserve URL-based selection.
-            const params = new URLSearchParams(searchParams?.toString() ?? "");
-            params.set("group", id);
-            router.replace(`?${params.toString()}`, { scroll: false });
-          }}
-          loading={listLoading}
-        />
+        <SectionAccordion title="Hotel Groups">
+          <GroupSelector
+            groups={groups}
+            selectedId={selectedGroupId}
+            onSelect={(id) => {
+              setSelectedGroupId(id);
+              // Preserve URL-based selection.
+              const params = new URLSearchParams(searchParams?.toString() ?? "");
+              params.set("group", id);
+              router.replace(`?${params.toString()}`, { scroll: false });
+            }}
+            loading={listLoading}
+          />
+        </SectionAccordion>
+
+        {!selectedGroupId && !listLoading && groups.length > 0 && (
+          <EmptyState
+            icon={Building2}
+            title="No hotel group selected"
+            description="Select a hotel group to view reports"
+          />
+        )}
 
         {selectedGroupId && (
           <>

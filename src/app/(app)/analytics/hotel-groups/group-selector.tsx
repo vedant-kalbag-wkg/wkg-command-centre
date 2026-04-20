@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,15 @@ export function GroupSelector({
   onSelect,
   loading = false,
 }: GroupSelectorProps) {
+  // base-ui's Select displays the raw `value` inside <SelectValue /> unless an
+  // `items` map is passed to <Select.Root>. Without it, selecting a group shows
+  // its UUID in the trigger. Passing { value: id, label: name } makes
+  // SelectValue render the group name.
+  const items = useMemo(
+    () => groups.map((g) => ({ value: g.id, label: g.name })),
+    [groups],
+  );
+
   if (loading) {
     return <Skeleton className="h-9 w-full max-w-md rounded-lg" />;
   }
@@ -48,6 +58,7 @@ export function GroupSelector({
       </label>
       <Select
         value={selectedId ?? undefined}
+        items={items}
         onValueChange={(v) => {
           if (typeof v === "string") onSelect(v);
         }}
