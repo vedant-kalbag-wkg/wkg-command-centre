@@ -1,13 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MultiSelectFilter } from "@/components/analytics/multi-select-filter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
@@ -15,8 +9,8 @@ import type { LocationGroupData } from "@/lib/analytics/types";
 
 interface LocationSelectorProps {
   groups: LocationGroupData[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
+  selected: string[];
+  onChange: (ids: string[]) => void;
   loading?: boolean;
 }
 
@@ -27,14 +21,11 @@ function groupLabel(group: LocationGroupData): string {
 
 export function LocationSelector({
   groups,
-  selectedId,
-  onSelect,
+  selected,
+  onChange,
   loading = false,
 }: LocationSelectorProps) {
-  // base-ui's Select renders the raw `value` inside <SelectValue /> unless an
-  // `items` map is supplied to <Select.Root>. Without it, the trigger shows
-  // the selected group's UUID instead of its name.
-  const items = useMemo(
+  const options = useMemo(
     () => groups.map((g) => ({ value: g.id, label: groupLabel(g) })),
     [groups],
   );
@@ -48,26 +39,17 @@ export function LocationSelector({
   }
 
   return (
-    <Select
-      value={selectedId ?? undefined}
-      items={items}
-      onValueChange={(value) => {
-        if (typeof value === "string") onSelect(value);
-      }}
-    >
-      <SelectTrigger
-        aria-label="Select location group"
-        className="w-full max-w-md"
-      >
-        <SelectValue placeholder="Select a location group" />
-      </SelectTrigger>
-      <SelectContent>
-        {groups.map((group) => (
-          <SelectItem key={group.id} value={group.id}>
-            {groupLabel(group)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-muted-foreground">
+        Select one or more location groups
+      </label>
+      <MultiSelectFilter
+        label="Select location group"
+        options={options}
+        selected={selected}
+        onChange={onChange}
+        placeholder="Search location groups..."
+      />
+    </div>
   );
 }

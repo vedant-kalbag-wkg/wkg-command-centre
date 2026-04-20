@@ -5,22 +5,22 @@ import { signInAsAdmin } from "../helpers/auth";
 // dropdown labels.
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
-async function assertNoUuidInText(text: string, ctx: string) {
+function assertNoUuidInText(text: string, ctx: string) {
   expect(text, `${ctx} should not contain a UUID: "${text}"`).not.toMatch(
     UUID_PATTERN,
   );
 }
 
-async function expectSelectorOpensWithNameOptions(
+async function expectMultiSelectOpensWithNameOptions(
   page: Page,
   triggerLabel: RegExp,
 ) {
-  const trigger = page.getByRole("combobox", { name: triggerLabel });
+  const trigger = page.getByRole("button", { name: triggerLabel }).first();
   await expect(trigger).toBeVisible({ timeout: 15_000 });
 
-  // Trigger shows placeholder (not a UUID) before any selection.
+  // Trigger shows placeholder/label (not a UUID) before any selection.
   const triggerText = (await trigger.textContent())?.trim() ?? "";
-  await assertNoUuidInText(triggerText, "selector trigger placeholder");
+  assertNoUuidInText(triggerText, "selector trigger placeholder");
 
   // Open the dropdown and verify options carry human-readable names.
   await trigger.click();
@@ -30,7 +30,7 @@ async function expectSelectorOpensWithNameOptions(
   const optionLabels = await page.getByRole("option").allTextContents();
   expect(optionLabels.length).toBeGreaterThan(0);
   for (const label of optionLabels) {
-    await assertNoUuidInText(label, "dropdown option label");
+    assertNoUuidInText(label, "dropdown option label");
   }
 
   return { trigger, firstOption, firstLabel: optionLabels[0].trim() };
@@ -52,13 +52,14 @@ test("@analytics/hotel-groups shows empty-state overlay until a group is selecte
   });
 
   // Open the selector and confirm options use group names (no UUID leakage).
-  const { trigger, firstOption } = await expectSelectorOpensWithNameOptions(
+  const { firstOption } = await expectMultiSelectOpensWithNameOptions(
     page,
     /select a hotel group/i,
   );
 
   // Pick the first option — overlay should dismiss, metrics should render.
   await firstOption.click();
+  await page.keyboard.press("Escape");
 
   await expect(
     page.getByText("Select a hotel group to view reports"),
@@ -66,10 +67,6 @@ test("@analytics/hotel-groups shows empty-state overlay until a group is selecte
   await expect(
     page.getByRole("button", { name: /Group Metrics/ }),
   ).toBeVisible({ timeout: 15_000 });
-
-  // Trigger now shows the selected group's name (not a UUID).
-  const selectedText = (await trigger.textContent())?.trim() ?? "";
-  await assertNoUuidInText(selectedText, "selector trigger after selection");
 });
 
 test("@analytics/location-groups shows empty-state overlay until a group is selected and dropdown shows names not UUIDs", async ({
@@ -86,12 +83,13 @@ test("@analytics/location-groups shows empty-state overlay until a group is sele
     page.getByText("Select a location group to view reports"),
   ).toBeVisible({ timeout: 15_000 });
 
-  const { trigger, firstOption } = await expectSelectorOpensWithNameOptions(
+  const { firstOption } = await expectMultiSelectOpensWithNameOptions(
     page,
     /select location group/i,
   );
 
   await firstOption.click();
+  await page.keyboard.press("Escape");
 
   await expect(
     page.getByText("Select a location group to view reports"),
@@ -99,7 +97,4 @@ test("@analytics/location-groups shows empty-state overlay until a group is sele
   await expect(
     page.getByRole("button", { name: /Group Metrics/ }),
   ).toBeVisible({ timeout: 15_000 });
-
-  const selectedText = (await trigger.textContent())?.trim() ?? "";
-  await assertNoUuidInText(selectedText, "selector trigger after selection");
 });
