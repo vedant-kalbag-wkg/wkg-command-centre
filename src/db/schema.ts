@@ -173,6 +173,13 @@ export const locations = pgTable("locations", {
   locationGroup: text("location_group"),
   internalPocId: text("internal_poc_id").references(() => user.id),
   status: text("status"),
+  // Kiosk config group lives on the location: each hotel belongs to one
+  // group (imported from Monday column 1466686598). Nullable FK + ON DELETE
+  // SET NULL so removing a group does not cascade-delete locations.
+  kioskConfigGroupId: uuid("kiosk_config_group_id").references(
+    () => kioskConfigGroups.id,
+    { onDelete: "set null" },
+  ),
   customFields: jsonb("custom_fields").$type<Record<string, string>>(),
   // Phase 1 M1 Task 1.5 — hotel dimension fields (ported from data-dashboard analytics schema)
   numRooms: integer("num_rooms"),

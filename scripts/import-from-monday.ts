@@ -17,6 +17,7 @@ import {
   kioskAssignments,
   locations,
   pipelineStages,
+  kioskConfigGroups,
 } from "@/db/schema";
 import { eq, and, sql, isNull } from "drizzle-orm";
 
@@ -230,12 +231,20 @@ async function importKiosks(items: MondayItem[]) {
   );
   log("IMPORT", `Loaded ${stageMap.size} pipeline stages, ${locMap.size} locations`);
 
+  // Cache for kiosk_config_groups upsert-by-name — avoids N queries per row.
+  const configGroupCache = new Map<string, string>();
+  const existingGroups = await db
+    .select({ id: kioskConfigGroups.id, name: kioskConfigGroups.name })
+    .from(kioskConfigGroups);
+  for (const g of existingGroups) configGroupCache.set(g.name, g.id);
+
   let inserted = 0;
   let updated = 0;
   let skipped = 0;
   let assignmentsCreated = 0;
   let missingAssetId = 0;
   let missingVenue = 0;
+  let locationsLinkedToGroup = 0;
 
   for (const item of items) {
     const kioskId = item.name?.trim();
@@ -328,6 +337,11 @@ async function importKiosks(items: MondayItem[]) {
       inserted++;
     }
 
+    // Kiosk config group (Monday column 1466686598). Per the board's spec
+    // this names the config group the location belongs to — each location
+    // has one group, each group spans many locations.
+    const configGroupName = getColumnText(item, "1466686598");
+
     // Create assignment if outletCode links to a known location
     let venueLinked = false;
     if (outletCode && locMap.has(outletCode)) {
@@ -359,6 +373,37 @@ async function importKiosks(items: MondayItem[]) {
           reason: `Imported from Monday.com group "${groupTitle}"`,
         });
         assignmentsCreated++;
+      }
+
+      // Upsert-by-name config group and attach to the location. Cache by
+      // name so we only hit kiosk_config_groups once per unique group.
+      if (configGroupName) {
+        let groupId = configGroupCache.get(configGroupName);
+        if (!groupId) {
+          const [row] = await db
+            .insert(kioskConfigGroups)
+            .values({ name: configGroupName })
+            .onConflictDoNothing({ target: kioskConfigGroups.name })
+            .returning({ id: kioskConfigGroups.id });
+          if (row) {
+            groupId = row.id;
+          } else {
+            const [existing] = await db
+              .select({ id: kioskConfigGroups.id })
+              .from(kioskConfigGroups)
+              .where(eq(kioskConfigGroups.name, configGroupName))
+              .limit(1);
+            groupId = existing?.id;
+          }
+          if (groupId) configGroupCache.set(configGroupName, groupId);
+        }
+        if (groupId) {
+          await db
+            .update(locations)
+            .set({ kioskConfigGroupId: groupId, updatedAt: new Date() })
+            .where(eq(locations.id, locationId));
+          locationsLinkedToGroup++;
+        }
       }
     }
 
@@ -393,6 +438,7 @@ async function importKiosks(items: MondayItem[]) {
   log("IMPORT", `Done: ${inserted} inserted, ${updated} updated, ${skipped} skipped`);
   log("IMPORT", `Assignments created: ${assignmentsCreated}`);
   log("IMPORT", `Missing after extraction: assetId=${missingAssetId}, venue=${missingVenue}`);
+  log("IMPORT", `Locations linked to kiosk config group: ${locationsLinkedToGroup}`);
 }
 
 // ──────────────────────────────────────────────────────────────
