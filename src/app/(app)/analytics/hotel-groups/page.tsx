@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
@@ -14,8 +15,13 @@ import type { HotelGroupData, HotelGroupDetail } from "@/lib/analytics/types";
 
 export default function HotelGroupsPage() {
   const filters = useAnalyticsFilters();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlGroupId = searchParams?.get("group") ?? null;
   const [groups, setGroups] = useState<HotelGroupData[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
+    urlGroupId,
+  );
   const [detail, setDetail] = useState<HotelGroupDetail | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -134,14 +140,18 @@ export default function HotelGroupsPage() {
           </div>
         )}
 
-        <SectionAccordion title="Hotel Groups">
-          <GroupSelector
-            groups={groups}
-            selectedId={selectedGroupId}
-            onSelect={setSelectedGroupId}
-            loading={listLoading}
-          />
-        </SectionAccordion>
+        <GroupSelector
+          groups={groups}
+          selectedId={selectedGroupId}
+          onSelect={(id) => {
+            setSelectedGroupId(id);
+            // Preserve URL-based selection.
+            const params = new URLSearchParams(searchParams?.toString() ?? "");
+            params.set("group", id);
+            router.replace(`?${params.toString()}`, { scroll: false });
+          }}
+          loading={listLoading}
+        />
 
         {selectedGroupId && (
           <>

@@ -24,6 +24,33 @@ test("@analytics/hotel-groups page does not throw", async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
+test("@analytics/hotel-groups dropdown renders and selection reveals analytics panel", async ({
+  page,
+}) => {
+  await signInAsAdmin(page);
+  await page.goto("/analytics/hotel-groups");
+
+  await expect(
+    page.getByRole("heading", { name: "Hotel Groups", level: 1 }),
+  ).toBeVisible();
+
+  // Dropdown trigger should be rendered (labelled "Select a hotel group").
+  const trigger = page.getByLabel("Select a hotel group");
+  await expect(trigger).toBeVisible();
+
+  // After the list loads the page auto-selects the first group; the analytics
+  // sections ("Group Metrics", "Hotels in Group", "Daily Trends") must render.
+  await expect(
+    page.getByRole("button", { name: /Group Metrics/ }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("button", { name: /Hotels in Group/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Daily Trends/ }),
+  ).toBeVisible();
+});
+
 test("@analytics/hotel-groups dark-mode toggle does not throw", async ({ page }) => {
   await signInAsAdmin(page);
   await page.goto("/analytics/hotel-groups");

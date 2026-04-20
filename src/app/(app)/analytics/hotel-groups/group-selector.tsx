@@ -1,10 +1,15 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/analytics/empty-state";
-import { formatCurrency, formatNumber, formatChangeIndicator } from "@/lib/analytics/formatters";
-import { cn } from "@/lib/utils";
+import { formatCompactNumber, formatNumber } from "@/lib/analytics/formatters";
 import type { HotelGroupData } from "@/lib/analytics/types";
 
 interface GroupSelectorProps {
@@ -14,6 +19,11 @@ interface GroupSelectorProps {
   loading?: boolean;
 }
 
+function formatRevenueCompact(value: number): string {
+  // "£X.Xm revenue"-style compact label for dropdown rows.
+  return `£${formatCompactNumber(value).toLowerCase()}`;
+}
+
 export function GroupSelector({
   groups,
   selectedId,
@@ -21,13 +31,7 @@ export function GroupSelector({
   loading = false,
 }: GroupSelectorProps) {
   if (loading) {
-    return (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-lg" />
-        ))}
-      </div>
-    );
+    return <Skeleton className="h-9 w-full max-w-md rounded-lg" />;
   }
 
   if (groups.length === 0) {
@@ -35,37 +39,44 @@ export function GroupSelector({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {groups.map((group) => {
-        const isSelected = group.id === selectedId;
-        const revenueChange = formatChangeIndicator(group.revenueChange);
-
-        return (
-          <Card
-            key={group.id}
-            size="sm"
-            variant={isSelected ? "elevated" : "default"}
-            className={cn(
-              "cursor-pointer transition-colors hover:border-primary/50",
-              isSelected && "border-primary border-2",
-            )}
-            onClick={() => onSelect(group.id)}
-          >
-            <CardContent className="flex flex-col gap-1">
-              <span className="text-sm font-medium truncate">{group.name}</span>
-              <span className="text-xl font-semibold tracking-tight">
-                {formatCurrency(group.revenue)}
-              </span>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{formatNumber(group.hotelCount)} hotels</span>
-                <span style={{ color: revenueChange.color }}>
-                  {revenueChange.text}
+    <div className="flex flex-col gap-1.5">
+      <label
+        htmlFor="hotel-group-select"
+        className="text-xs font-medium text-muted-foreground"
+      >
+        Select a hotel group
+      </label>
+      <Select
+        value={selectedId ?? undefined}
+        onValueChange={(v) => {
+          if (typeof v === "string") onSelect(v);
+        }}
+      >
+        <SelectTrigger
+          id="hotel-group-select"
+          className="w-full max-w-md"
+          aria-label="Select a hotel group"
+        >
+          <SelectValue placeholder="Choose a hotel group..." />
+        </SelectTrigger>
+        <SelectContent>
+          {groups.map((group) => (
+            <SelectItem key={group.id} value={group.id}>
+              <span className="flex w-full items-center gap-3">
+                <span className="flex-1 truncate font-medium">
+                  {group.name}
                 </span>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  ({formatNumber(group.hotelCount)} hotels)
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {formatRevenueCompact(group.revenue)} revenue
+                </span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
