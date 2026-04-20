@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { PageHeader } from "@/components/layout/page-header";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchRegionsList, fetchRegionDetail } from "./actions";
@@ -118,68 +119,69 @@ export default function RegionsPage() {
   const regionDetail = detail ?? emptyDetail;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Regions</h1>
-        <p className="text-sm text-muted-foreground">
-          Performance analysis by geographic region
-        </p>
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title="Regions"
+        description="Performance analysis by geographic region"
+        count={regionsList.length}
+      />
+
+      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
+        {error && (
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        <SectionAccordion title="Regions">
+          <RegionSelector
+            regions={regionsList}
+            selectedId={selectedRegionId}
+            onSelect={setSelectedRegionId}
+            loading={listLoading}
+          />
+        </SectionAccordion>
+
+        {selectedRegionId && (
+          <>
+            <SectionAccordion title="Region Metrics">
+              {detailLoading ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-24 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                <RegionMetrics detail={regionDetail} />
+              )}
+            </SectionAccordion>
+
+            <SectionAccordion title="Hotel Groups in Region">
+              {detailLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                <HotelGroupBreakdown data={regionDetail.hotelGroupBreakdown} />
+              )}
+            </SectionAccordion>
+
+            <SectionAccordion title="Location Groups in Region">
+              {detailLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                <LocationGroupBreakdown data={regionDetail.locationGroupBreakdown} />
+              )}
+            </SectionAccordion>
+          </>
+        )}
       </div>
-
-      {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      <SectionAccordion title="Regions">
-        <RegionSelector
-          regions={regionsList}
-          selectedId={selectedRegionId}
-          onSelect={setSelectedRegionId}
-          loading={listLoading}
-        />
-      </SectionAccordion>
-
-      {selectedRegionId && (
-        <>
-          <SectionAccordion title="Region Metrics">
-            {detailLoading ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-24 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <RegionMetrics detail={regionDetail} />
-            )}
-          </SectionAccordion>
-
-          <SectionAccordion title="Hotel Groups in Region">
-            {detailLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <HotelGroupBreakdown data={regionDetail.hotelGroupBreakdown} />
-            )}
-          </SectionAccordion>
-
-          <SectionAccordion title="Location Groups in Region">
-            {detailLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <LocationGroupBreakdown data={regionDetail.locationGroupBreakdown} />
-            )}
-          </SectionAccordion>
-        </>
-      )}
     </div>
   );
 }
