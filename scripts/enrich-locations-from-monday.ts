@@ -291,6 +291,7 @@ async function enrichLocations(hotels: HotelItem[]) {
       id: locations.id,
       name: locations.name,
       outletCode: locations.outletCode,
+      address: locations.address,
     })
     .from(locations);
 
@@ -298,6 +299,8 @@ async function enrichLocations(hotels: HotelItem[]) {
   let skippedNoMatch = 0;
   let enrichedStubs = 0;
   let enrichedExisting = 0;
+  let addressMissing = 0;
+  let addressBackfilled = 0;
 
   for (const loc of allLocs) {
     if (!loc.outletCode) continue;
@@ -330,6 +333,13 @@ async function enrichLocations(hotels: HotelItem[]) {
     if (hotel.numRooms) updateValues.numRooms = hotel.numRooms;
     if (hotel.starRating) updateValues.starRating = hotel.starRating;
     if (hotel.hotelAddress) updateValues.hotelAddress = hotel.hotelAddress;
+    // /locations reads from locations.address (not hotelAddress). Mirror
+    // Monday's address value into `address` when it is still NULL so the
+    // locations list UI surfaces it. Don't overwrite an existing address.
+    if (hotel.hotelAddress && !loc.address) {
+      updateValues.address = hotel.hotelAddress;
+      addressBackfilled++;
+    }
     if (hotel.liveDate) updateValues.liveDate = new Date(hotel.liveDate);
     if (hotel.launchPhase) updateValues.launchPhase = hotel.launchPhase;
     if (hotel.keyContactName)
@@ -351,6 +361,19 @@ async function enrichLocations(hotels: HotelItem[]) {
       .set(updateValues)
       .where(eq(locations.id, loc.id));
     updated++;
+
+    // Structured audit log: surface outlets that still have no address after
+    // we've matched them to a Monday hotel row. Helps identify whether the
+    // Monday "Location" column is genuinely empty or sitting in a different
+    // column we aren't yet reading.
+    const finalAddress = (updateValues.address as string | undefined) ?? loc.address ?? null;
+    if (!finalAddress) {
+      addressMissing++;
+      log(
+        "MONDAY-ENRICH",
+        `outlet=${loc.outletCode} name="${loc.name}" mondayItemId=${hotel.id} missing: address=null (Monday 'location' column empty)`,
+      );
+    }
 
     // Create dimension memberships if hotel group/region/location group exist
     if (hotel.hotelGroup) {
@@ -445,6 +468,10 @@ async function enrichLocations(hotels: HotelItem[]) {
   log(
     "ENRICH",
     `Done: ${updated} updated (${enrichedStubs} stubs renamed, ${enrichedExisting} existing enriched), ${skippedNoMatch} no Monday.com match`
+  );
+  log(
+    "ENRICH",
+    `Address backfills: ${addressBackfilled} (mirrored hotelAddress → address); still missing address: ${addressMissing}`,
   );
 }
 
