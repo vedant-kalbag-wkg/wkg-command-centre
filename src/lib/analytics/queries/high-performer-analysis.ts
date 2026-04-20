@@ -84,14 +84,19 @@ export async function getHighPerformerPatterns(
   // 2. Classify each location
   const greenLocationIds: string[] = [];
   const greenRooms: number[] = [];
+  let greenTotalRevenue = 0;
+  let greenTotalRooms = 0;
 
   for (const row of locationRevenues) {
     const revenue = Number(row.revenue);
     const tier = classifyTrafficLight(revenue, thresholdConfig);
     if (tier === "green") {
       greenLocationIds.push(row.location_id);
+      greenTotalRevenue += revenue;
       if (row.num_rooms != null) {
-        greenRooms.push(Number(row.num_rooms));
+        const rooms = Number(row.num_rooms);
+        greenRooms.push(rooms);
+        greenTotalRooms += rooms;
       }
     }
   }
@@ -108,6 +113,7 @@ export async function getHighPerformerPatterns(
       regionDistribution: [],
       avgKioskCount: null,
       avgRoomCount: null,
+      avgRevenuePerRoom: null,
       topProducts: [],
     };
   }
@@ -205,6 +211,11 @@ export async function getHighPerformerPatterns(
     ? greenRooms.reduce((sum, r) => sum + r, 0) / greenRooms.length
     : null;
 
+  // Period-total revenue divided by total rooms across green-tier locations.
+  const avgRevenuePerRoom = greenTotalRooms > 0
+    ? greenTotalRevenue / greenTotalRooms
+    : null;
+
   const topProducts = topProductRows.map((r) => ({
     name: r.name,
     revenue: Number(r.revenue),
@@ -252,6 +263,7 @@ export async function getHighPerformerPatterns(
     regionDistribution,
     avgKioskCount,
     avgRoomCount,
+    avgRevenuePerRoom,
     topProducts,
   };
 }

@@ -45,8 +45,8 @@ export function HighPerformerPatterns({
       {/* KPI values */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiValue
-          label="Avg Kiosks / Location"
-          value={data.avgKioskCount != null ? data.avgKioskCount.toFixed(1) : "\u2014"}
+          label="Avg Revenue / Room"
+          value={data.avgRevenuePerRoom != null ? formatCurrency(data.avgRevenuePerRoom) : "\u2014"}
         />
         <KpiValue
           label="Avg Rooms / Location"
