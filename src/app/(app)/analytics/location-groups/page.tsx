@@ -142,14 +142,20 @@ export default function LocationGroupsPage() {
           </div>
         )}
 
-        <SectionAccordion title="Location Groups">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <label
+            htmlFor="location-group-select"
+            className="text-sm font-semibold"
+          >
+            Location Group
+          </label>
           <LocationSelector
             groups={groups}
             selectedId={selectedGroupId}
             onSelect={setSelectedGroupId}
             loading={listLoading}
           />
-        </SectionAccordion>
+        </div>
 
         {selectedGroupId && (
           <>

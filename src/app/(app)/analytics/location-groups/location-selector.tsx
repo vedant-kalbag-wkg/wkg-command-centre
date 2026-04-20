@@ -1,14 +1,15 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/analytics/empty-state";
-import {
-  formatCurrency,
-  formatNumber,
-  formatNullValue,
-} from "@/lib/analytics/formatters";
-import { cn } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
 import type { LocationGroupData } from "@/lib/analytics/types";
 
 interface LocationSelectorProps {
@@ -18,6 +19,11 @@ interface LocationSelectorProps {
   loading?: boolean;
 }
 
+function groupLabel(group: LocationGroupData): string {
+  const locations = `${formatNumber(group.hotelCount)} location${group.hotelCount === 1 ? "" : "s"}`;
+  return `${group.name} · ${locations} · ${formatCurrency(group.revenue)}`;
+}
+
 export function LocationSelector({
   groups,
   selectedId,
@@ -25,13 +31,7 @@ export function LocationSelector({
   loading = false,
 }: LocationSelectorProps) {
   if (loading) {
-    return (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 rounded-lg" />
-        ))}
-      </div>
-    );
+    return <Skeleton className="h-9 w-full max-w-md rounded-lg" />;
   }
 
   if (groups.length === 0) {
@@ -39,42 +39,25 @@ export function LocationSelector({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {groups.map((group) => {
-        const isSelected = group.id === selectedId;
-
-        return (
-          <Card
-            key={group.id}
-            size="sm"
-            variant={isSelected ? "elevated" : "default"}
-            className={cn(
-              "cursor-pointer transition-colors hover:border-primary/50",
-              isSelected && "border-primary border-2",
-            )}
-            onClick={() => onSelect(group.id)}
-          >
-            <CardContent className="flex flex-col gap-1">
-              <span className="text-sm font-medium truncate">{group.name}</span>
-              <span className="text-xl font-semibold tracking-tight">
-                {formatCurrency(group.revenue)}
-              </span>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{formatNumber(group.hotelCount)} hotels</span>
-                <span>
-                  {formatNullValue(group.revenuePerRoom, (v) => `${formatCurrency(v)}/room`)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{formatNumber(group.transactions)} txns</span>
-                <span>
-                  Avg {formatCurrency(group.avgBasketValue)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
+    <Select
+      value={selectedId ?? undefined}
+      onValueChange={(value) => {
+        if (typeof value === "string") onSelect(value);
+      }}
+    >
+      <SelectTrigger
+        aria-label="Select location group"
+        className="w-full max-w-md"
+      >
+        <SelectValue placeholder="Select a location group" />
+      </SelectTrigger>
+      <SelectContent>
+        {groups.map((group) => (
+          <SelectItem key={group.id} value={group.id}>
+            {groupLabel(group)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
