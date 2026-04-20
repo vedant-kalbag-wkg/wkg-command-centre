@@ -33,22 +33,19 @@ async function monday<T>(query: string): Promise<T> {
   return json.data;
 }
 
-type Shape = {
-  boards: {
-    items_page: {
-      cursor: string | null;
-      items: {
-        id: string;
-        name: string;
-        column_values: {
-          id: string;
-          text: string | null;
-          display_value?: string | null;
-        }[];
-      }[];
-    };
-  }[];
+type ColumnValue = {
+  id: string;
+  text: string | null;
+  display_value?: string | null;
 };
+type Item = {
+  id: string;
+  name: string;
+  column_values: ColumnValue[];
+};
+type Page = { cursor: string | null; items: Item[] };
+type FirstResponse = { boards: { items_page: Page }[] };
+type NextResponse = { next_items_page: Page };
 
 async function main() {
   let cursor: string | null = null;
@@ -65,16 +62,15 @@ async function main() {
   `;
 
   while (true) {
-    const q = firstPage
+    const q: string = firstPage
       ? `{ boards(ids: [${LIVE_ESTATE_BOARD_ID}]) { items_page(limit: 500) { cursor items { id name ${columnFragment} } } } }`
       : `{ next_items_page(limit: 500, cursor: "${cursor}") { cursor items { id name ${columnFragment} } } }`;
-    const data = await monday<Shape | { next_items_page: Shape["boards"][number]["items_page"] }>(q);
-    const page = firstPage
-      ? (data as Shape).boards[0].items_page
-      : (data as { next_items_page: Shape["boards"][number]["items_page"] }).next_items_page;
+    const page: Page = firstPage
+      ? (await monday<FirstResponse>(q)).boards[0].items_page
+      : (await monday<NextResponse>(q)).next_items_page;
     for (const item of page.items) {
       total++;
-      const cv = item.column_values.find((c) => c.id === "link_to_ssm_groups__1");
+      const cv = item.column_values.find((c: ColumnValue) => c.id === "link_to_ssm_groups__1");
       const text = cv?.text?.trim() || cv?.display_value?.trim() || null;
       if (text) {
         linked++;
@@ -103,3 +99,5 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+export {};
