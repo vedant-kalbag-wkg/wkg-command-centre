@@ -123,7 +123,7 @@ export function DuplicatesClient() {
             return (
               <li
                 key={key}
-                className="flex items-center gap-3 rounded-lg border border-border bg-white p-3"
+                className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
               >
                 <div className="flex-1 grid grid-cols-2 gap-3 text-sm">
                   <div>

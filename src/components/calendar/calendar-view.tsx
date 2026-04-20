@@ -269,8 +269,8 @@ export function CalendarView({ installations, kiosks }: CalendarViewProps) {
 
         {/* Empty state — overlays only the grid area, not the toolbar */}
         {visibleRangeEmpty && (
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded pointer-events-none" style={{ top: toolbarHeight }}>
-            <div className="text-center px-6 py-8 rounded-lg bg-white/90 shadow-sm border border-border max-w-sm pointer-events-auto">
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded pointer-events-none" style={{ top: toolbarHeight }}>
+            <div className="text-center px-6 py-8 rounded-lg bg-card shadow-sm border border-border max-w-sm pointer-events-auto">
               <p className="text-base font-semibold text-foreground">
                 Nothing scheduled for this period
               </p>

@@ -98,7 +98,7 @@ export function SalesImportClient() {
                 onChange={onFileChange}
                 disabled={uploading || committing || preview !== null}
                 aria-label="CSV file"
-                className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-border/40 file:bg-white file:px-3 file:py-1.5 file:text-sm hover:file:bg-primary/5"
+                className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-border/40 file:bg-card file:px-3 file:py-1.5 file:text-sm hover:file:bg-primary/5"
               />
               {uploading && <Loader2 className="h-4 w-4 animate-spin" aria-label="Uploading" />}
             </div>
