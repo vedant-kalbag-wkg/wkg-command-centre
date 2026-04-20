@@ -146,9 +146,9 @@ function NavDropdown({
 function RoleBadge({ role }: { role: string }) {
   const label = role.charAt(0).toUpperCase() + role.slice(1);
   const styles: Record<string, string> = {
-    admin: "bg-foreground text-white",
-    member: "bg-muted text-foreground",
-    viewer: "bg-primary/10 text-muted-foreground",
+    admin: "bg-secondary text-secondary-foreground",
+    member: "bg-muted text-muted-foreground",
+    viewer: "bg-muted text-muted-foreground",
   };
 
   return (
