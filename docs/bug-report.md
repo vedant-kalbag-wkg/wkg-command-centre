@@ -77,6 +77,8 @@ LIMIT 10001
 1. Triggering the import action (via the UI button or `scripts/import-location-products-from-monday.ts` / similar script).
 2. Capturing the server log and network response.
 
+**Update 2026-04-19:** user noted A.2 may not be a real failure — the import may simply not have been allowed to finish its loading state. Park until reproduced with a confirmed error message.
+
 **Severity:** Medium.
 
 ### A.4 Commission analytics page broken
@@ -322,12 +324,12 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 
 | ID | Severity | Owner | Status |
 |---|---|---|---|
-| A.1 | High | Backend | Open |
-| A.2 | Medium | Backend | Open |
-| A.3 | Medium | Backend/data | Open |
-| A.4 | High | Backend/Analytics | Open |
-| B.1 | High | Analytics | Open |
-| B-prime.1 | Medium | Auth/admin | Open |
+| A.1 | High | Backend | Fixed in `78728e2` (heat-map GROUP BY + maturity ORDER BY) |
+| A.2 | Medium | Backend | Parked — likely non-bug (user may not have let loading finish); re-open when reproduced |
+| A.3 | Medium | Backend/data | Fixed (docs) in `d61b62e`; F.1 import follow-through fixed in `72a80bd` |
+| A.4 | High | Backend/Analytics | Fixed in `1fabd3d` (duplicate React keys from shared hotel names) |
+| B.1 | High | Analytics | Fixed in `90bfb4b` (per-series filter UI was never surfaced) |
+| B-prime.1 | Medium | Auth/admin | Fixed in `94ddc27` (admin create-user w/ password via `auth.api.createUser` + `setRole`) |
 | C.5 | Feature | Analytics | Backlog |
 | C.6 | Feature | Analytics | Backlog |
 | C.7 | Feature | Analytics | Backlog |
@@ -342,3 +344,27 @@ These will be resolved naturally in Phase 2 when `/analytics/portfolio` is rebui
 | D.5 | Low (cosmetic) | UI sweep | Phase 2 |
 | D.6 | Medium (UX) | UI sweep | Phase 2 |
 | D.7 | Low (cosmetic) | UI sweep | Phase 2 (ref-page rebuild) |
+
+---
+
+## F. Followups surfaced during the backend-fix wave (2026-04-19)
+
+These came out of the A.1 / A.3 / A.4 / B.1 / B'.1 fixes but were intentionally scoped out.
+
+### F.1 Monday import doesn't write `hardware_serial_number` — Fixed in `72a80bd`
+`scripts/import-from-monday.ts` upsert (around lines 296–304) omitted `hardwareSerialNumber` from the values object. Fixed by extracting Monday column `1466686598` (Asset serial number, confirmed by product) via `getColumnText` and including `hardwareSerialNumber` in the upsert values. Monday-imported kiosks now populate the field on localhost the same way they do on Vercel.
+
+### F.2 Portfolio `getPortfolioData` swallows sub-query errors
+`src/lib/analytics/queries/portfolio.ts:340-345` wraps each sub-query in `.catch(() => [])`. This would have masked the A.1 bug from users (blank sections instead of an error banner). Consider surfacing sub-query failures instead of silently emptying — ideally a structured error per section so the UI can render a per-card error state.
+
+### F.3 Localhost `commission_ledger` table is empty
+124,598 `sales_records` locally but 0 `commission_ledger` rows. The ledger is populated by `calculateCommissionsForRecords` during sales-import; pre-existing seeded sales never flowed through it. A.4 was reproduced by seeding 500 synthetic ledger rows. Teee up a small script to backfill the ledger locally (and confirm Vercel is populated) so the commission page has real data to render.
+
+### F.4 Other trend-builder Playwright specs reference renamed text
+Three pre-existing specs in `tests/analytics/trend-builder.spec.ts` look for `"Series Builder"` text that was renamed to `"Builder Panel"` in `320c391`. One-line fix — parked out of B.1's scope.
+
+### F.5 `outlet_exclusions` has a single harmless `'TEST'` row
+Matches no real outlet; the A.1 SQL is structurally correct, so this is a no-op. If cleaning up the seed noise is wanted: `DELETE FROM outlet_exclusions WHERE outlet_code = 'TEST';`.
+
+### F.6 Phase4 worktree bootstrap papercut
+The worktree lacked `.env.local` and its `node_modules` was a symlink that tripped Turbopack with `Symlink node_modules is invalid, it points out of the filesystem root`. Reproduction required copying both from the main worktree. Worth a short "worktree bootstrap" note in `docs/DEVELOPMENT.md` for future parallel-agent runs.

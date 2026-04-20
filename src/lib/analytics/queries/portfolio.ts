@@ -327,6 +327,13 @@ export async function getPortfolioData(
     dateTo: prevTo,
   };
 
+  // F.2: Previously each sub-query silently swallowed errors via
+  // `.catch(() => [])` / `.catch(() => null)`, which rendered failed sections
+  // as empty charts with no signal to operators. We now log the error
+  // server-side (so failures are observable in logs/monitoring) but still
+  // return an empty fallback so a single broken sub-query doesn't nuke the
+  // entire portfolio dashboard. A follow-up (F.2b) can propagate structured
+  // error shapes into the UI for per-ChartCard error states.
   const [
     summary,
     previousSummary,
@@ -337,12 +344,30 @@ export async function getPortfolioData(
     outletTiers,
   ] = await Promise.all([
     getPortfolioSummary(filters, userCtx),
-    getPortfolioSummary(previousFilters, userCtx).catch(() => null),
-    getCategoryPerformance(filters, userCtx).catch(() => []),
-    getTopProducts(filters, userCtx).catch(() => []),
-    getDailyTrends(filters, userCtx).catch(() => []),
-    getHourlyDistribution(filters, userCtx).catch(() => []),
-    getOutletTiers(filters, userCtx).catch(() => []),
+    getPortfolioSummary(previousFilters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "previousSummary" failed:', err);
+      return null;
+    }),
+    getCategoryPerformance(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "categoryPerformance" failed:', err);
+      return [] as CategoryPerformanceRow[];
+    }),
+    getTopProducts(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "topProducts" failed:', err);
+      return [] as TopProductRow[];
+    }),
+    getDailyTrends(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "dailyTrends" failed:', err);
+      return [] as DailyTrendRow[];
+    }),
+    getHourlyDistribution(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "hourlyDistribution" failed:', err);
+      return [] as HourlyDistributionRow[];
+    }),
+    getOutletTiers(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "outletTiers" failed:', err);
+      return [] as OutletTierRow[];
+    }),
   ]);
 
   return {
