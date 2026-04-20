@@ -47,9 +47,10 @@ export function LocationSelector({
           <Card
             key={group.id}
             size="sm"
+            variant={isSelected ? "elevated" : "default"}
             className={cn(
-              "cursor-pointer transition-colors hover:border-[var(--wk-azure,#00A6D3)]/50",
-              isSelected && "border-[var(--wk-azure,#00A6D3)] border-2",
+              "cursor-pointer transition-colors hover:border-primary/50",
+              isSelected && "border-primary border-2",
             )}
             onClick={() => onSelect(group.id)}
           >
