@@ -33,23 +33,6 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx vitest run
 
-  deploy:
-    needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Run migrations
-        env:
-          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-        run: npx drizzle-kit migrate
-      - name: Deploy to Vercel
-        run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  # Deploy is handled by Vercel's GitHub integration (the "Vercel" check on
+  # each PR/push). Prod migrations must be run manually against Neon until a
+  # deploy-time hook is wired in — see docs/DEVELOPMENT.md.
