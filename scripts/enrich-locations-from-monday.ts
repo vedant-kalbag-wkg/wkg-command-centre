@@ -26,6 +26,7 @@ import {
   locationHotelGroupMemberships,
   locationRegionMemberships,
   locationGroupMemberships,
+  kioskConfigGroups,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 
@@ -117,6 +118,11 @@ interface HotelItem {
   locationGroup: string | null;
   sourcedBy: string | null;
   notes: string | null;
+  // SSM config group name resolved via the Live Estate board's
+  // link_to_ssm_groups__1 board_relation column (points to SSM Groups
+  // board 1466686598, where each item is a named config group such as
+  // "LDNC1 (All products)" or "Leonardo Royal Hotels").
+  configGroupName: string | null;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -148,6 +154,7 @@ async function fetchAllHotels(): Promise<HotelItem[]> {
           ... on EmailValue { text }
           ... on LongTextValue { text }
           ... on CheckboxValue { text }
+          ... on BoardRelationValue { display_value }
         }
       `;
 
@@ -209,6 +216,15 @@ async function fetchAllHotels(): Promise<HotelItem[]> {
         const numRoomsText = getText("number_of_rooms");
         const ratingText = getText("rating__1");
 
+        // Resolve the SSM config group. For board_relation columns Monday
+        // returns the linked item's name via text/display_value. Take the
+        // first if multiple are linked (groups are single-assignment in
+        // practice; multiple would imply config ambiguity we can't resolve).
+        const groupText = getText("link_to_ssm_groups__1");
+        const configGroupName = groupText
+          ? groupText.split(",")[0].trim() || null
+          : null;
+
         allHotels.push({
           id: item.id,
           name: item.name,
@@ -230,6 +246,7 @@ async function fetchAllHotels(): Promise<HotelItem[]> {
           locationGroup: getText("status_11"),
           sourcedBy: getText("label8__1"),
           notes: getText("long_text__1"),
+          configGroupName,
         });
       }
 
@@ -285,6 +302,11 @@ async function enrichLocations(hotels: HotelItem[]) {
     .from(locationGroups);
   const lgMap = new Map(lgRows.map((r) => [r.name, r.id]));
 
+  const kcgRows = await db
+    .select({ id: kioskConfigGroups.id, name: kioskConfigGroups.name })
+    .from(kioskConfigGroups);
+  const kcgMap = new Map(kcgRows.map((r) => [r.name, r.id]));
+
   // Load all locations
   const allLocs = await db
     .select({
@@ -301,6 +323,8 @@ async function enrichLocations(hotels: HotelItem[]) {
   let enrichedExisting = 0;
   let addressMissing = 0;
   let addressBackfilled = 0;
+  let configGroupLinked = 0;
+  let configGroupMissing = 0;
 
   for (const loc of allLocs) {
     if (!loc.outletCode) continue;
@@ -373,6 +397,41 @@ async function enrichLocations(hotels: HotelItem[]) {
         "MONDAY-ENRICH",
         `outlet=${loc.outletCode} name="${loc.name}" mondayItemId=${hotel.id} missing: address=null (Monday 'location' column empty)`,
       );
+    }
+
+    // Attach kiosk config group via the Live Estate's SSM Group relation.
+    // Each hotel has one group; we upsert kiosk_config_groups by name and
+    // set locations.kiosk_config_group_id. A hotel with no group link just
+    // leaves the FK null (rendered as "Unassigned" in the UI).
+    if (hotel.configGroupName) {
+      let kcgId = kcgMap.get(hotel.configGroupName);
+      if (!kcgId) {
+        const [row] = await db
+          .insert(kioskConfigGroups)
+          .values({ name: hotel.configGroupName })
+          .onConflictDoNothing({ target: kioskConfigGroups.name })
+          .returning({ id: kioskConfigGroups.id });
+        if (row) {
+          kcgId = row.id;
+        } else {
+          const [existing] = await db
+            .select({ id: kioskConfigGroups.id })
+            .from(kioskConfigGroups)
+            .where(eq(kioskConfigGroups.name, hotel.configGroupName))
+            .limit(1);
+          kcgId = existing?.id;
+        }
+        if (kcgId) kcgMap.set(hotel.configGroupName, kcgId);
+      }
+      if (kcgId) {
+        await db
+          .update(locations)
+          .set({ kioskConfigGroupId: kcgId, updatedAt: new Date() })
+          .where(eq(locations.id, loc.id));
+        configGroupLinked++;
+      }
+    } else {
+      configGroupMissing++;
     }
 
     // Create dimension memberships if hotel group/region/location group exist
@@ -472,6 +531,10 @@ async function enrichLocations(hotels: HotelItem[]) {
   log(
     "ENRICH",
     `Address backfills: ${addressBackfilled} (mirrored hotelAddress → address); still missing address: ${addressMissing}`,
+  );
+  log(
+    "ENRICH",
+    `Config groups linked: ${configGroupLinked}; hotels with no SSM Group on Live Estate: ${configGroupMissing}`,
   );
 }
 
