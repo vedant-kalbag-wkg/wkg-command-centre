@@ -74,24 +74,37 @@ function createViewEngineStore(entityType: string) {
     rowSelection: {} as Record<string, boolean>,
   };
 
-  return create<ViewEngineState>((set, get) => ({
-    ...defaultState,
+  return create<ViewEngineState>((set, get) => {
+    // TanStack Table calls these setters during render while reconciling its
+    // internal state with the controlled zustand state. Zustand notifies
+    // subscribers synchronously, which can trigger "setState on a component
+    // that hasn't mounted yet" warnings in React 19 / Next 16 when another
+    // subscriber is still mid-mount. Defer the update to the next microtask
+    // so the current render completes first.
+    const deferredSet: typeof set = ((...args: Parameters<typeof set>) => {
+      queueMicrotask(() => {
+        set(...args);
+      });
+    }) as typeof set;
 
-    setColumnFilters: (updater) =>
-      set((state) => ({ columnFilters: resolveUpdater(updater, state.columnFilters) })),
-    setSorting: (updater) =>
-      set((state) => ({ sorting: resolveUpdater(updater, state.sorting) })),
-    setGrouping: (updater) =>
-      set((state) => ({ grouping: resolveUpdater(updater, state.grouping) })),
-    setColumnVisibility: (updater) =>
-      set((state) => ({ columnVisibility: resolveUpdater(updater, state.columnVisibility) })),
-    setColumnSizing: (updater) =>
-      set((state) => ({ columnSizing: resolveUpdater(updater, state.columnSizing) })),
-    setColumnOrder: (updater) =>
-      set((state) => ({ columnOrder: resolveUpdater(updater, state.columnOrder) })),
-    setGlobalFilter: (globalFilter) => set({ globalFilter }),
-    setRowSelection: (updater) =>
-      set((state) => ({ rowSelection: resolveUpdater(updater, state.rowSelection) })),
+    return {
+      ...defaultState,
+
+      setColumnFilters: (updater) =>
+        deferredSet((state) => ({ columnFilters: resolveUpdater(updater, state.columnFilters) })),
+      setSorting: (updater) =>
+        deferredSet((state) => ({ sorting: resolveUpdater(updater, state.sorting) })),
+      setGrouping: (updater) =>
+        deferredSet((state) => ({ grouping: resolveUpdater(updater, state.grouping) })),
+      setColumnVisibility: (updater) =>
+        deferredSet((state) => ({ columnVisibility: resolveUpdater(updater, state.columnVisibility) })),
+      setColumnSizing: (updater) =>
+        deferredSet((state) => ({ columnSizing: resolveUpdater(updater, state.columnSizing) })),
+      setColumnOrder: (updater) =>
+        deferredSet((state) => ({ columnOrder: resolveUpdater(updater, state.columnOrder) })),
+      setGlobalFilter: (globalFilter) => deferredSet({ globalFilter }),
+      setRowSelection: (updater) =>
+        deferredSet((state) => ({ rowSelection: resolveUpdater(updater, state.rowSelection) })),
 
     applyView: (config) => {
       set({
@@ -119,18 +132,19 @@ function createViewEngineStore(entityType: string) {
       });
     },
 
-    getCurrentConfig: () => {
-      const state = get();
-      return {
-        columnFilters: state.columnFilters,
-        sorting: state.sorting,
-        grouping: state.grouping,
-        columnVisibility: state.columnVisibility,
-        columnSizing: state.columnSizing,
-        columnOrder: state.columnOrder,
-      };
-    },
-  }));
+      getCurrentConfig: () => {
+        const state = get();
+        return {
+          columnFilters: state.columnFilters,
+          sorting: state.sorting,
+          grouping: state.grouping,
+          columnVisibility: state.columnVisibility,
+          columnSizing: state.columnSizing,
+          columnOrder: state.columnOrder,
+        };
+      },
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
