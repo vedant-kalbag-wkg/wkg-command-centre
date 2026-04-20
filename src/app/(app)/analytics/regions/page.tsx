@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { MapPin } from "lucide-react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { fetchRegionsList, fetchRegionDetail } from "./actions";
 import { RegionSelector } from "./region-selector";
 import { RegionMetrics } from "./region-metrics";
@@ -39,12 +41,11 @@ export default function RegionsPage() {
       const result = await fetchRegionsList(parsed);
       if (!controller.signal.aborted) {
         setRegionsList(result);
-        if (result.length > 0) {
-          const stillValid = result.some((r) => r.id === selectedRegionId);
-          if (!stillValid) {
-            setSelectedRegionId(result[0].id);
-          }
-        } else {
+        // Clear selection if it's no longer in the filtered result set.
+        // Do NOT auto-select a default — the user must pick a region explicitly,
+        // which drives the "no region selected" EmptyState below.
+        const stillValid = result.some((r) => r.id === selectedRegionId);
+        if (!stillValid) {
           setSelectedRegionId(null);
           setDetail(null);
         }
@@ -141,6 +142,14 @@ export default function RegionsPage() {
             loading={listLoading}
           />
         </SectionAccordion>
+
+        {!selectedRegionId && !listLoading && regionsList.length > 0 && (
+          <EmptyState
+            icon={MapPin}
+            title="No region selected"
+            description="Select a region to see its performance metrics."
+          />
+        )}
 
         {selectedRegionId && (
           <>
