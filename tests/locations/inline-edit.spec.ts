@@ -70,12 +70,9 @@ test.describe("@locations inline edit on /locations table", () => {
       .first();
     await expect(row).toBeVisible({ timeout: 10000 });
 
-    const addressBtns = row.getByRole("button");
-    // Find the first button that currently says "—" (empty state) — that's
-    // our Address (or any empty column). We'll set Address specifically by
-    // checking the header ordering: "Address" is column 7. Simpler: click
-    // any em-dash button and inspect column header.
-    // For resilience, just click the address placeholder text within the row.
+    // For resilience, click the first em-dash placeholder within the row,
+    // which is the address (or another empty column). We then type an
+    // address-shaped string so only a text column would accept it naturally.
     const emDashCells = row.getByText("—");
     const first = emDashCells.first();
     await expect(first).toBeVisible({ timeout: 5000 });

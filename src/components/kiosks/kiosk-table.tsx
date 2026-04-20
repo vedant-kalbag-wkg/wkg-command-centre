@@ -32,7 +32,7 @@ import { DraggableTableHead } from "@/components/table/draggable-header";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { KioskListItem } from "@/app/(app)/kiosks/actions";
-import { updateKioskField } from "@/app/(app)/kiosks/actions";
+import { updateKioskField, listKioskPocCandidates } from "@/app/(app)/kiosks/actions";
 import { bulkUpdateKiosks, bulkArchiveKiosks } from "@/app/(app)/kiosks/bulk-actions";
 import {
   saveView,
@@ -45,11 +45,12 @@ import { BulkToolbar } from "@/components/table/bulk-toolbar";
 import { MergeDialog } from "@/components/table/merge-dialog";
 import { mergeKiosksAction } from "@/app/(app)/kiosks/merge-action";
 import {
-  kioskColumns,
+  makeKioskColumns,
   kioskDefaultColumnVisibility,
   kioskGroupableColumns,
   kioskFilterableColumns,
 } from "@/components/kiosks/kiosk-columns";
+import type { EditableCellOption } from "@/components/table/editable-cell";
 import { ViewToolbar } from "@/components/table/view-toolbar";
 import { SavedViewsBar } from "@/components/table/saved-views-bar";
 import {
@@ -71,6 +72,24 @@ interface KioskTableProps {
 export function KioskTable({ data }: KioskTableProps) {
   const router = useRouter();
   const store = useKioskViewStore;
+
+  // Load POC (assignee) user options once for the Internal POC inline-edit.
+  const [pocOptions, setPocOptions] = React.useState<EditableCellOption[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    listKioskPocCandidates().then((users) => {
+      if (cancelled) return;
+      setPocOptions(users.map((u) => ({ value: u.id, label: u.name || u.email })));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const columns = React.useMemo(
+    () => makeKioskColumns(pocOptions),
+    [pocOptions]
+  );
 
   const {
     columnFilters,
@@ -105,11 +124,11 @@ export function KioskTable({ data }: KioskTableProps) {
   // Initialize column order from column definitions if store is empty
   const effectiveColumnOrder = columnOrder.length > 0
     ? columnOrder
-    : kioskColumns.map((c) => ("accessorKey" in c ? String(c.accessorKey) : c.id ?? ""));
+    : columns.map((c) => ("accessorKey" in c ? String(c.accessorKey) : c.id ?? ""));
 
   const table = useReactTable({
     data,
-    columns: kioskColumns,
+    columns,
     state: {
       columnFilters,
       sorting,
@@ -327,7 +346,7 @@ export function KioskTable({ data }: KioskTableProps) {
                         onClick={() => row.toggleExpanded()}
                       >
                         <TableCell
-                          colSpan={kioskColumns.length}
+                          colSpan={columns.length}
                           className="py-2 px-3"
                         >
                           <span className="inline-flex items-center gap-2 font-medium text-sm text-foreground">

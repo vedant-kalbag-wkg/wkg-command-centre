@@ -129,6 +129,9 @@ export const kiosks = pgTable("kiosks", {
   regionGroup: text("region_group"),
   pipelineStageId: uuid("pipeline_stage_id").references(() => pipelineStages.id),
   kioskConfigGroupId: uuid("kiosk_config_group_id").references(() => kioskConfigGroups.id),
+  // Internal POC / assignee — the user responsible for this kiosk. Nullable;
+  // ON DELETE SET NULL in the migration so deleting a user doesn't cascade.
+  internalPocId: text("internal_poc_id").references(() => user.id),
   notes: text("notes"),
   customFields: jsonb("custom_fields").$type<Record<string, string>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -264,6 +267,9 @@ export const installations = pgTable("installations", {
   status: text("status").notNull().default("planned"),
   plannedStart: timestamp("planned_start", { withTimezone: true }),
   plannedEnd: timestamp("planned_end", { withTimezone: true }),
+  // Internal POC / assignee — the user responsible for this installation.
+  // Nullable; ON DELETE SET NULL in the migration.
+  internalPocId: text("internal_poc_id").references(() => user.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

@@ -127,6 +127,13 @@
       "when": 1776490091135,
       "tag": "0017_commission_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1777336800000,
+      "tag": "0018_internal_poc_kiosks_installations",
+      "breakpoints": true
     }
   ]
 }
