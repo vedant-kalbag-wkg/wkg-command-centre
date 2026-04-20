@@ -19,6 +19,10 @@ import {
   pipelineStages,
 } from "@/db/schema";
 import { eq, and, sql, isNull } from "drizzle-orm";
+import {
+  ASSETS_BOARD_COLUMNS,
+  assertBoardColumns,
+} from "./monday-schema";
 
 const MONDAY_API_TOKEN = process.env.MONDAY_API_TOKEN;
 const MONDAY_BOARD_ID = process.env.MONDAY_BOARD_ID;
@@ -458,6 +462,15 @@ async function verify() {
 
 async function main() {
   console.log("=== Monday.com → wkg-kiosk-tool Kiosk Import ===\n");
+
+  // Fail loudly if Monday has drifted away from the column IDs we encode.
+  // Avoids the silent-null class of bug that 72a80bd hid.
+  await assertBoardColumns(
+    mondayQuery,
+    Number(MONDAY_BOARD_ID),
+    ASSETS_BOARD_COLUMNS,
+    "Assets",
+  );
 
   const items = await fetchAllItems();
   await importKiosks(items);
