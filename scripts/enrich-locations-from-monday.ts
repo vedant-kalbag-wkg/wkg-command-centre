@@ -29,6 +29,12 @@ import {
   kioskConfigGroups,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
+import {
+  HOTEL_BOARD_CORE_COLUMNS,
+  HOTEL_LIVE_ONLY_COLUMNS,
+  assertBoardColumns,
+  warnBoardColumns,
+} from "./monday-schema";
 
 const MONDAY_API_TOKEN = process.env.MONDAY_API_TOKEN;
 
@@ -625,6 +631,29 @@ async function verify() {
 
 async function main() {
   console.log("=== Monday.com Hotel → Location Enrichment ===\n");
+
+  // Fail loudly only on Live Estate — it's the primary hotel source and
+  // silent drift there corrupts every downstream enrichment. The sibling
+  // boards (Ready to Launch, Removed, Australia DCM) carry partial schemas
+  // by design (e.g. Removed has no room count / star rating); for those we
+  // log a warning per missing column but continue — enrichLocations'
+  // `getText()` already handles absences with null.
+  const LIVE_ESTATE_BOARD_ID = 1356570756;
+  const mq = mondayQuery as (q: string) => Promise<unknown>;
+  for (const boardId of HOTEL_BOARD_IDS) {
+    const label = BOARD_NAMES[boardId] ?? `Board ${boardId}`;
+    if (boardId === LIVE_ESTATE_BOARD_ID) {
+      await assertBoardColumns(
+        mq,
+        boardId,
+        [...HOTEL_BOARD_CORE_COLUMNS, ...HOTEL_LIVE_ONLY_COLUMNS],
+        label,
+      );
+    } else {
+      await warnBoardColumns(mq, boardId, HOTEL_BOARD_CORE_COLUMNS, label);
+    }
+  }
+
   const hotels = await fetchAllHotels();
   await enrichLocations(hotels);
   await verify();
