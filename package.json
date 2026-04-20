@@ -12,7 +12,10 @@
     "db:seed:sales-demo": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-sales-demo.ts",
     "db:seed:kiosks": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-kiosks.ts",
     "db:seed:markets": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-markets.ts",
-    "db:migrate:supabase": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/migrate-from-supabase.ts"
+    "db:migrate:supabase": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/migrate-from-supabase.ts",
+    "db:import:monday": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-from-monday.ts",
+    "db:enrich:locations": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/enrich-locations-from-monday.ts",
+    "db:import:location-products": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-location-products-from-monday.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1012.0",
@@ -24,6 +27,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@supabase/supabase-js": "^2.103.3",
     "@svar-ui/react-gantt": "^2.5.2",
     "@tanstack/react-table": "^8.21.3",

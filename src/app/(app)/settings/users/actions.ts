@@ -7,6 +7,9 @@ import { headers } from "next/headers";
 
 const emailSchema = z.email("Invalid email address");
 const roleSchema = z.enum(["admin", "member", "viewer"]);
+const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters");
 
 export async function inviteUser(
   email: string,
@@ -310,6 +313,62 @@ export async function bulkDeactivateUsers(userIds: string[]) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to deactivate users";
+    return { error: message };
+  }
+}
+
+// B'.1 — Create a user directly with a known password (no email required).
+// Unblocks localhost testing where SMTP is unavailable. Additive to inviteUser;
+// does NOT replace the invite flow.
+export async function createUserWithPassword(
+  name: string,
+  email: string,
+  role: Role,
+  password: string,
+) {
+  try {
+    await requireRole("admin");
+
+    const validatedEmail = emailSchema.parse(email);
+    const validatedRole = roleSchema.parse(role);
+    const validatedPassword = passwordSchema.parse(password);
+    const validatedName = (name ?? "").trim();
+
+    const createResult = await auth.api.createUser({
+      body: {
+        email: validatedEmail,
+        role: "user", // Better Auth createUser only accepts "user" | "admin"
+        name: validatedName,
+        password: validatedPassword,
+      },
+      headers: await headers(),
+    });
+
+    // Mirror inviteUser: apply real role via setRole after creation.
+    const created = createResult as Record<string, unknown> | null;
+    const userId =
+      (created?.id as string) ??
+      ((created?.user as Record<string, unknown>)?.id as string);
+    if (userId) {
+      await auth.api.setRole({
+        body: { userId, role: validatedRole as "user" | "admin" },
+        headers: await headers(),
+      });
+
+      // Default userType to internal for admin-created users.
+      const { db } = await import("@/db");
+      const { user: userTable } = await import("@/db/schema");
+      const { eq } = await import("drizzle-orm");
+      await db
+        .update(userTable)
+        .set({ userType: "internal" })
+        .where(eq(userTable.id, userId));
+    }
+
+    return { success: true };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to create user";
     return { error: message };
   }
 }

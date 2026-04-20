@@ -42,6 +42,7 @@ export type CommissionSummary = {
 };
 
 export type CommissionByLocation = {
+  locationId: string;
   locationName: string;
   commissionable: number;
   commission: number;
@@ -161,6 +162,7 @@ export async function fetchCommissionByLocation(
 
   const rows = await db
     .select({
+      locationId: locations.id,
       locationName: sql<string>`coalesce(${locations.name}, ${locations.outletCode}, 'Unknown')`,
       commissionable: sql<string>`coalesce(sum(${commissionLedger.commissionableAmount}), 0)`,
       commission: sql<string>`coalesce(sum(${commissionLedger.commissionAmount}), 0)`,
@@ -177,6 +179,7 @@ export async function fetchCommissionByLocation(
     const commissionable = Number(r.commissionable);
     const commission = Number(r.commission);
     return {
+      locationId: r.locationId,
       locationName: r.locationName,
       commissionable,
       commission,

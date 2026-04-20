@@ -3,6 +3,7 @@ import {
   outletExclusions,
   locations,
   salesRecords,
+  kioskAssignments,
   locationHotelGroupMemberships,
   locationRegionMemberships,
   locationGroupMemberships,
@@ -71,6 +72,13 @@ export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
   return conditions;
 }
 
+/**
+ * Subquery that returns the earliest kiosk assignment date for a location.
+ * This is the "kiosk live date" — the first time any kiosk was assigned
+ * to the location, regardless of whether it's still active.
+ */
+export const kioskLiveDateSubquery = sql`(SELECT MIN(${kioskAssignments.assignedAt}) FROM ${kioskAssignments} WHERE ${kioskAssignments.locationId} = ${locations.id})`;
+
 export function buildMaturityCondition(filters: AnalyticsFilters): SQL | undefined {
   if (!filters.maturityBuckets?.length) return undefined;
 
@@ -80,22 +88,22 @@ export function buildMaturityCondition(filters: AnalyticsFilters): SQL | undefin
     switch (bucket) {
       case "0-1mo":
         bucketConditions.push(
-          sql`${locations.liveDate} >= (NOW() - INTERVAL '1 month')`,
+          sql`${kioskLiveDateSubquery} >= (NOW() - INTERVAL '1 month')`,
         );
         break;
       case "1-3mo":
         bucketConditions.push(
-          sql`(${locations.liveDate} >= (NOW() - INTERVAL '3 months') AND ${locations.liveDate} < (NOW() - INTERVAL '1 month'))`,
+          sql`(${kioskLiveDateSubquery} >= (NOW() - INTERVAL '3 months') AND ${kioskLiveDateSubquery} < (NOW() - INTERVAL '1 month'))`,
         );
         break;
       case "3-6mo":
         bucketConditions.push(
-          sql`(${locations.liveDate} >= (NOW() - INTERVAL '6 months') AND ${locations.liveDate} < (NOW() - INTERVAL '3 months'))`,
+          sql`(${kioskLiveDateSubquery} >= (NOW() - INTERVAL '6 months') AND ${kioskLiveDateSubquery} < (NOW() - INTERVAL '3 months'))`,
         );
         break;
       case "6+mo":
         bucketConditions.push(
-          sql`${locations.liveDate} < (NOW() - INTERVAL '6 months')`,
+          sql`${kioskLiveDateSubquery} < (NOW() - INTERVAL '6 months')`,
         );
         break;
     }

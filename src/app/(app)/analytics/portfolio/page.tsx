@@ -49,9 +49,9 @@ export default function PortfolioPage() {
       const [result, thresholds, eventsResult, hpResult, activeFlags] = await Promise.all([
         fetchPortfolioData(parsed, comparisonMode),
         fetchThresholdConfig(),
-        fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo),
-        fetchHighPerformerPatterns(parsed),
-        fetchActiveFlags(),
+        fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo).catch(() => []),
+        fetchHighPerformerPatterns(parsed).catch(() => null),
+        fetchActiveFlags().catch(() => []),
       ]);
       if (!controller.signal.aborted) {
         setData(result);

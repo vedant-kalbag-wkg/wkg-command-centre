@@ -1,8 +1,7 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AppNavbar } from "@/components/layout/app-navbar";
 
 export default async function AppLayout({
   children,
@@ -16,17 +15,15 @@ export default async function AppLayout({
   if (!session) redirect("/login");
 
   return (
-    <div className="h-dvh">
-      <SidebarProvider>
-        <AppSidebar
-          user={{
-            name: session.user.name,
-            email: session.user.email,
-            role: (session.user.role as string) || "member",
-          }}
-        />
-        <main className="flex-1 bg-white">{children}</main>
-      </SidebarProvider>
+    <div className="flex min-h-dvh flex-col">
+      <AppNavbar
+        user={{
+          name: session.user.name,
+          email: session.user.email,
+          role: (session.user.role as string) || "member",
+        }}
+      />
+      <main className="flex-1">{children}</main>
     </div>
   );
 }

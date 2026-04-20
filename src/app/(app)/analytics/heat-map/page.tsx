@@ -4,14 +4,11 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchHeatMapData, fetchThresholdConfig, fetchActiveFlags } from "./actions";
 import { ScoreLegend } from "./score-legend";
 import { PerformanceTable } from "./performance-table";
 import type { HeatMapData, LocationFlag } from "@/lib/analytics/types";
 import type { ThresholdConfig } from "@/lib/analytics/thresholds";
-
-type ViewMode = "top" | "bottom" | "all";
 
 export default function HeatMapPage() {
   const filters = useAnalyticsFilters();
@@ -20,7 +17,6 @@ export default function HeatMapPage() {
   const [flags, setFlags] = useState<LocationFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<ViewMode>("top");
 
   const filtersJson = JSON.stringify(filters);
   const abortRef = useRef<AbortController | null>(null);
@@ -80,19 +76,13 @@ export default function HeatMapPage() {
 
   const heatMap = data ?? emptyData;
 
-  const viewData =
-    view === "top"
-      ? heatMap.topPerformers
-      : view === "bottom"
-        ? heatMap.bottomPerformers
-        : heatMap.allPerformers;
-
-  const viewTitle =
-    view === "top"
-      ? "Top 20 Performers"
-      : view === "bottom"
-        ? "Bottom 20 Performers"
-        : "All Hotels";
+  const loadingSkeleton = (
+    <div className="space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-12 rounded-lg" />
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -119,35 +109,47 @@ export default function HeatMapPage() {
         )}
       </SectionAccordion>
 
-      <SectionAccordion
-        title="Performance Rankings"
-        actions={
-          <Tabs
-            value={view}
-            onValueChange={(v) => setView(v as ViewMode)}
-          >
-            <TabsList className="h-7">
-              <TabsTrigger value="top" className="text-xs px-2 py-0.5">
-                Top 20
-              </TabsTrigger>
-              <TabsTrigger value="bottom" className="text-xs px-2 py-0.5">
-                Bottom 20
-              </TabsTrigger>
-              <TabsTrigger value="all" className="text-xs px-2 py-0.5">
-                All
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        }
-      >
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SectionAccordion title="Top 20 Performers">
+          {loading ? (
+            loadingSkeleton
+          ) : (
+            <PerformanceTable
+              data={heatMap.topPerformers}
+              title="Top 20 Performers"
+              thresholdConfig={thresholdConfig}
+              flags={flags}
+              onFlagCreated={loadData}
+            />
+          )}
+        </SectionAccordion>
+
+        <SectionAccordion title="Bottom 20 Performers">
+          {loading ? (
+            loadingSkeleton
+          ) : (
+            <PerformanceTable
+              data={heatMap.bottomPerformers}
+              title="Bottom 20 Performers"
+              thresholdConfig={thresholdConfig}
+              flags={flags}
+              onFlagCreated={loadData}
+            />
+          )}
+        </SectionAccordion>
+      </div>
+
+      <SectionAccordion title="All Hotels" defaultOpen={false}>
         {loading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 rounded-lg" />
-            ))}
-          </div>
+          loadingSkeleton
         ) : (
-          <PerformanceTable data={viewData} title={viewTitle} thresholdConfig={thresholdConfig} flags={flags} onFlagCreated={loadData} />
+          <PerformanceTable
+            data={heatMap.allPerformers}
+            title="All Hotels"
+            thresholdConfig={thresholdConfig}
+            flags={flags}
+            onFlagCreated={loadData}
+          />
         )}
       </SectionAccordion>
     </div>

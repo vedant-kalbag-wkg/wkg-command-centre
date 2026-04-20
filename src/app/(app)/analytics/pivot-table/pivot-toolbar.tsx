@@ -24,11 +24,20 @@ export function PivotToolbar({ onRunPivot, loading }: PivotToolbarProps) {
         size="sm"
         className="bg-[#00A6D3] hover:bg-[#00A6D3]/90"
       >
-        {loading ? "Running..." : "Run Pivot"}
+        {loading ? "Running..." : "Run Analysis"}
       </Button>
 
-      {/* Period comparison toggles */}
-      <div className="flex items-center gap-1 rounded-md border p-0.5">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={clearAll}
+        className="h-7 px-2 text-xs"
+      >
+        Clear All
+      </Button>
+
+      {/* Period comparison toggles — right-aligned */}
+      <div className="flex items-center gap-1 rounded-md border p-0.5 ml-auto">
         <Button
           variant={periodComparison === "mom" ? "default" : "ghost"}
           size="sm"
@@ -58,15 +67,6 @@ export function PivotToolbar({ onRunPivot, loading }: PivotToolbarProps) {
           YoY
         </Button>
       </div>
-
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={clearAll}
-        className="h-7 px-2 text-xs"
-      >
-        Clear
-      </Button>
     </div>
   );
 }

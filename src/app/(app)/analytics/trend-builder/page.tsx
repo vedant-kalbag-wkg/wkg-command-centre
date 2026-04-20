@@ -183,11 +183,8 @@ export default function TrendBuilderPage() {
         </div>
       )}
 
-      {/* Series Builder */}
-      <SeriesBuilderPanel />
-
       {/* Controls bar */}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex items-center justify-end gap-2">
         <GranularitySelector value={granularity} onChange={setGranularity} />
 
         <div className="flex items-center gap-1 rounded-md border p-0.5">
@@ -268,6 +265,9 @@ export default function TrendBuilderPage() {
       {showWeather && (
         <WeatherMiniChart data={weatherData} loading={loading} />
       )}
+
+      {/* Series Builder */}
+      <SeriesBuilderPanel />
     </div>
   );
 }

@@ -9,8 +9,9 @@ import {
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
+  kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
-import { getComparisonDates, calculatePercentile, classifyOutletTier } from "@/lib/analytics/metrics";
+import { getComparisonDates, classifyOutletTier } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
   ComparisonMode,
@@ -262,13 +263,14 @@ export async function getOutletTiers(
       ${locations.id} AS location_id,
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
-      ${locations.liveDate}::text AS live_date,
+      ${kioskLiveDateSubquery}::text AS live_date,
       COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.liveDate}
+    GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}
     ORDER BY revenue DESC
+    LIMIT 200
   `);
 
   const parsed = rawRows.map((row) => ({
@@ -280,12 +282,12 @@ export async function getOutletTiers(
     transactions: Number(row.transactions),
   }));
 
-  // Calculate total revenue for share percentages
   const totalRevenue = parsed.reduce((sum, r) => sum + r.revenue, 0);
-  const allRevenues = parsed.map((r) => r.revenue);
+  const sortedRevenues = parsed.map((r) => r.revenue).sort((a, b) => a - b);
 
   return parsed.map((row) => {
-    const percentile = calculatePercentile(row.revenue, allRevenues);
+    const rank = binarySearchRank(row.revenue, sortedRevenues);
+    const percentile = sortedRevenues.length > 0 ? (rank / sortedRevenues.length) * 100 : 0;
     return {
       locationId: row.locationId,
       outletCode: row.outletCode,
@@ -298,6 +300,17 @@ export async function getOutletTiers(
       tier: classifyOutletTier(percentile),
     };
   });
+}
+
+function binarySearchRank(value: number, sorted: number[]): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid] <= value) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 // ─── 7. Orchestrator ─────────────────────────────────────────────────────────
@@ -314,6 +327,13 @@ export async function getPortfolioData(
     dateTo: prevTo,
   };
 
+  // F.2: Previously each sub-query silently swallowed errors via
+  // `.catch(() => [])` / `.catch(() => null)`, which rendered failed sections
+  // as empty charts with no signal to operators. We now log the error
+  // server-side (so failures are observable in logs/monitoring) but still
+  // return an empty fallback so a single broken sub-query doesn't nuke the
+  // entire portfolio dashboard. A follow-up (F.2b) can propagate structured
+  // error shapes into the UI for per-ChartCard error states.
   const [
     summary,
     previousSummary,
@@ -324,12 +344,30 @@ export async function getPortfolioData(
     outletTiers,
   ] = await Promise.all([
     getPortfolioSummary(filters, userCtx),
-    getPortfolioSummary(previousFilters, userCtx).catch(() => null),
-    getCategoryPerformance(filters, userCtx),
-    getTopProducts(filters, userCtx),
-    getDailyTrends(filters, userCtx),
-    getHourlyDistribution(filters, userCtx),
-    getOutletTiers(filters, userCtx),
+    getPortfolioSummary(previousFilters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "previousSummary" failed:', err);
+      return null;
+    }),
+    getCategoryPerformance(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "categoryPerformance" failed:', err);
+      return [] as CategoryPerformanceRow[];
+    }),
+    getTopProducts(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "topProducts" failed:', err);
+      return [] as TopProductRow[];
+    }),
+    getDailyTrends(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "dailyTrends" failed:', err);
+      return [] as DailyTrendRow[];
+    }),
+    getHourlyDistribution(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "hourlyDistribution" failed:', err);
+      return [] as HourlyDistributionRow[];
+    }),
+    getOutletTiers(filters, userCtx).catch((err) => {
+      console.error('[portfolio] sub-query "outletTiers" failed:', err);
+      return [] as OutletTierRow[];
+    }),
   ]);
 
   return {

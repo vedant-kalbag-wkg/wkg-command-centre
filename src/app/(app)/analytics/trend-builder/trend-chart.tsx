@@ -145,9 +145,9 @@ export function TrendChart({
     <ChartWrapper loading={loading} minHeight={380}>
       <LineChart
         data={chartData}
-        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+        margin={{ top: 32, right: 30, left: 8, bottom: 5 }}
       >
-        <CartesianGrid strokeDasharray="3 3" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
         <XAxis
           dataKey="date"
           fontSize={12}

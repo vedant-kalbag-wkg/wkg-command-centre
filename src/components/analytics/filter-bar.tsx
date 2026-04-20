@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { RotateCcw, SlidersHorizontal } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { getDimensionOptions } from "@/app/(app)/analytics/actions";
 import {
   useAnalyticsFilterStore,
@@ -83,9 +83,7 @@ export function AnalyticsFilterBar({
   }));
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
-      <SlidersHorizontal className="size-4 text-muted-foreground" />
-
+    <div className="sticky top-14 z-20 flex flex-wrap items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-2.5">
       <DateRangePicker
         from={store.dateRange.from}
         to={store.dateRange.to}

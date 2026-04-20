@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { ChevronDown } from "lucide-react"
-import { cn } from "@/lib/utils"
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -26,21 +25,32 @@ export function SectionAccordion({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="flex items-center justify-between border-b py-2">
-        <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium">
-          <ChevronDown
-            className={cn(
-              "size-4 transition-transform duration-200",
-              !open && "-rotate-90"
+      <div className="border rounded-lg overflow-hidden">
+        <CollapsibleTrigger
+          className="w-full flex items-center justify-between px-4 py-3 bg-background hover:bg-muted/50 transition-colors text-left rounded-t-lg"
+        >
+          <span className="font-semibold text-sm">{title}</span>
+          <div className="flex items-center gap-2">
+            {actions && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center"
+              >
+                {actions}
+              </div>
             )}
-          />
-          {title}
+            <ChevronDown
+              className="size-4 text-muted-foreground transition-transform duration-200"
+              style={{
+                transform: open ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+            />
+          </div>
         </CollapsibleTrigger>
-        {actions && <div className="flex items-center gap-1">{actions}</div>}
+        <CollapsibleContent>
+          <div className="px-4 py-4">{children}</div>
+        </CollapsibleContent>
       </div>
-      <CollapsibleContent>
-        <div className="pt-3">{children}</div>
-      </CollapsibleContent>
     </Collapsible>
   )
 }

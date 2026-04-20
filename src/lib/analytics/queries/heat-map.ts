@@ -9,6 +9,7 @@ import {
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
+  kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
 import {
   calculateCompositeScore,
@@ -93,14 +94,14 @@ export async function getHeatMapData(
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
       ${locations.numRooms}::text AS num_rooms,
-      ${locations.liveDate}::text AS live_date,
+      ${kioskLiveDateSubquery}::text AS live_date,
       COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
       COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}, ${locations.liveDate}
+    GROUP BY ${salesRecords.locationId}, ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
   `);
 
   // Kiosk count: scoped to locations from the sales query results
