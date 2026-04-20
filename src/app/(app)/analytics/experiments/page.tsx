@@ -5,6 +5,8 @@ import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Trash2, FlaskConical, CalendarClock } from "lucide-react";
 import { CohortForm } from "./cohort-form";
 import {
@@ -258,11 +260,11 @@ export default function ExperimentsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center gap-3">
-        <FlaskConical className="size-6 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight">Experiments</h1>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Experiments"
+        description="Design cohorts and compare performance vs control"
+      />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -330,10 +332,11 @@ export default function ExperimentsPage() {
         <div className="flex flex-col gap-4">
           {!selectedCohort ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <FlaskConical className="size-10 mb-3 opacity-40" />
-                <p>Select or create a cohort to view comparison</p>
-              </CardContent>
+              <EmptyState
+                icon={FlaskConical}
+                title="Select or create a cohort to view comparison"
+                description="Cohorts group locations so you can benchmark performance against a control set."
+              />
             </Card>
           ) : (
             <>
