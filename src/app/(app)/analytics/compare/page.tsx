@@ -5,7 +5,9 @@ import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeftRight, X, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ArrowLeftRight, Inbox, X, Loader2 } from "lucide-react";
 import { fetchComparisonData, fetchEntityOptions } from "./actions";
 import { ComparisonCards } from "./comparison-cards";
 import type { ComparisonEntity, ComparisonEntityType } from "@/lib/analytics/types";
@@ -104,12 +106,10 @@ export default function ComparePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Compare</h1>
-        <p className="text-sm text-muted-foreground">
-          Side-by-side comparison of locations, hotel groups, or regions
-        </p>
-      </div>
+      <PageHeader
+        title="Compare"
+        description="Side-by-side comparison of locations, hotel groups, or regions"
+      />
 
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -255,8 +255,12 @@ export default function ComparePage() {
       )}
 
       {!resultsLoading && hasCompared && results.length === 0 && (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          No data found for the selected entities in the current date range.
+        <div className="rounded-lg border border-dashed">
+          <EmptyState
+            icon={Inbox}
+            title="No data found for the selected entities"
+            description="Try widening the date range or selecting different entities."
+          />
         </div>
       )}
     </div>
