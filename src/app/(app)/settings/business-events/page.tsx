@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
-import { AppShell } from "@/components/layout/app-shell";
+import { ArrowLeft, CalendarDays, Plus } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { EventsList } from "./events-list";
 import { EventForm } from "./event-form";
@@ -120,55 +121,75 @@ export default function BusinessEventsPage() {
   };
 
   return (
-    <AppShell
-      title="Business Events"
-      action={
-        <Link href="/settings">
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            <ArrowLeft className="mr-1.5 h-4 w-4" />
-            Back to Settings
-          </Button>
-        </Link>
-      }
-    >
-      {loading ? (
-        <p className="text-sm text-muted-foreground py-8 text-center">
-          Loading...
-        </p>
-      ) : (
-        <Tabs defaultValue="events">
-          <TabsList variant="line">
-            <TabsTrigger value="events">Events</TabsTrigger>
-            <TabsTrigger value="categories">Categories</TabsTrigger>
-          </TabsList>
+    <div className="flex flex-col min-h-0 flex-1">
+      <PageHeader
+        title="Business Events"
+        description="Annotate trend charts with business events and manage event categories."
+        count={loading ? undefined : events.length}
+        actions={
+          <Link href="/settings">
+            <Button variant="ghost" size="sm" className="text-muted-foreground">
+              <ArrowLeft className="mr-1.5 h-4 w-4" />
+              Back to Settings
+            </Button>
+          </Link>
+        }
+      />
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        {loading ? (
+          <EmptyState
+            icon={CalendarDays}
+            title="Loading events…"
+          />
+        ) : (
+          <Tabs defaultValue="events">
+            <TabsList variant="line">
+              <TabsTrigger value="events">Events</TabsTrigger>
+              <TabsTrigger value="categories">Categories</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="events" className="space-y-4 pt-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Business events are shown as annotations on trend charts.
-              </p>
-              <Button onClick={handleCreateEvent} size="sm">
-                <Plus className="size-4" />
-                Create Event
-              </Button>
-            </div>
-            <EventsList
-              events={events}
-              onEdit={handleEditEvent}
-              onDelete={handleDeleteEvent}
-            />
-          </TabsContent>
+            <TabsContent value="events" className="space-y-4 pt-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Business events are shown as annotations on trend charts.
+                </p>
+                <Button onClick={handleCreateEvent} size="sm">
+                  <Plus className="size-4" />
+                  Create Event
+                </Button>
+              </div>
+              {events.length === 0 ? (
+                <EmptyState
+                  icon={CalendarDays}
+                  title="No business events yet"
+                  description="Create one to annotate trend charts with releases, promos, or incidents."
+                  action={
+                    <Button onClick={handleCreateEvent} size="sm">
+                      <Plus className="size-4" />
+                      Create Event
+                    </Button>
+                  }
+                />
+              ) : (
+                <EventsList
+                  events={events}
+                  onEdit={handleEditEvent}
+                  onDelete={handleDeleteEvent}
+                />
+              )}
+            </TabsContent>
 
-          <TabsContent value="categories" className="pt-4">
-            <CategoryManager
-              categories={categories}
-              onCreateCategory={handleCreateCategory}
-              onUpdateCategory={handleUpdateCategory}
-              onDeleteCategory={handleDeleteCategory}
-            />
-          </TabsContent>
-        </Tabs>
-      )}
+            <TabsContent value="categories" className="pt-4">
+              <CategoryManager
+                categories={categories}
+                onCreateCategory={handleCreateCategory}
+                onUpdateCategory={handleUpdateCategory}
+                onDeleteCategory={handleDeleteCategory}
+              />
+            </TabsContent>
+          </Tabs>
+        )}
+      </div>
 
       <EventForm
         open={formOpen}
@@ -177,6 +198,6 @@ export default function BusinessEventsPage() {
         categories={categories}
         onSubmit={handleSubmitEvent}
       />
-    </AppShell>
+    </div>
   );
 }
