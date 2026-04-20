@@ -33,13 +33,23 @@ jobs:
           STATE=""
           URL=""
           for i in $(seq 1 30); do
-            RESP=$(curl -sfG "https://api.vercel.com/v6/deployments" \
+            BODY_FILE=$(mktemp)
+            HTTP_CODE=$(curl -sG -o "$BODY_FILE" -w "%{http_code}" \
+              "https://api.vercel.com/v6/deployments" \
               --data-urlencode "projectId=$PROJECT_ID" \
               --data-urlencode "teamId=$TEAM_ID" \
               --data-urlencode "meta-githubCommitSha=$SHA" \
               --data-urlencode "target=production" \
               --data-urlencode "limit=1" \
               -H "Authorization: Bearer $VERCEL_TOKEN")
+            RESP=$(cat "$BODY_FILE")
+            rm -f "$BODY_FILE"
+
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "Vercel API returned HTTP $HTTP_CODE — aborting" >&2
+              echo "$RESP" | head -c 500 >&2
+              exit 1
+            fi
 
             STATE=$(echo "$RESP" | jq -r '.deployments[0].readyState // "NONE"')
             URL=$(echo "$RESP"  | jq -r '.deployments[0].url // empty')
