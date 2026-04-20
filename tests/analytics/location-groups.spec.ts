@@ -24,7 +24,7 @@ test("@analytics/location-groups page does not throw", async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
-test("@analytics/location-groups selector dropdown is present and selectable", async ({
+test("@analytics/location-groups multi-select trigger renders and opens", async ({
   page,
 }) => {
   await signInAsAdmin(page);
@@ -34,10 +34,10 @@ test("@analytics/location-groups selector dropdown is present and selectable", a
     page.getByRole("heading", { name: "Location Groups", level: 1 }),
   ).toBeVisible();
 
-  // Dropdown trigger should exist with aria-label from LocationSelector
-  const trigger = page.getByRole("combobox", {
-    name: /select location group/i,
-  });
+  // Multi-select trigger button (not a base-ui combobox anymore).
+  const trigger = page
+    .getByRole("button", { name: /Select location group/i })
+    .first();
   await expect(trigger).toBeVisible();
 
   // Opening the dropdown should surface at least one option
@@ -45,8 +45,9 @@ test("@analytics/location-groups selector dropdown is present and selectable", a
   const firstOption = page.getByRole("option").first();
   await expect(firstOption).toBeVisible();
   await firstOption.click();
+  await page.keyboard.press("Escape");
 
-  // Popup should close and trigger remains visible (no crash)
+  // Trigger remains visible (no crash)
   await expect(trigger).toBeVisible();
 });
 

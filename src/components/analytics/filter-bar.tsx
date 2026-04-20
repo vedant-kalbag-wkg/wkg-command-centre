@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 import { getDimensionOptions } from "@/app/(app)/analytics/actions";
 import {
@@ -22,8 +22,21 @@ export function AnalyticsFilterBar({
 } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [options, setOptions] = useState<DimensionOptions | null>(null);
   const [, startTransition] = useTransition();
+
+  // On the three per-dimension analytics pages, the page's primary selector IS
+  // the filter for that dimension — hide the corresponding chip here so it
+  // does not double up.
+  const hideDimension: "hotelGroups" | "locationGroups" | "regions" | null =
+    pathname === "/analytics/hotel-groups"
+      ? "hotelGroups"
+      : pathname === "/analytics/location-groups"
+        ? "locationGroups"
+        : pathname === "/analytics/regions"
+          ? "regions"
+          : null;
 
   const store = useAnalyticsFilterStore();
   // Track mount so the initial store state (post URL hydration) does not
@@ -128,29 +141,35 @@ export function AnalyticsFilterBar({
           placeholder="Search products..."
         />
 
-        <MultiSelectFilter
-          label="Hotel Groups"
-          options={hotelGroupOptions}
-          selected={store.hotelGroupFilter}
-          onChange={(values) => store.setFilter("hotelGroupFilter", values)}
-          placeholder="Search hotel groups..."
-        />
+        {hideDimension !== "hotelGroups" && (
+          <MultiSelectFilter
+            label="Hotel Groups"
+            options={hotelGroupOptions}
+            selected={store.hotelGroupFilter}
+            onChange={(values) => store.setFilter("hotelGroupFilter", values)}
+            placeholder="Search hotel groups..."
+          />
+        )}
 
-        <MultiSelectFilter
-          label="Regions"
-          options={regionOptions}
-          selected={store.regionFilter}
-          onChange={(values) => store.setFilter("regionFilter", values)}
-          placeholder="Search regions..."
-        />
+        {hideDimension !== "regions" && (
+          <MultiSelectFilter
+            label="Regions"
+            options={regionOptions}
+            selected={store.regionFilter}
+            onChange={(values) => store.setFilter("regionFilter", values)}
+            placeholder="Search regions..."
+          />
+        )}
 
-        <MultiSelectFilter
-          label="Location Groups"
-          options={locationGroupOptions}
-          selected={store.locationGroupFilter}
-          onChange={(values) => store.setFilter("locationGroupFilter", values)}
-          placeholder="Search location groups..."
-        />
+        {hideDimension !== "locationGroups" && (
+          <MultiSelectFilter
+            label="Location Groups"
+            options={locationGroupOptions}
+            selected={store.locationGroupFilter}
+            onChange={(values) => store.setFilter("locationGroupFilter", values)}
+            placeholder="Search location groups..."
+          />
+        )}
 
         <MultiSelectFilter
           label="Maturity"

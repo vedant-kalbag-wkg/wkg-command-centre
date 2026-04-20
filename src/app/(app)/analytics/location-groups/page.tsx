@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { MapPin } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { PageHeader } from "@/components/layout/page-header";
@@ -16,10 +17,23 @@ import { PeerAnalysis } from "./peer-analysis";
 import { HotelBreakdown } from "./hotel-breakdown";
 import type { LocationGroupData, LocationGroupDetail } from "@/lib/analytics/types";
 
+function parseIdParam(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export default function LocationGroupsPage() {
   const filters = useAnalyticsFilters();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialUrlGroupIds = parseIdParam(searchParams?.get("group") ?? null);
   const [groups, setGroups] = useState<LocationGroupData[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(
+    initialUrlGroupIds,
+  );
   const [detail, setDetail] = useState<LocationGroupDetail | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -41,14 +55,17 @@ export default function LocationGroupsPage() {
       const result = await fetchList(parsed);
       if (result === null) return;
       setGroups(result);
-      // Do NOT auto-select — the user must pick a group explicitly, which
-      // drives the "no group selected" EmptyState below. Clear selection
-      // only if it is no longer in the filtered result set.
-      const stillValid = result.some((g) => g.id === selectedGroupId);
-      if (!stillValid) {
-        setSelectedGroupId(null);
-        setDetail(null);
-      }
+      // Do NOT auto-select — the user must pick groups explicitly, which
+      // drives the "no group selected" EmptyState below. Drop any previously
+      // selected ids that fell out of the filtered result set.
+      const validIds = new Set(result.map((g) => g.id));
+      setSelectedGroupIds((prev) => {
+        const kept = prev.filter((id) => validIds.has(id));
+        if (kept.length !== prev.length && kept.length === 0) {
+          setDetail(null);
+        }
+        return kept;
+      });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load location groups",
@@ -63,9 +80,10 @@ export default function LocationGroupsPage() {
     loadGroups();
   }, [loadGroups]);
 
-  // Load detail when selected group changes
+  // Load detail when selected groups change
+  const selectedKey = selectedGroupIds.join(",");
   const loadDetail = useCallback(async () => {
-    if (!selectedGroupId) {
+    if (selectedGroupIds.length === 0) {
       setDetail(null);
       return;
     }
@@ -74,7 +92,7 @@ export default function LocationGroupsPage() {
 
     try {
       const parsed = JSON.parse(filtersJson);
-      const result = await fetchDetail([selectedGroupId], parsed);
+      const result = await fetchDetail(selectedGroupIds, parsed);
       // `null` from the abortable dispatcher means a newer call superseded
       // this one (or the component unmounted) — discard this batch.
       if (result === null) return;
@@ -86,7 +104,8 @@ export default function LocationGroupsPage() {
     } finally {
       setDetailLoading(false);
     }
-  }, [selectedGroupId, filtersJson, fetchDetail]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, filtersJson, fetchDetail]);
 
   useEffect(() => {
     loadDetail();
@@ -109,6 +128,17 @@ export default function LocationGroupsPage() {
 
   const groupDetail = detail ?? emptyDetail;
 
+  function handleSelectionChange(ids: string[]) {
+    setSelectedGroupIds(ids);
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (ids.length === 0) {
+      params.delete("group");
+    } else {
+      params.set("group", ids.join(","));
+    }
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <PageHeader
@@ -127,13 +157,13 @@ export default function LocationGroupsPage() {
         <SectionAccordion title="Location Groups">
           <LocationSelector
             groups={groups}
-            selectedId={selectedGroupId}
-            onSelect={setSelectedGroupId}
+            selected={selectedGroupIds}
+            onChange={handleSelectionChange}
             loading={listLoading}
           />
         </SectionAccordion>
 
-        {!selectedGroupId && !listLoading && groups.length > 0 && (
+        {selectedGroupIds.length === 0 && !listLoading && groups.length > 0 && (
           <EmptyState
             icon={MapPin}
             title="No location group selected"
@@ -141,7 +171,7 @@ export default function LocationGroupsPage() {
           />
         )}
 
-        {selectedGroupId && (
+        {selectedGroupIds.length > 0 && (
           <>
             <SectionAccordion title="Group Metrics">
               {detailLoading ? (

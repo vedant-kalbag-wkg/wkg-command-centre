@@ -16,14 +16,22 @@ import { HotelList } from "./hotel-list";
 import { TemporalCharts } from "./temporal-charts";
 import type { HotelGroupData, HotelGroupDetail } from "@/lib/analytics/types";
 
+function parseIdParam(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export default function HotelGroupsPage() {
   const filters = useAnalyticsFilters();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const urlGroupId = searchParams?.get("group") ?? null;
+  const initialUrlGroupIds = parseIdParam(searchParams?.get("group") ?? null);
   const [groups, setGroups] = useState<HotelGroupData[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
-    urlGroupId,
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(
+    initialUrlGroupIds,
   );
   const [detail, setDetail] = useState<HotelGroupDetail | null>(null);
   const [listLoading, setListLoading] = useState(true);
@@ -46,14 +54,17 @@ export default function HotelGroupsPage() {
       const result = await fetchList(parsed);
       if (result === null) return;
       setGroups(result);
-      // Do NOT auto-select — the user must pick a group explicitly, which
-      // drives the "no group selected" EmptyState below. Clear selection
-      // only if it is no longer in the filtered result set.
-      const stillValid = result.some((g) => g.id === selectedGroupId);
-      if (!stillValid) {
-        setSelectedGroupId(null);
-        setDetail(null);
-      }
+      // Do NOT auto-select — the user must pick groups explicitly, which
+      // drives the "no group selected" EmptyState below. Drop any previously
+      // selected ids that fell out of the filtered result set.
+      const validIds = new Set(result.map((g) => g.id));
+      setSelectedGroupIds((prev) => {
+        const kept = prev.filter((id) => validIds.has(id));
+        if (kept.length !== prev.length && kept.length === 0) {
+          setDetail(null);
+        }
+        return kept;
+      });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load hotel groups",
@@ -68,9 +79,10 @@ export default function HotelGroupsPage() {
     loadGroups();
   }, [loadGroups]);
 
-  // Load detail when selected group changes
+  // Load detail when selected groups change
+  const selectedKey = selectedGroupIds.join(",");
   const loadDetail = useCallback(async () => {
-    if (!selectedGroupId) {
+    if (selectedGroupIds.length === 0) {
       setDetail(null);
       return;
     }
@@ -79,7 +91,7 @@ export default function HotelGroupsPage() {
 
     try {
       const parsed = JSON.parse(filtersJson);
-      const result = await fetchDetail([selectedGroupId], parsed);
+      const result = await fetchDetail(selectedGroupIds, parsed);
       if (result === null) return;
       setDetail(result);
     } catch (err) {
@@ -89,7 +101,9 @@ export default function HotelGroupsPage() {
     } finally {
       setDetailLoading(false);
     }
-  }, [selectedGroupId, filtersJson, fetchDetail]);
+  // selectedKey captures array identity without re-running on reference flips.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, filtersJson, fetchDetail]);
 
   useEffect(() => {
     loadDetail();
@@ -103,6 +117,17 @@ export default function HotelGroupsPage() {
   };
 
   const groupDetail = detail ?? emptyDetail;
+
+  function handleSelectionChange(ids: string[]) {
+    setSelectedGroupIds(ids);
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (ids.length === 0) {
+      params.delete("group");
+    } else {
+      params.set("group", ids.join(","));
+    }
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
@@ -122,19 +147,13 @@ export default function HotelGroupsPage() {
         <SectionAccordion title="Hotel Groups">
           <GroupSelector
             groups={groups}
-            selectedId={selectedGroupId}
-            onSelect={(id) => {
-              setSelectedGroupId(id);
-              // Preserve URL-based selection.
-              const params = new URLSearchParams(searchParams?.toString() ?? "");
-              params.set("group", id);
-              router.replace(`?${params.toString()}`, { scroll: false });
-            }}
+            selected={selectedGroupIds}
+            onChange={handleSelectionChange}
             loading={listLoading}
           />
         </SectionAccordion>
 
-        {!selectedGroupId && !listLoading && groups.length > 0 && (
+        {selectedGroupIds.length === 0 && !listLoading && groups.length > 0 && (
           <EmptyState
             icon={Building2}
             title="No hotel group selected"
@@ -142,7 +161,7 @@ export default function HotelGroupsPage() {
           />
         )}
 
-        {selectedGroupId && (
+        {selectedGroupIds.length > 0 && (
           <>
             <SectionAccordion title="Group Metrics">
               {detailLoading ? (

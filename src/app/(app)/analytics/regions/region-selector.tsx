@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/analytics/empty-state";
@@ -10,8 +11,8 @@ import type { RegionData } from "@/lib/analytics/types";
 
 interface RegionSelectorProps {
   regions: RegionData[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
+  selected: string[];
+  onChange: (ids: string[]) => void;
   loading?: boolean;
 }
 
@@ -52,22 +53,40 @@ function useMarketGroups(regions: RegionData[]): MarketGroup[] {
 function RegionCard({
   region,
   isSelected,
-  onSelect,
+  onToggle,
 }: {
   region: RegionData;
   isSelected: boolean;
-  onSelect: (id: string) => void;
+  onToggle: (id: string) => void;
 }) {
   return (
     <Card
       size="sm"
       variant={isSelected ? "elevated" : "default"}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      data-selected={isSelected ? "true" : "false"}
       className={cn(
-        "cursor-pointer transition-colors hover:border-primary/50",
+        "relative cursor-pointer transition-colors hover:border-primary/50",
         isSelected && "border-primary border-2",
       )}
-      onClick={() => onSelect(region.id)}
+      onClick={() => onToggle(region.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle(region.id);
+        }
+      }}
     >
+      {isSelected && (
+        <span
+          aria-hidden="true"
+          className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground"
+        >
+          <Check className="size-3" />
+        </span>
+      )}
       <CardContent className="flex flex-col gap-1">
         <span className="text-sm font-medium truncate">{region.name}</span>
         <span className="text-xl font-semibold tracking-tight">
@@ -84,11 +103,20 @@ function RegionCard({
 
 export function RegionSelector({
   regions,
-  selectedId,
-  onSelect,
+  selected,
+  onChange,
   loading = false,
 }: RegionSelectorProps) {
   const marketGroups = useMarketGroups(regions);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  function toggle(id: string) {
+    if (selectedSet.has(id)) {
+      onChange(selected.filter((v) => v !== id));
+    } else {
+      onChange([...selected, id]);
+    }
+  }
 
   if (loading) {
     return (
@@ -112,8 +140,8 @@ export function RegionSelector({
           <RegionCard
             key={region.id}
             region={region}
-            isSelected={region.id === selectedId}
-            onSelect={onSelect}
+            isSelected={selectedSet.has(region.id)}
+            onToggle={toggle}
           />
         ))}
       </div>
@@ -132,8 +160,8 @@ export function RegionSelector({
               <RegionCard
                 key={region.id}
                 region={region}
-                isSelected={region.id === selectedId}
-                onSelect={onSelect}
+                isSelected={selectedSet.has(region.id)}
+                onToggle={toggle}
               />
             ))}
           </div>
