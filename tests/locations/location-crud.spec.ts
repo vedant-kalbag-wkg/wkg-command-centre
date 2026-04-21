@@ -54,9 +54,10 @@ test.describe("Location CRUD (LOC-01, LOC-02)", () => {
     await expect(input).toBeVisible();
     await input.fill("123 Test Street, London");
 
-    // Native blur is more deterministic than Tab (which may land on another
-    // focusable element inside the same section).
-    await input.evaluate((el: HTMLInputElement) => el.blur());
+    // Click the page heading outside the form to blur the input. Dispatching
+    // a raw native blur() via evaluate() is not always caught by React's
+    // focusout delegation; clicking a sibling focusable is more reliable.
+    await page.getByRole("heading", { level: 1 }).first().click();
 
     // Input exits edit mode once save completes.
     await expect(input).not.toBeVisible({ timeout: 10000 });

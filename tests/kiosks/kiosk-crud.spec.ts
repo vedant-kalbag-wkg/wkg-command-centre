@@ -82,9 +82,11 @@ test.describe("Kiosk CRUD (KIOSK-01, KIOSK-02, KIOSK-03)", () => {
     await expect(input).toBeVisible();
     await input.fill("OUTLET-BLUR-001");
 
-    // Fire a native blur on the input — more deterministic than Tab (which
-    // can land on a different focusable inside the collapsible section).
-    await input.evaluate((el: HTMLInputElement) => el.blur());
+    // Click the breadcrumb outside the form to blur the input. el.blur() via
+    // evaluate() dispatches a native blur event, but React's focusout
+    // delegation can miss it if the element isn't the document's active element
+    // — clicking a sibling focusable is more reliable.
+    await page.getByRole("heading", { level: 1 }).first().click();
 
     // Input exits edit mode once the save completes.
     await expect(input).not.toBeVisible({ timeout: 10000 });

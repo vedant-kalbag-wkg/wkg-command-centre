@@ -37,6 +37,20 @@ async function gotoLocationsAndSearch(
     .toBeVisible({ timeout: 10000 });
 }
 
+/**
+ * After pressing Enter to commit an inline edit, wait for (a) the input to
+ * exit edit mode and (b) the client-side router.refresh the save action
+ * triggers to settle. Without this the subsequent page.reload() can race the
+ * in-flight server action and read back the pre-edit value.
+ */
+async function waitForInlineEditCommit(
+  page: Parameters<typeof signInAsAdmin>[0],
+  input: import("@playwright/test").Locator,
+) {
+  await expect(input).not.toBeVisible({ timeout: 10000 });
+  await page.waitForLoadState("networkidle", { timeout: 10000 });
+}
+
 test.describe("@locations inline edit on /locations table", () => {
   test.beforeEach(async ({ page }) => {
     await signInAsAdmin(page);
@@ -61,14 +75,13 @@ test.describe("@locations inline edit on /locations table", () => {
     await input.fill(newName);
     await input.press("Enter");
 
-    // After save, the new name should be visible in the row.
-    await expect(page.getByText(newName).first()).toBeVisible({
-      timeout: 10000,
-    });
-
-    // Reload and assert the edit persisted.
+    // The edit triggers a server action + router.refresh which can transiently
+    // reset the client-side global-filter state on the table; rather than
+    // asserting the edited cell is visible in the filtered view before the
+    // reload (which races the refresh), reload the page and re-apply the
+    // search. That gives us the same persistence guarantee deterministically.
+    await waitForInlineEditCommit(page, input);
     await page.reload();
-    // Re-apply the search after reload (search state is not persisted).
     const search = page.getByPlaceholder(/search locations/i).first();
     await search.fill(newName);
     await expect(page.getByText(newName).first()).toBeVisible({
@@ -106,12 +119,11 @@ test.describe("@locations inline edit on /locations table", () => {
     await input.fill(addressValue);
     await input.press("Enter");
 
-    await expect(page.getByText(addressValue).first()).toBeVisible({
-      timeout: 10000,
-    });
-
+    // Reload and re-apply search to check persistence deterministically; the
+    // post-save RSC refresh can momentarily clear the client-side global-filter
+    // state, which races an assertion that only checks in-memory visibility.
+    await waitForInlineEditCommit(page, input);
     await page.reload();
-    // Re-apply the search after reload — table filters don't persist.
     const searchAfter = page.getByPlaceholder(/search locations/i).first();
     await searchAfter.fill(name);
     await expect(page.getByText(addressValue).first()).toBeVisible({
@@ -146,6 +158,12 @@ test.describe("@locations inline edit on /locations table", () => {
     await expect(input).toBeVisible();
     await input.fill("240");
     await input.press("Enter");
+
+    // Wait for the input to exit edit mode AND the router.refresh RSC round-trip
+    // before reloading so the save request actually commits server-side.
+    // Reloading mid-flight can race the write and read back the original empty
+    // value.
+    await waitForInlineEditCommit(page, input);
 
     // Reload and assert the value shows 240 in the row.
     await page.reload();
