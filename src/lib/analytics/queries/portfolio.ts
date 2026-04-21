@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { salesRecords, locations, products } from "@/db/schema";
 import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
@@ -77,7 +78,7 @@ export async function getPortfolioSummary(
 ): Promise<PortfolioSummary> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     total_revenue: string;
     total_transactions: string;
     total_quantity: string;
@@ -116,7 +117,7 @@ export async function getCategoryPerformance(
 ): Promise<CategoryPerformanceRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     category_name: string;
     revenue: string;
     transactions: string;
@@ -153,7 +154,7 @@ export async function getTopProducts(
 ): Promise<TopProductRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     product_name: string;
     revenue: string;
     transactions: string;
@@ -189,7 +190,7 @@ export async function getDailyTrends(
 ): Promise<DailyTrendRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     date: string;
     revenue: string;
     transactions: string;
@@ -221,7 +222,7 @@ export async function getHourlyDistribution(
   const timeNotNull = sql`${salesRecords.transactionTime} IS NOT NULL`;
   const whereClause = combineConditions([baseWhere, timeNotNull]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     hour: string;
     revenue: string;
     transactions: string;
@@ -251,7 +252,7 @@ export async function getOutletTiers(
 ): Promise<OutletTierRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rawRows = await db.execute<{
+  const rawRows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;

@@ -6,6 +6,7 @@
  */
 
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { sql } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
@@ -128,7 +129,7 @@ export async function executePivot(
   const pivotSQL = buildPivotSQL(config, whereClause);
 
   // 4. Execute query
-  const rawRows = await db.execute(sql.raw(pivotSQL));
+  const rawRows = await executeRows(sql.raw(pivotSQL));
 
   // 5. Format results
   const result = formatPivotResults(
@@ -172,7 +173,7 @@ async function addPeriodComparison(
 
   const prevWhereClause = await buildPivotWhereString(prevFilters, userCtx);
   const prevSQL = buildPivotSQL(prevConfig, prevWhereClause);
-  const prevRawRows = await db.execute(sql.raw(prevSQL));
+  const prevRawRows = await executeRows(sql.raw(prevSQL));
   const prevResult = formatPivotResults(
     prevRawRows as unknown as Record<string, unknown>[],
     prevConfig,
