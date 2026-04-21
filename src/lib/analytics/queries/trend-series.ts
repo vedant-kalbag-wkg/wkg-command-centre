@@ -2,7 +2,6 @@ import { db } from "@/db";
 import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
-  locations,
   businessEvents,
   eventCategories,
   locationHotelGroupMemberships,
@@ -12,10 +11,8 @@ import {
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
-import {
-  buildExclusionCondition,
-  combineConditions,
-} from "@/lib/analytics/queries/shared";
+import { combineConditions } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import type {
   TrendMetric,
   SeriesFilters,
@@ -92,9 +89,12 @@ export async function getTrendSeriesData(
   dateTo: string,
   userCtx: UserCtx,
 ): Promise<TrendDataPoint[]> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: `buildActiveLocationCondition` replaces the old
+  // `buildExclusionCondition` + INNER JOIN locations. Dropping the JOIN keeps
+  // this query on the sales_records covering index alone.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = sql`${salesRecords.transactionDate} >= ${dateFrom} AND ${salesRecords.transactionDate} <= ${dateTo}`;
@@ -103,7 +103,7 @@ export async function getTrendSeriesData(
   const whereClause = combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     ...seriesConditions,
   ]);
 
@@ -115,7 +115,6 @@ export async function getTrendSeriesData(
       ${salesRecords.transactionDate}::text AS date,
       COALESCE(${metricExpression(metric)}, 0) AS value
     FROM ${salesRecords}
-      INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${salesRecords.transactionDate}
     ORDER BY ${salesRecords.transactionDate} ASC

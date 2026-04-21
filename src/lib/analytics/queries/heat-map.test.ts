@@ -24,6 +24,16 @@ vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
   };
 });
 
+// Phase 1 #6: new request-scoped active-location helper. Under test we don't
+// care which IDs get fetched — `combineConditions` is stubbed to undefined
+// anyway — so just short-circuit it to a no-op condition. Returning
+// undefined keeps parity with the previous `buildExclusionCondition` mock.
+vi.mock("@/lib/analytics/active-locations", () => ({
+  getActiveLocationIds: vi.fn().mockResolvedValue([]),
+  buildActiveLocationCondition: vi.fn().mockResolvedValue(undefined),
+  buildActiveLocationConditionForRawContext: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
 import { getHeatMapData } from "./heat-map";

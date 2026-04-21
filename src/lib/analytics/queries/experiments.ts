@@ -4,12 +4,12 @@ import { sql, inArray, notInArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import { getComparisonDates } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
@@ -32,9 +32,11 @@ export async function getCohortMetrics(
     return { revenue: 0, transactions: 0, avgRevenue: 0 };
   }
 
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  // No locations columns are used in SELECT, so we also drop the JOIN.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -46,7 +48,7 @@ export async function getCohortMetrics(
   const where = combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     locationCondition,
     ...dimensionConditions,
@@ -58,7 +60,6 @@ export async function getCohortMetrics(
       transactions: sql<number>`COUNT(*)::int`,
     })
     .from(salesRecords)
-    .innerJoin(locations, sql`${salesRecords.locationId} = ${locations.id}`)
     .where(where);
 
   const row = rows[0];
@@ -78,9 +79,11 @@ export async function getRestOfPortfolioMetrics(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<{ revenue: number; transactions: number; avgRevenue: number }> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  // No locations columns used in SELECT — drop the JOIN.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -90,7 +93,7 @@ export async function getRestOfPortfolioMetrics(
   const conditions: (SQL | undefined)[] = [
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ];
@@ -112,7 +115,6 @@ export async function getRestOfPortfolioMetrics(
       transactions: sql<number>`COUNT(*)::int`,
     })
     .from(salesRecords)
-    .innerJoin(locations, sql`${salesRecords.locationId} = ${locations.id}`)
     .where(where);
 
   const row = rows[0];
@@ -145,9 +147,10 @@ export async function findSimilarLocations(
   const avgRooms = Number(cohortProfiles[0]?.avgRooms ?? 0);
 
   // 2. Get cohort avg revenue per location
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
   const dateCondition = buildDateCondition(filters);
 
@@ -156,12 +159,11 @@ export async function findSimilarLocations(
       avgRevPerLocation: sql<string>`COALESCE(SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0)`,
     })
     .from(salesRecords)
-    .innerJoin(locations, sql`${salesRecords.locationId} = ${locations.id}`)
     .where(
       combineConditions([
         dateCondition,
         scopeCondition,
-        exclusionCondition,
+        activeLocationCondition,
         inArray(salesRecords.locationId, cohortLocationIds),
       ]),
     );
@@ -191,7 +193,7 @@ export async function findSimilarLocations(
         sql`${salesRecords.locationId} = ${locations.id}`,
         dateCondition,
         scopeCondition,
-        exclusionCondition,
+        activeLocationCondition,
       ]),
     )
     .where(
