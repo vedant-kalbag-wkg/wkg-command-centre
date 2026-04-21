@@ -62,10 +62,12 @@ test.describe("Location CRUD (LOC-01, LOC-02)", () => {
     // Input exits edit mode once save completes.
     await expect(input).not.toBeVisible({ timeout: 10000 });
 
-    // Value should persist after save
-    await expect(page.getByText("123 Test Street, London")).toBeVisible({
-      timeout: 10000,
-    });
+    // Value should persist after save. The saved address shows up in both
+    // the header description and the inline-edit span — .first() collapses
+    // the strict-mode match to the first visible occurrence.
+    await expect(
+      page.getByText("123 Test Street, London").first(),
+    ).toBeVisible({ timeout: 10000 });
   });
 
   test("LOC-02: can archive a location", async ({ page }) => {
