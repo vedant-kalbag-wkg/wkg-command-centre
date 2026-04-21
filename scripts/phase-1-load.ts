@@ -34,7 +34,6 @@ const ROUTES = [
   "/analytics/commission",
   "/analytics/trend-builder",
   "/analytics/experiments",
-  "/analytics/flags",
   "/analytics/actions-dashboard",
 ] as const;
 
