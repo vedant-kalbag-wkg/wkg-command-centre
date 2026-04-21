@@ -18,13 +18,16 @@ test.describe("Kiosk CRUD (KIOSK-01, KIOSK-02, KIOSK-03)", () => {
   // KIOSK-01: Create kiosk
   test("KIOSK-01: can create a kiosk with all required fields", async ({ page }) => {
     await page.goto("/kiosks/new");
-    await expect(page.getByText("New Kiosk")).toBeVisible();
+    // Use the h1 role to avoid matching breadcrumb + description text nodes.
+    await expect(
+      page.getByRole("heading", { name: "New kiosk", level: 1 }),
+    ).toBeVisible();
 
     await page.getByPlaceholder("e.g. KSK-001").fill(`TEST-${Date.now()}`);
     await page.getByRole("button", { name: "Create kiosk" }).click();
 
     await expect(page).toHaveURL(/\/kiosks\/[0-9a-f-]+$/, { timeout: 15000 });
-    await expect(page.getByText("Details")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Details" })).toBeVisible();
   });
 
   test("KIOSK-01: new kiosk gets default pipeline stage", async ({ page }) => {
@@ -79,11 +82,17 @@ test.describe("Kiosk CRUD (KIOSK-01, KIOSK-02, KIOSK-03)", () => {
     await expect(input).toBeVisible();
     await input.fill("OUTLET-BLUR-001");
 
-    // Blur by pressing Tab — moves focus without toggling any collapsible sections
-    await input.press("Tab");
+    // Fire a native blur on the input — more deterministic than Tab (which
+    // can land on a different focusable inside the collapsible section).
+    await input.evaluate((el: HTMLInputElement) => el.blur());
 
-    // Value should persist after blur-triggered save
-    await expect(page.getByText("OUTLET-BLUR-001")).toBeVisible({ timeout: 8000 });
+    // Input exits edit mode once the save completes.
+    await expect(input).not.toBeVisible({ timeout: 10000 });
+
+    // Value should persist after blur-triggered save.
+    await expect(
+      page.getByText("OUTLET-BLUR-001", { exact: true }),
+    ).toBeVisible({ timeout: 10000 });
   });
 
   test("KIOSK-02: can edit kiosk field inline — save on Enter", async ({ page }) => {

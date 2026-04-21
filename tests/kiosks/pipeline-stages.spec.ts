@@ -148,8 +148,11 @@ test.describe("Pipeline Stages (KIOSK-04)", () => {
     const count = await stageItems.count();
     expect(count).toBeGreaterThan(1);
 
-    // Get first two stage names
-    const stageNameEls = page.locator('[class*="cursor-pointer hover:text-wk-azure"]');
+    // Get first two stage names. The stage name span has
+    // `cursor-pointer hover:text-primary`.
+    const stageNameEls = page.locator(
+      '[class*="cursor-pointer"][class*="hover:text-primary"]',
+    );
     const firstName = await stageNameEls.nth(0).textContent();
     const secondName = await stageNameEls.nth(1).textContent();
 

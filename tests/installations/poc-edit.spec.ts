@@ -12,12 +12,14 @@ async function createInstallation(
 ): Promise<string> {
   await page.goto("/installations/new");
   const name = `${prefix}-${Date.now()}`;
-  // The create form's name field label is "Name" in InstallationForm.
+  // The create form's first textbox is the Name field (required).
+  // The label renders as "Name *" so an exact-match regex misses it; use
+  // placeholder which is stable.
   await page
-    .getByLabel(/^name$/i)
+    .getByPlaceholder(/Sydney Airport|e\.g\./i)
     .first()
     .fill(name);
-  await page.getByRole("button", { name: /create|save/i }).first().click();
+  await page.getByRole("button", { name: /create installation/i }).click();
   // Phase 3 redirect: after save, returns to /installations.
   await expect(page).toHaveURL(/\/installations(\?.*)?$/, { timeout: 15000 });
   return name;
