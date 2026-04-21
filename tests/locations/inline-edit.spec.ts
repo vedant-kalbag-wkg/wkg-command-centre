@@ -177,8 +177,14 @@ test.describe("@locations inline edit on /locations table", () => {
     await expect(input).toBeVisible();
     await input.fill("240");
     // Let the controlled Input's onChange flush so the handleKeyDown closure
-    // sees the new editValue when Enter fires.
-    await page.waitForTimeout(100);
+    // sees the new editValue when Enter fires. Without this settle, some
+    // runs hit a commitEdit call with editValue="", which is treated as a
+    // no-op (equal to originalStr) and silently drops the write.
+    await page.waitForTimeout(250);
+    // Assert the DOM value has committed before we trigger the save — this
+    // both verifies the fill took effect and waits for React's controlled
+    // input re-render to settle.
+    await expect(input).toHaveValue("240");
     await input.press("Enter");
 
     // Wait for the input to exit edit mode AND the EditableCell's aria-busy
@@ -186,6 +192,13 @@ test.describe("@locations inline edit on /locations table", () => {
     // this the subsequent page.reload() can race the write and read back the
     // pre-edit value.
     await waitForInlineEditCommit(roomsCell, input);
+
+    // Before reload, verify the cell is showing "240" (post-save re-render).
+    // This catches the silent no-op case where commitEdit short-circuited
+    // because editValue was still empty at Enter-press time.
+    await expect(roomsCell.getByText("240").first()).toBeVisible({
+      timeout: 10000,
+    });
 
     // Reload and assert the value shows 240 in the row.
     await page.reload();
