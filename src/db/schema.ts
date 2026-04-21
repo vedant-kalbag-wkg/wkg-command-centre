@@ -198,21 +198,30 @@ export const locations = pgTable("locations", {
 });
 
 // Kiosk assignments — temporal join table for assignment history
-export const kioskAssignments = pgTable("kiosk_assignments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  kioskId: uuid("kiosk_id")
-    .notNull()
-    .references(() => kiosks.id),
-  locationId: uuid("location_id")
-    .notNull()
-    .references(() => locations.id),
-  assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
-  unassignedAt: timestamp("unassigned_at", { withTimezone: true }),
-  reason: text("reason"),
-  assignedBy: text("assigned_by").notNull(),
-  assignedByName: text("assigned_by_name").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const kioskAssignments = pgTable(
+  "kiosk_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kioskId: uuid("kiosk_id")
+      .notNull()
+      .references(() => kiosks.id),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
+    unassignedAt: timestamp("unassigned_at", { withTimezone: true }),
+    reason: text("reason"),
+    assignedBy: text("assigned_by").notNull(),
+    assignedByName: text("assigned_by_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    locIdAssignedAtIdx: index("kiosk_assignments_loc_id_assigned_at_idx").on(
+      t.locationId,
+      t.assignedAt,
+    ),
+  }),
+);
 
 // Audit log — append-only with denormalized actor/entity names
 export const auditLogs = pgTable("audit_logs", {
