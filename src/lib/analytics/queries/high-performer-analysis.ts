@@ -20,6 +20,7 @@ import {
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { getLocationRevenuesForRequest } from "@/lib/analytics/queries/location-revenues";
 import type {
   AnalyticsFilters,
   HighPerformerPatterns,
@@ -104,23 +105,11 @@ async function computePerformerPatterns(
 ): Promise<CommonShape> {
   const whereClause = await buildWhere(filters, userCtx);
 
-  // 1. Per-location revenue + rooms (our composite-score proxy for this view)
-  const locationRevenues = await executeRows<{
-    location_id: string;
-    location_name: string;
-    revenue: string;
-    num_rooms: string | null;
-  }>(sql`
-    SELECT
-      ${salesRecords.locationId} AS location_id,
-      ${locations.name} AS location_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
-      ${locations.numRooms}::text AS num_rooms
-    FROM ${salesRecords}
-      INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
-    ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${salesRecords.locationId}, ${locations.name}, ${locations.numRooms}
-  `);
+  // 1. Per-location revenue + rooms (our composite-score proxy for this view).
+  //    Shared via React.cache so the high- and low-performer paths — which
+  //    both call `computePerformerPatterns` with the same filters/userCtx
+  //    within one render — collapse to a single aggregate query.
+  const locationRevenues = await getLocationRevenuesForRequest(filters, userCtx);
 
   const totalCount = locationRevenues.length;
 
