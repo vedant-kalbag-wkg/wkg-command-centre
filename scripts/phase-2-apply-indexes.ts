@@ -133,11 +133,15 @@ async function runCheck(url: string): Promise<void> {
 async function runApply(url: string): Promise<void> {
   const stamp = stampPath(url);
   if (!existsSync(stamp)) {
-    throw new Error(`Safety rail: run --check against this DB host first.`);
+    throw new Error(
+      `Safety rail: no preflight stamp for host=${new URL(url).host} at ${stamp}. Run --check first.`,
+    );
   }
   const ts = Number(readFileSync(stamp, "utf8"));
   if (Date.now() - ts > 60 * 60 * 1000) {
-    throw new Error(`Safety rail: preflight stamp is >1h old. Re-run --check.`);
+    throw new Error(
+      `Safety rail: preflight stamp for host=${new URL(url).host} is ${Math.round((Date.now() - ts) / 60000)}m old (>60m). Re-run --check.`,
+    );
   }
 
   const sql = postgres(url, { max: 1, onnotice: () => {} });
@@ -199,5 +203,10 @@ if (!fn) {
 
 fn(url).catch((err) => {
   console.error(err);
+  if (err && typeof err === "object") {
+    for (const k of ["code", "detail", "hint", "where", "position", "schema", "table"]) {
+      if (k in err) console.error(`  ${k}: ${(err as Record<string, unknown>)[k]}`);
+    }
+  }
   process.exit(1);
 });
