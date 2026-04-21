@@ -63,7 +63,7 @@ export async function buildActiveLocationCondition(): Promise<SQL | undefined> {
     // No active locations → every query should return zero rows.
     return sql`FALSE`;
   }
-  return sql`${salesRecords.locationId} = ANY(${ids}::uuid[])`;
+  return sql`${salesRecords.locationId} = ANY(${sql.param(ids)}::uuid[])`;
 }
 
 /**
