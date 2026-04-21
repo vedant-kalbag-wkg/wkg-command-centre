@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -103,7 +104,7 @@ async function computePerformerPatterns(
   const whereClause = await buildWhere(filters, userCtx);
 
   // 1. Per-location revenue + rooms (our composite-score proxy for this view)
-  const locationRevenues = await db.execute<{
+  const locationRevenues = await executeRows<{
     location_id: string;
     location_name: string;
     revenue: string;
@@ -166,7 +167,7 @@ async function computePerformerPatterns(
   const [hotelGroupRows, regionRows, kioskRows, topProductRows] =
     await Promise.all([
       // Hotel group distribution
-      db.execute<{ name: string; count: string }>(sql`
+      executeRows<{ name: string; count: string }>(sql`
         SELECT
           ${hotelGroups.name} AS name,
           COUNT(DISTINCT ${locationHotelGroupMemberships.locationId})::text AS count
@@ -182,7 +183,7 @@ async function computePerformerPatterns(
       `),
 
       // Region distribution
-      db.execute<{ name: string; count: string }>(sql`
+      executeRows<{ name: string; count: string }>(sql`
         SELECT
           ${regions.name} AS name,
           COUNT(DISTINCT ${locationRegionMemberships.locationId})::text AS count
@@ -198,7 +199,7 @@ async function computePerformerPatterns(
       `),
 
       // Average kiosk count per tier location
-      db.execute<{ avg_kiosks: string | null }>(sql`
+      executeRows<{ avg_kiosks: string | null }>(sql`
         SELECT
           AVG(kiosk_count)::text AS avg_kiosks
         FROM (
@@ -216,7 +217,7 @@ async function computePerformerPatterns(
       `),
 
       // Top products by revenue for tier locations
-      db.execute<{ name: string; revenue: string }>(sql`
+      executeRows<{ name: string; revenue: string }>(sql`
         SELECT
           ${products.name} AS name,
           COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue

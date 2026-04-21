@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -83,7 +84,7 @@ async function getLocationMetrics(
   const entityFilter = sql`${salesRecords.locationId} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
     revenue: string;
@@ -124,7 +125,7 @@ async function getHotelGroupMetrics(
   const entityFilter = sql`${hotelGroups.id} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
     revenue: string;
@@ -167,7 +168,7 @@ async function getRegionMetrics(
   const entityFilter = sql`${regions.id} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
     revenue: string;

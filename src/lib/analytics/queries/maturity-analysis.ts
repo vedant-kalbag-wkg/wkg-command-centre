@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { salesRecords, locations } from "@/db/schema";
 import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
@@ -69,7 +70,7 @@ export async function getRevenueByMaturityBucket(
   // its maturity today, ignoring the selected reporting window.
   const referenceDate = sql`${filters.dateTo}::timestamp`;
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     bucket: string;
     location_count: string;
     avg_revenue: string;
@@ -129,7 +130,7 @@ export async function getRevenueRampCurve(
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     months_since: string;
     avg_revenue: string;
     location_count: string;
@@ -182,7 +183,7 @@ export async function getInstallCohorts(
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     install_month: string;
     location_count: string;
     avg_monthly_revenue: string;

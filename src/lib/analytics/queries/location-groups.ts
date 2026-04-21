@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -71,7 +72,7 @@ export async function getLocationGroupsList(
 ): Promise<LocationGroupData[]> {
   const whereClause = await buildLocationGroupWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     group_id: string;
     group_name: string;
     revenue: string;
@@ -126,7 +127,7 @@ export async function getLocationGroupDetail(
   const fullWhere = combineConditions([whereClause, groupFilter]);
 
   // Summary + capacity metrics
-  const summaryRows = await db.execute<{
+  const summaryRows = await executeRows<{
     revenue: string;
     transactions: string;
     hotel_count: string;
@@ -191,7 +192,7 @@ export async function getLocationGroupDetail(
   }
 
   // Hotel breakdown
-  const hotelRows = await db.execute<{
+  const hotelRows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -243,7 +244,7 @@ export async function getLocationGroupDetail(
 
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
-    const prevSummary = await db.execute<{
+    const prevSummary = await executeRows<{
       revenue: string;
       transactions: string;
     }>(sql`

@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -74,7 +75,7 @@ export async function getRegionsList(
   const whereClause = await buildRegionWhere(filters, userCtx);
 
   const [rows, countRows] = await Promise.all([
-    db.execute<{
+    executeRows<{
       region_id: string;
       region_name: string;
       market_id: string | null;
@@ -94,7 +95,7 @@ export async function getRegionsList(
       GROUP BY ${regions.id}, ${regions.name}, ${markets.id}, ${markets.name}
       ORDER BY revenue DESC
     `),
-    db.execute<{
+    executeRows<{
       region_id: string;
       hotel_group_count: string;
       location_group_count: string;
@@ -140,7 +141,7 @@ export async function getRegionDetail(
   const fullWhere = combineConditions([whereClause, regionFilter]);
 
   // Summary metrics
-  const summaryRows = await db.execute<{
+  const summaryRows = await executeRows<{
     revenue: string;
     transactions: string;
   }>(sql`
@@ -163,7 +164,7 @@ export async function getRegionDetail(
   `;
 
   // Hotel group breakdown within region
-  const hgRows = await db.execute<{
+  const hgRows = await executeRows<{
     group_name: string;
     revenue: string;
     transactions: string;
@@ -197,7 +198,7 @@ export async function getRegionDetail(
   });
 
   // Location group breakdown within region
-  const lgRows = await db.execute<{
+  const lgRows = await executeRows<{
     group_name: string;
     revenue: string;
     transactions: string;
@@ -236,7 +237,7 @@ export async function getRegionDetail(
 
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
-    const prevSummary = await db.execute<{
+    const prevSummary = await executeRows<{
       revenue: string;
       transactions: string;
     }>(sql`

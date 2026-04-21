@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -106,7 +107,7 @@ export async function getTrendSeriesData(
     ...seriesConditions,
   ]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     date: string;
     value: string;
   }>(sql`
@@ -132,7 +133,7 @@ export async function getBusinessEvents(
   dateFrom: string,
   dateTo: string,
 ): Promise<BusinessEventDisplay[]> {
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     id: string;
     title: string;
     description: string | null;

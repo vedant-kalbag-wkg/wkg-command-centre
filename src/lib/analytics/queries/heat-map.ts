@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { salesRecords, locations, kioskAssignments } from "@/db/schema";
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
@@ -101,7 +102,7 @@ export async function getHeatMapData(
   const whereClause = await buildHeatMapWhere(filters, userCtx);
 
   // 1. Query sales grouped by location
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -129,7 +130,7 @@ export async function getHeatMapData(
   // Kiosk count: scoped to locations from the sales query results
   const locationIds = rows.map((r) => r.location_id);
   const kioskCountRows = locationIds.length > 0
-    ? await db.execute<{
+    ? await executeRows<{
         location_id: string;
         kiosk_count: string;
       }>(sql`

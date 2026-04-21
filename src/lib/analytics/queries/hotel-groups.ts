@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -70,7 +71,7 @@ export async function getHotelGroupsList(
   const whereClause = await buildHotelGroupWhere(filters, userCtx);
 
   // Current period
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     group_id: string;
     group_name: string;
     revenue: string;
@@ -94,7 +95,7 @@ export async function getHotelGroupsList(
   const prevFilters: AnalyticsFilters = { ...filters, dateFrom: prevFrom, dateTo: prevTo };
   const prevWhereClause = await buildHotelGroupWhere(prevFilters, userCtx);
 
-  const prevRows = await db.execute<{
+  const prevRows = await executeRows<{
     group_id: string;
     revenue: string;
     transactions: string;
@@ -141,7 +142,7 @@ export async function getHotelGroupDetail(
   const fullWhere = combineConditions([whereClause, groupFilter]);
 
   // Summary metrics
-  const summaryRows = await db.execute<{
+  const summaryRows = await executeRows<{
     revenue: string;
     transactions: string;
     hotel_count: string;
@@ -160,7 +161,7 @@ export async function getHotelGroupDetail(
   const hotelCount = Number(summary.hotel_count);
 
   // Hotel breakdown
-  const hotelRows = await db.execute<{
+  const hotelRows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -205,7 +206,7 @@ export async function getHotelGroupDetail(
   });
 
   // Daily trends
-  const trendRows = await db.execute<{
+  const trendRows = await executeRows<{
     date: string;
     revenue: string;
     transactions: string;
@@ -234,7 +235,7 @@ export async function getHotelGroupDetail(
 
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
-    const prevSummary = await db.execute<{
+    const prevSummary = await executeRows<{
       revenue: string;
       transactions: string;
     }>(sql`
