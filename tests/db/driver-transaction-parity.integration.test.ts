@@ -39,16 +39,21 @@ let db: typeof DbType;
 const SENTINEL_PREFIX = "DRIVER-PARITY-TEST-";
 const PER_TEST_TIMEOUT_MS = 30_000;
 
+// Per-run prefix, populated in `beforeAll`. Scoping cleanup to this prevents
+// concurrent runs of this suite (CI + local dev, parallel workers) from
+// clobbering each other's in-flight rows.
+let RUN_PREFIX: string;
+
 /**
  * Unique `entity_type` value for a single test case. All rows written in a
  * single test share the same entityType so cleanup is a single DELETE.
  */
 function freshEntityType(): string {
-  return `${SENTINEL_PREFIX}${randomUUID()}`;
+  return `${RUN_PREFIX}${randomUUID()}`;
 }
 
 async function cleanupAllSentinelRows(): Promise<void> {
-  await db.delete(auditLogs).where(like(auditLogs.entityType, `${SENTINEL_PREFIX}%`));
+  await db.delete(auditLogs).where(like(auditLogs.entityType, `${RUN_PREFIX}%`));
 }
 
 describe("db.transaction — commit/rollback parity across drivers", () => {
@@ -58,6 +63,7 @@ describe("db.transaction — commit/rollback parity across drivers", () => {
         "DATABASE_URL must be set for this integration test — it exercises the real db export.",
       );
     }
+    RUN_PREFIX = `${SENTINEL_PREFIX}${randomUUID()}-`;
     // Dynamic import — ensures `.env.local` has been applied to `process.env`
     // before `@/db` evaluates and captures `DATABASE_URL`.
     ({ db } = await import("@/db"));
@@ -170,6 +176,15 @@ describe("db.transaction — commit/rollback parity across drivers", () => {
             entityId: marker,
             action: "rollback-late",
           });
+          // Observe the inserted row from INSIDE the transaction. This proves
+          // the insert actually landed on the tx connection — a driver that
+          // silently no-op'd the insert would fail this assertion, so the
+          // post-tx `toHaveLength(0)` below becomes genuine rollback proof.
+          const midTx = await tx
+            .select({ id: auditLogs.id })
+            .from(auditLogs)
+            .where(eq(auditLogs.entityId, marker));
+          expect(midTx).toHaveLength(1);
           // Second statement throws AFTER the insert has landed on the
           // connection — the driver must still roll back the earlier insert.
           throw new Error("deliberate late rollback");
