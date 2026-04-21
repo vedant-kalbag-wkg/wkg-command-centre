@@ -174,10 +174,7 @@ async function computePerformerPatterns(
         FROM ${locationHotelGroupMemberships}
           INNER JOIN ${hotelGroups}
             ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
-        WHERE ${locationHotelGroupMemberships.locationId} IN ${sql`(${sql.join(
-          tierIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`}
+        WHERE ${locationHotelGroupMemberships.locationId} = ANY(${sql.param(tierIds)}::uuid[])
         GROUP BY ${hotelGroups.name}
         ORDER BY count DESC
       `),
@@ -190,10 +187,7 @@ async function computePerformerPatterns(
         FROM ${locationRegionMemberships}
           INNER JOIN ${regions}
             ON ${locationRegionMemberships.regionId} = ${regions.id}
-        WHERE ${locationRegionMemberships.locationId} IN ${sql`(${sql.join(
-          tierIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`}
+        WHERE ${locationRegionMemberships.locationId} = ANY(${sql.param(tierIds)}::uuid[])
         GROUP BY ${regions.name}
         ORDER BY count DESC
       `),
@@ -207,10 +201,7 @@ async function computePerformerPatterns(
             ${kioskAssignments.locationId},
             COUNT(*)::int AS kiosk_count
           FROM ${kioskAssignments}
-          WHERE ${kioskAssignments.locationId} IN ${sql`(${sql.join(
-            tierIds.map((id) => sql`${id}`),
-            sql`, `,
-          )})`}
+          WHERE ${kioskAssignments.locationId} = ANY(${sql.param(tierIds)}::uuid[])
             AND ${kioskAssignments.unassignedAt} IS NULL
           GROUP BY ${kioskAssignments.locationId}
         ) AS kc
@@ -224,10 +215,7 @@ async function computePerformerPatterns(
         FROM ${salesRecords}
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
-        WHERE ${salesRecords.locationId} IN ${sql`(${sql.join(
-          tierIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`}
+        WHERE ${salesRecords.locationId} = ANY(${sql.param(tierIds)}::uuid[])
           ${whereClause ? sql`AND ${whereClause}` : sql``}
         GROUP BY ${products.name}
         ORDER BY revenue DESC
