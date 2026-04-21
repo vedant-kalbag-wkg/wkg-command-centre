@@ -1,0 +1,5 @@
+-- Query:
+select "id", "name", "email", "email_verified", "image", "created_at", "updated_at", "role", "banned", "ban_reason", "ban_expires", "user_type" from "user" where "user"."id" = $1
+
+-- Plan:
+EXPLAIN failed: there is no parameter $1

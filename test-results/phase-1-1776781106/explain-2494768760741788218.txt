@@ -1,0 +1,11 @@
+-- Query:
+SELECT
+      "locations"."id" AS location_id,
+      COALESCE("locations"."outlet_code", $4) AS outlet_code,
+      "locations"."name" AS hotel_name,
+      (SELECT MIN("kiosk_assignments"."assigned_at") FROM "kiosk_assignments" WHERE "kiosk_assignments"."location_id" = "locations"."id")::text AS live_date,
+      COALESCE(SUM("sales_records"."gross_amount"), $5) AS revenue,
+      COUNT(*)::text AS tr
+
+-- Plan:
+EXPLAIN failed: missing FROM-clause entry for table "locations"

@@ -1,0 +1,12 @@
+-- Query:
+SELECT
+          "products"."name" AS name,
+          COALESCE(SUM("sales_records"."gross_amount"), $5) AS revenue
+        FROM "sales_records"
+          INNER JOIN "products" ON "sales_records"."product_id" = "products"."id"
+          INNER JOIN "locations" ON "sales_records"."location_id" = "locations"."id"
+        WHERE "sales_records"."location_id" = ANY($1::uuid[])
+          AND "sales_record
+
+-- Plan:
+EXPLAIN failed: unterminated quoted identifier at or near ""sales_record"

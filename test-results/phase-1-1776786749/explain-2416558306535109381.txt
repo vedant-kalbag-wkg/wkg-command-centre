@@ -1,0 +1,5 @@
+-- Query:
+select "id", "expires_at", "token", "created_at", "updated_at", "ip_address", "user_agent", "user_id" from "session" where "session"."token" = $1
+
+-- Plan:
+EXPLAIN failed: there is no parameter $1

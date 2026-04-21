@@ -1,0 +1,9 @@
+-- Query:
+SELECT state, pg_catalog.to_char(state_change, $1::pg_catalog.text) AS state_change
+                FROM pg_stat_activity
+                    WHERE backend_type OPERATOR(pg_catalog.=) $2::pg_catalog.text
+                    AND pid OPERATOR(pg_catalog.!=) pg_catalog.pg_backend_pid()
+                    AND usename OPERATOR(pg_catalog.!=) $3::pg_catalog.name
+
+-- Plan:
+EXPLAIN failed: there is no parameter $1
