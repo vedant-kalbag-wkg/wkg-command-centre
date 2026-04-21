@@ -33,6 +33,14 @@ const INDEXES = [
           ON "kiosk_assignments" ("location_id", "assigned_at")`,
     rollback: `DROP INDEX CONCURRENTLY IF EXISTS "kiosk_assignments_loc_assigned_idx"`,
   },
+  {
+    name: "sales_records_txn_prod_covering_idx",
+    table: "sales_records",
+    ddl: `CREATE INDEX CONCURRENTLY IF NOT EXISTS "sales_records_txn_prod_covering_idx"
+          ON "sales_records" ("transaction_date", "product_id")
+          INCLUDE ("gross_amount", "quantity")`,
+    rollback: `DROP INDEX CONCURRENTLY IF EXISTS "sales_records_txn_prod_covering_idx"`,
+  },
 ];
 
 const REPO_ROOT = resolve(new URL("..", import.meta.url).pathname);
