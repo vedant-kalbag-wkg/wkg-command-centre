@@ -95,17 +95,13 @@ describe("high-performer-analysis bind shape", () => {
     return counts;
   }
 
-  it("emits one parameter regardless of tierIds length (50)", () => {
-    const counts = paramCount(fixture50);
-    for (const [name, n] of Object.entries(counts)) {
-      expect(n, `${name} with 50 ids`).toBe(1);
-    }
-  });
-
-  it("emits one parameter regardless of tierIds length (10)", () => {
-    const counts = paramCount(fixture10);
-    for (const [name, n] of Object.entries(counts)) {
-      expect(n, `${name} with 10 ids`).toBe(1);
+  it("emits param count invariant under tierIds length", () => {
+    const c50 = paramCount(fixture50);
+    const c10 = paramCount(fixture10);
+    for (const name of Object.keys(c50)) {
+      expect(c50[name], `${name} with 50 ids`).toBe(1);
+      expect(c10[name], `${name} with 10 ids`).toBe(1);
+      expect(c50[name], `${name} length-invariance (50 vs 10)`).toBe(c10[name]);
     }
   });
 });
