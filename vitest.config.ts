@@ -28,11 +28,18 @@ export default defineConfig({
           name: "unit",
           globals: true,
           environment: "node",
-          include: ["src/**/__tests__/**/*.test.ts", "src/**/*.test.ts"],
+          include: [
+            "src/**/__tests__/**/*.test.ts",
+            "src/**/*.test.ts",
+            // Pure-unit tests under tests/ (no DB, no Testcontainers).
+            // Excluded variants: *.integration.test.ts owned by the integration
+            // project, *.spec.ts owned by Playwright.
+            "tests/**/*.test.ts",
+          ],
           exclude: [
             "node_modules/**",
-            "tests/**",
             "**/*.integration.test.ts",
+            "tests/**/*.spec.ts",
           ],
         },
       },

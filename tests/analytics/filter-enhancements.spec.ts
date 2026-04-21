@@ -36,7 +36,9 @@ test.describe("Analytics Filter Enhancements", () => {
     await signInAsAdmin(page);
     await page.goto("/analytics/trend-builder");
 
-    await expect(page.getByLabel("YoY Overlay")).toBeVisible();
+    await expect(
+      page.getByRole("switch", { name: "YoY Overlay" }),
+    ).toBeVisible();
   });
 
   test("heat map shows traffic light status column when data is present", async ({ page }) => {
@@ -47,12 +49,15 @@ test.describe("Analytics Filter Enhancements", () => {
     // when there is data. If no data, an empty state message appears instead.
     const statusColumn = page.getByRole("columnheader", { name: "Status" });
     const emptyState = page.getByText(/no .* data available/i);
-    const performanceHeading = page.getByText("Performance Rankings");
+    // The page shows "Top 20 Performers" and "Bottom 20 Performers" ChartCards.
+    const performanceHeading = page.getByText("Top 20 Performers").first();
 
     await expect(performanceHeading).toBeVisible({ timeout: 15000 });
 
     // Assert either status column is visible (data present) or empty state shows
-    await expect(statusColumn.or(emptyState)).toBeVisible({ timeout: 15000 });
+    await expect(statusColumn.or(emptyState).first()).toBeVisible({
+      timeout: 15000,
+    });
   });
 
   test("portfolio outlet tiers shows maturity column", async ({ page }) => {

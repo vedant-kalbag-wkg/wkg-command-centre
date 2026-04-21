@@ -14,10 +14,11 @@ test.describe("Portfolio — High Performer Patterns KPI tiles", () => {
     ).toBeVisible();
 
     // Scroll the patterns card into view if needed — it's below the fold.
-    // The HighPerformerPatterns component renders a tile labeled "Avg Revenue / Room".
-    const revenuePerRoomTile = page.getByText("Avg Revenue / Room", {
-      exact: true,
-    });
+    // Both HighPerformerPatterns and LowPerformerPatterns render a tile labeled
+    // "Avg Revenue / Room", so target the first occurrence (High Performer).
+    const revenuePerRoomTile = page
+      .getByText("Avg Revenue / Room", { exact: true })
+      .first();
     await revenuePerRoomTile.scrollIntoViewIfNeeded();
     await expect(revenuePerRoomTile).toBeVisible();
 

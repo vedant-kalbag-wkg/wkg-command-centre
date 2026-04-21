@@ -1,0 +1,61 @@
+# Phase 2 preflight — 2026-04-21T10:53:24.215Z
+# DB host: ep-calm-sea-abn2ooob-pooler.eu-west-2.aws.neon.tech
+
+## sales_records
+rows: 124595
+current indexes (8):
+  sales_loc_date_idx: CREATE INDEX sales_loc_date_idx ON public.sales_records USING btree (location_id, transaction_date)
+  sales_prod_date_idx: CREATE INDEX sales_prod_date_idx ON public.sales_records USING btree (product_id, transaction_date)
+  sales_prov_date_idx: CREATE INDEX sales_prov_date_idx ON public.sales_records USING btree (provider_id, transaction_date)
+  sales_records_pkey: CREATE UNIQUE INDEX sales_records_pkey ON public.sales_records USING btree (id)
+  sales_records_sale_ref_transaction_date_unique: CREATE UNIQUE INDEX sales_records_sale_ref_transaction_date_unique ON public.sales_records USING btree (sale_ref, transaction_date)
+  sales_records_txn_loc_covering_idx: CREATE INDEX sales_records_txn_loc_covering_idx ON public.sales_records USING btree (transaction_date, location_id) INCLUDE (gross_amount, quantity, product_id)
+  sales_sale_ref_idx: CREATE INDEX sales_sale_ref_idx ON public.sales_records USING btree (sale_ref)
+  sales_txn_date_idx: CREATE INDEX sales_txn_date_idx ON public.sales_records USING btree (transaction_date)
+
+## kiosk_assignments
+rows: 381
+current indexes (2):
+  kiosk_assignments_loc_assigned_idx: CREATE INDEX kiosk_assignments_loc_assigned_idx ON public.kiosk_assignments USING btree (location_id, assigned_at)
+  kiosk_assignments_pkey: CREATE UNIQUE INDEX kiosk_assignments_pkey ON public.kiosk_assignments USING btree (id)
+
+## EXPLAIN: getPortfolioSummary-shape
+  GroupAggregate  (cost=12.79..12.82 rows=1 width=56) (actual time=0.014..0.015 rows=0 loops=1)
+    Group Key: sr.location_id
+    Buffers: shared hit=4
+    ->  Sort  (cost=12.79..12.80 rows=1 width=26) (actual time=0.013..0.014 rows=0 loops=1)
+          Sort Key: sr.location_id
+          Sort Method: quicksort  Memory: 25kB
+          Buffers: shared hit=4
+          ->  Nested Loop  (cost=0.70..12.78 rows=1 width=26) (actual time=0.009..0.010 rows=0 loops=1)
+                Buffers: shared hit=4
+                ->  Index Only Scan using sales_records_txn_loc_covering_idx on sales_records sr  (cost=0.42..4.44 rows=1 width=26) (actual time=0.009..0.009 rows=0 loops=1)
+                      Index Cond: (transaction_date >= ((CURRENT_DATE - '90 days'::interval))::date)
+                      Heap Fetches: 0
+                      Buffers: shared hit=4
+                ->  Index Scan using locations_pkey on locations l  (cost=0.27..8.29 rows=1 width=16) (never executed)
+                      Index Cond: (id = sr.location_id)
+                      Filter: (outlet_code <> 'TEST'::text)
+  Planning:
+    Buffers: shared hit=28
+  Planning Time: 0.785 ms
+  Execution Time: 0.054 ms
+
+## EXPLAIN: kioskLiveDateSubquery-shape (correlated MIN)
+  Limit  (cost=0.00..418.34 rows=50 width=24) (actual time=1.277..1.417 rows=50 loops=1)
+    Buffers: shared hit=203
+    ->  Seq Scan on locations l  (cost=0.00..2752.65 rows=329 width=24) (actual time=1.276..1.411 rows=50 loops=1)
+          Filter: (outlet_code <> 'TEST'::text)
+          Buffers: shared hit=203
+          SubPlan 2
+            ->  Result  (cost=8.29..8.30 rows=1 width=8) (actual time=0.027..0.027 rows=1 loops=50)
+                  Buffers: shared hit=200
+                  InitPlan 1 (returns $1)
+                    ->  Limit  (cost=0.27..8.29 rows=1 width=8) (actual time=0.027..0.027 rows=1 loops=50)
+                          Buffers: shared hit=200
+                          ->  Index Only Scan using kiosk_assignments_loc_assigned_idx on kiosk_assignments ka  (cost=0.27..8.29 rows=1 width=8) (actual time=0.027..0.027 rows=1 loops=50)
+                                Index Cond: ((location_id = l.id) AND (assigned_at IS NOT NULL))
+                                Heap Fetches: 50
+                                Buffers: shared hit=200
+  Planning Time: 0.115 ms
+  Execution Time: 1.442 ms

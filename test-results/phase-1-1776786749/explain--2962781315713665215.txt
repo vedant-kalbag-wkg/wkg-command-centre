@@ -1,0 +1,12 @@
+-- Query:
+WITH loc_agg AS (
+      SELECT
+        "sales_records"."location_id" AS location_id,
+        COALESCE(SUM("sales_records"."gross_amount"), $4) AS revenue,
+        COUNT(*) AS transactions
+      FROM "sales_records"
+    INNER JOIN "locations" ON "sales_records"."location_id" = "locations"."id"
+      WHERE "sales_records"."transaction_date" >= $1 AND "sales_records"."transaction_date" <= $2 AND NOT 
+
+-- Plan:
+EXPLAIN failed: syntax error at end of input

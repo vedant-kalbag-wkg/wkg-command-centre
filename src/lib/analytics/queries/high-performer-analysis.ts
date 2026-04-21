@@ -14,12 +14,13 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { getLocationRevenuesForRequest } from "@/lib/analytics/queries/location-revenues";
 import type {
   AnalyticsFilters,
   HighPerformerPatterns,
@@ -35,9 +36,10 @@ async function buildWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -47,7 +49,7 @@ async function buildWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
@@ -103,23 +105,11 @@ async function computePerformerPatterns(
 ): Promise<CommonShape> {
   const whereClause = await buildWhere(filters, userCtx);
 
-  // 1. Per-location revenue + rooms (our composite-score proxy for this view)
-  const locationRevenues = await executeRows<{
-    location_id: string;
-    location_name: string;
-    revenue: string;
-    num_rooms: string | null;
-  }>(sql`
-    SELECT
-      ${salesRecords.locationId} AS location_id,
-      ${locations.name} AS location_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
-      ${locations.numRooms}::text AS num_rooms
-    FROM ${salesRecords}
-      INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
-    ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${salesRecords.locationId}, ${locations.name}, ${locations.numRooms}
-  `);
+  // 1. Per-location revenue + rooms (our composite-score proxy for this view).
+  //    Shared via React.cache so the high- and low-performer paths — which
+  //    both call `computePerformerPatterns` with the same filters/userCtx
+  //    within one render — collapse to a single aggregate query.
+  const locationRevenues = await getLocationRevenuesForRequest(filters, userCtx);
 
   const totalCount = locationRevenues.length;
 
@@ -174,10 +164,7 @@ async function computePerformerPatterns(
         FROM ${locationHotelGroupMemberships}
           INNER JOIN ${hotelGroups}
             ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
-        WHERE ${locationHotelGroupMemberships.locationId} IN ${sql`(${sql.join(
-          tierIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`}
+        WHERE ${locationHotelGroupMemberships.locationId} = ANY(${sql.param(tierIds)}::uuid[])
         GROUP BY ${hotelGroups.name}
         ORDER BY count DESC
       `),
@@ -190,10 +177,7 @@ async function computePerformerPatterns(
         FROM ${locationRegionMemberships}
           INNER JOIN ${regions}
             ON ${locationRegionMemberships.regionId} = ${regions.id}
-        WHERE ${locationRegionMemberships.locationId} IN ${sql`(${sql.join(
-          tierIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`}
+        WHERE ${locationRegionMemberships.locationId} = ANY(${sql.param(tierIds)}::uuid[])
         GROUP BY ${regions.name}
         ORDER BY count DESC
       `),
@@ -207,10 +191,7 @@ async function computePerformerPatterns(
             ${kioskAssignments.locationId},
             COUNT(*)::int AS kiosk_count
           FROM ${kioskAssignments}
-          WHERE ${kioskAssignments.locationId} IN ${sql`(${sql.join(
-            tierIds.map((id) => sql`${id}`),
-            sql`, `,
-          )})`}
+          WHERE ${kioskAssignments.locationId} = ANY(${sql.param(tierIds)}::uuid[])
             AND ${kioskAssignments.unassignedAt} IS NULL
           GROUP BY ${kioskAssignments.locationId}
         ) AS kc
@@ -224,10 +205,7 @@ async function computePerformerPatterns(
         FROM ${salesRecords}
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
-        WHERE ${salesRecords.locationId} IN ${sql`(${sql.join(
-          tierIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`}
+        WHERE ${salesRecords.locationId} = ANY(${sql.param(tierIds)}::uuid[])
           ${whereClause ? sql`AND ${whereClause}` : sql``}
         GROUP BY ${products.name}
         ORDER BY revenue DESC

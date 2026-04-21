@@ -117,7 +117,10 @@ export function AnalyticsFilterBar({
   }));
 
   return (
-    <div className="sticky top-14 z-20 flex items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-2.5">
+    <div
+      data-testid="analytics-filter-bar"
+      className="sticky top-14 z-20 flex items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-2.5"
+    >
       <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
         <DateRangePicker
           from={store.dateRange.from}

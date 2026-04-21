@@ -1,0 +1,5 @@
+-- Query:
+select "kiosks"."id", "kiosks"."kiosk_id", "kiosks"."outlet_code", "kiosks"."hardware_serial_number", "kiosks"."hardware_model", "kiosks"."software_version", "kiosks"."cms_config_status", "kiosks"."installation_date", "kiosks"."maintenance_fee", "kiosks"."free_trial_status", "kiosks"."free_trial_end_date", "kiosks"."region_group", "kiosks"."pipeline_stage_id", "pipeline_stages"."name", "pipeline_s
+
+-- Plan:
+EXPLAIN failed: unterminated quoted identifier at or near ""pipeline_s"

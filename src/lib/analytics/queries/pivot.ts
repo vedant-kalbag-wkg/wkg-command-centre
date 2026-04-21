@@ -11,12 +11,12 @@ import { sql } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationConditionForRawContext } from "@/lib/analytics/active-locations";
 import { getComparisonDates } from "@/lib/analytics/metrics";
 import {
   validatePivotConfig,
@@ -42,9 +42,14 @@ async function buildPivotWhereString(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<string | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  // Use the raw-context variant here because this function serializes the
+  // Drizzle SQL to a literal string (see loop below); the ANY($::uuid[])
+  // form would stringify its single array param incorrectly, whereas the
+  // IN ($1, $2, …) form yields scalar params the loop handles natively.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationConditionForRawContext(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -54,7 +59,7 @@ async function buildPivotWhereString(
   const combined = combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
