@@ -6,6 +6,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  outputDir: "./playwright-output",
+  reporter: [["list"], ["html", { outputFolder: "./playwright-report", open: "never" }]],
   use: {
     baseURL: "http://localhost:3003",
     screenshot: "only-on-failure",
