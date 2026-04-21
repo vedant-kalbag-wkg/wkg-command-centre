@@ -54,11 +54,17 @@ test.describe("Location CRUD (LOC-01, LOC-02)", () => {
     await expect(input).toBeVisible();
     await input.fill("123 Test Street, London");
 
-    // Blur by pressing Tab — safe non-destructive blur
-    await input.press("Tab");
+    // Native blur is more deterministic than Tab (which may land on another
+    // focusable element inside the same section).
+    await input.evaluate((el: HTMLInputElement) => el.blur());
+
+    // Input exits edit mode once save completes.
+    await expect(input).not.toBeVisible({ timeout: 10000 });
 
     // Value should persist after save
-    await expect(page.getByText("123 Test Street, London")).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText("123 Test Street, London")).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test("LOC-02: can archive a location", async ({ page }) => {

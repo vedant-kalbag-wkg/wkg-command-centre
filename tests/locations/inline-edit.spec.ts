@@ -19,6 +19,24 @@ async function createLocation(
   return { name, id: match ? match[1] : "" };
 }
 
+/**
+ * Open /locations and isolate the row whose name contains `needle` by typing
+ * it into the global search. This sidesteps any pre-existing column-filter
+ * state on the shared view-engine store which can hide all rows.
+ */
+async function gotoLocationsAndSearch(
+  page: Parameters<typeof signInAsAdmin>[0],
+  needle: string,
+) {
+  await page.goto("/locations");
+  const search = page.getByPlaceholder(/search locations/i).first();
+  await expect(search).toBeVisible({ timeout: 10000 });
+  await search.fill(needle);
+  // Wait for debounced search to apply and the row to appear.
+  await expect(page.getByRole("row").filter({ hasText: needle }).first())
+    .toBeVisible({ timeout: 10000 });
+}
+
 test.describe("@locations inline edit on /locations table", () => {
   test.beforeEach(async ({ page }) => {
     await signInAsAdmin(page);
@@ -29,10 +47,11 @@ test.describe("@locations inline edit on /locations table", () => {
   }) => {
     const { name } = await createLocation(page, "INLINE-NAME");
 
-    await page.goto("/locations");
+    await gotoLocationsAndSearch(page, name);
 
     // Find the newly-created row by its name cell (click-to-edit span).
-    const nameCell = page.getByRole("button", { name, exact: false }).first();
+    const row = page.getByRole("row").filter({ hasText: name }).first();
+    const nameCell = row.getByRole("button", { name, exact: false }).first();
     await expect(nameCell).toBeVisible({ timeout: 10000 });
     await nameCell.click();
 
@@ -49,6 +68,9 @@ test.describe("@locations inline edit on /locations table", () => {
 
     // Reload and assert the edit persisted.
     await page.reload();
+    // Re-apply the search after reload (search state is not persisted).
+    const search = page.getByPlaceholder(/search locations/i).first();
+    await search.fill(newName);
     await expect(page.getByText(newName).first()).toBeVisible({
       timeout: 10000,
     });
@@ -59,7 +81,7 @@ test.describe("@locations inline edit on /locations table", () => {
   }) => {
     const { name } = await createLocation(page, "INLINE-ADDR");
 
-    await page.goto("/locations");
+    await gotoLocationsAndSearch(page, name);
 
     // Locate the row containing our location name; the address cell is a
     // sibling click-to-edit button. We target the row, then the Address column
@@ -89,6 +111,9 @@ test.describe("@locations inline edit on /locations table", () => {
     });
 
     await page.reload();
+    // Re-apply the search after reload — table filters don't persist.
+    const searchAfter = page.getByPlaceholder(/search locations/i).first();
+    await searchAfter.fill(name);
     await expect(page.getByText(addressValue).first()).toBeVisible({
       timeout: 10000,
     });
@@ -99,7 +124,7 @@ test.describe("@locations inline edit on /locations table", () => {
   }) => {
     const { name } = await createLocation(page, "INLINE-NUM");
 
-    await page.goto("/locations");
+    await gotoLocationsAndSearch(page, name);
 
     const row = page
       .getByRole("row")
@@ -124,6 +149,8 @@ test.describe("@locations inline edit on /locations table", () => {
 
     // Reload and assert the value shows 240 in the row.
     await page.reload();
+    const searchAfter = page.getByPlaceholder(/search locations/i).first();
+    await searchAfter.fill(name);
     const rowAfter = page.getByRole("row").filter({ hasText: name }).first();
     await expect(rowAfter.getByText("240").first()).toBeVisible({
       timeout: 10000,
