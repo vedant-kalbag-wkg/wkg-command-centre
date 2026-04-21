@@ -63,8 +63,8 @@ Must hit before PR is mergeable:
 
 Long-form descriptive names rather than the existing terse style (`sales_loc_date_idx`):
 
-- `sales_records_txn_date_loc_id_covering_idx` — leading column, second column, "covering" tag.
-- `kiosk_assignments_loc_id_assigned_at_idx` — leading column, second column.
+- `sales_records_txn_loc_covering_idx` — leading column, second column, "covering" tag.
+- `kiosk_assignments_loc_assigned_idx` — leading column, second column.
 
 Reason: covering indexes with INCLUDE columns are non-obvious from short names; future maintainers grepping `pg_indexes` should be able to tell at a glance this is a covering index.
 
@@ -132,8 +132,8 @@ Deterministic order. Each numbered step must succeed before the next.
 ### Gate 1 acceptance (local dev)
 
 - New indexes visible in `pg_indexes`.
-- EXPLAIN of `getPortfolioSummary` shows `Index (Only) Scan using sales_records_txn_date_loc_id_covering_idx`.
-- EXPLAIN of `getOutletTiers` shows `Index Scan using kiosk_assignments_loc_id_assigned_at_idx` in the correlated subplan.
+- EXPLAIN of `getPortfolioSummary` shows `Index (Only) Scan using sales_records_txn_loc_covering_idx`.
+- EXPLAIN of `getOutletTiers` shows `Index Scan using kiosk_assignments_loc_assigned_idx` in the correlated subplan.
 - No regression on EXPLAIN of #2, #3, #4, #7 (must use new index OR an equally-cheap existing one).
 
 ### Gate 2 acceptance (preview)
@@ -157,7 +157,7 @@ Deterministic order. Each numbered step must succeed before the next.
 | 2 | CONCURRENTLY mechanism | Standalone DDL script outside drizzle-kit + no-op marker migration | Assume sales_records grows to millions of rows → CONCURRENTLY required permanently. Drizzle-kit's transaction wrapper forbids it. Schema.ts stays source of truth; script handles prod safely; marker keeps fresh-DB bootstrap working. |
 | 3 | Preflight on prod | `--check` mode prints row counts + EXPLAIN before `--apply` allowed | Dev's 124k-row EXPLAINs cannot predict prod plans at million-row scale. Pre-flight is mandatory; safety rail enforces it. |
 | 4 | Item #4 scope | All 4 `sql.join` sites, not just the pgss-flagged one | Mechanical rewrite; consistency prevents future plan-cache drift between sibling queries. |
-| 5 | Index naming | Long-form descriptive (`sales_records_txn_date_loc_id_covering_idx`) | Covering indexes are non-obvious from terse names; aids future operator grepping `pg_indexes`. |
+| 5 | Index naming | Long-form descriptive (`sales_records_txn_loc_covering_idx`) | Covering indexes are non-obvious from terse names; aids future operator grepping `pg_indexes`. |
 | 6 | PR target | `optimisation`, not `main` | Per epic topology in Phase 2 handoff; final `optimisation`→`main` merge after all phases. |
 | 7 | Prod application | Discrete user-confirmed action after PR merge | Modifies shared production system. Auto-mode rule: prod DDL is not auto. |
 | 8 | Validation cadence | Two pre-PR gates (local EXPLAIN, preview perf) + passive post-prod observation | Reuses Phase 0/1 harness; `--check` provides prod readiness signal without DDL. |

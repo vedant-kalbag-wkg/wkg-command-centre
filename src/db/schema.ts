@@ -216,10 +216,7 @@ export const kioskAssignments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    locIdAssignedAtIdx: index("kiosk_assignments_loc_id_assigned_at_idx").on(
-      t.locationId,
-      t.assignedAt,
-    ),
+    byLocAssigned: index("kiosk_assignments_loc_assigned_idx").on(t.locationId, t.assignedAt),
   }),
 );
 
