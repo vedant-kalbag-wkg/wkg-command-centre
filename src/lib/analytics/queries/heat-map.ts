@@ -12,6 +12,7 @@ import {
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import {
   calculateCompositeScore,
   calculateRevenuePerRoom,
@@ -261,3 +262,20 @@ export async function getHeatMapData(
     scoreWeights: SCORE_WEIGHTS,
   };
 }
+
+// ─── Cached variant (Phase 3) ────────────────────────────────────────────────
+//
+// Wrap getHeatMapData with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', 'getHeatMapData', 'v1'] + JSON.stringify(
+//   canonicalFilters, scopeKey, weightsInput).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:heat-map'] — invalidate via /admin/cache.
+//
+// Uncached export above remains callable for any non-cached code paths.
+
+const HEAT_MAP_TAGS = ['analytics', 'analytics:heat-map'];
+
+export const getHeatMapDataCached = wrapAnalyticsQuery(getHeatMapData, {
+  name: 'getHeatMapData',
+  tags: HEAT_MAP_TAGS,
+});
