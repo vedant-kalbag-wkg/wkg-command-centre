@@ -16,6 +16,7 @@ import {
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getPreviousPeriodDates, calculatePeriodChange } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
@@ -317,3 +318,28 @@ export async function getHotelGroupDetail(
     previousMetrics,
   };
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// Cache key = ['analytics', <name>, 'v1'] + JSON-serialised args.
+// TTL = 24h (overnight UK ETL). Tags: ['analytics', 'analytics:hotel-groups'].
+//
+// getHotelGroupDetail's uncached signature is (groupIds, filters, userCtx) —
+// it predates the wrapAnalyticsQuery contract. Adapted via a local shim that
+// matches (filters, userCtx, ...rest) and forwards groupIds as the rest arg.
+
+const HOTEL_GROUPS_TAGS = ['analytics', 'analytics:hotel-groups'];
+
+export const getHotelGroupsListCached = wrapAnalyticsQuery(getHotelGroupsList, {
+  name: 'getHotelGroupsList',
+  tags: HOTEL_GROUPS_TAGS,
+});
+
+export const getHotelGroupDetailCached = wrapAnalyticsQuery(
+  (filters: AnalyticsFilters, userCtx: UserCtx, groupIds: string[]) =>
+    getHotelGroupDetail(groupIds, filters, userCtx),
+  {
+    name: 'getHotelGroupDetail',
+    tags: HOTEL_GROUPS_TAGS,
+  },
+);
