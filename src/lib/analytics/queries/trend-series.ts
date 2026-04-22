@@ -17,6 +17,7 @@ import { unstable_cache } from "next/cache";
 import { withStats } from "@/lib/analytics/cache-stats";
 import {
   INTERNAL_SCOPE_KEY,
+  INTERNAL_USER_CTX,
   type CachedQueryScope,
 } from "@/lib/analytics/cached-query";
 import type {
@@ -199,14 +200,22 @@ export async function getBusinessEvents(
 
 const TREND_BUILDER_TAGS = ['analytics', 'analytics:trend-builder'];
 
-// Sentinel userCtx mirrors cached-query.ts — admin internal so
-// buildScopeFilter() returns null (unrestricted). Shared-cache correctness
-// depends on every cached call resolving to the same WHERE clause.
-const INTERNAL_USER_CTX: UserCtx = {
-  id: '__internal__',
-  userType: 'internal',
-  role: 'admin',
-};
+// Normalise SeriesFilters before hashing so equivalent selections collapse to
+// one cache entry. Without this `['a','b']` and `['b','a']` fragment.
+function canonicaliseSeriesFilters(f: SeriesFilters): SeriesFilters {
+  const sortedUnique = (xs: string[] | undefined): string[] | undefined => {
+    if (!xs || xs.length === 0) return undefined;
+    const out = [...new Set(xs)].sort();
+    return out.length > 0 ? out : undefined;
+  };
+  return {
+    productIds: sortedUnique(f.productIds),
+    locationIds: sortedUnique(f.locationIds),
+    hotelGroupIds: sortedUnique(f.hotelGroupIds),
+    regionIds: sortedUnique(f.regionIds),
+    locationGroupIds: sortedUnique(f.locationGroupIds),
+  };
+}
 
 export const getTrendSeriesDataCached = unstable_cache(
   withStats(
@@ -221,7 +230,8 @@ export const getTrendSeriesDataCached = unstable_cache(
       if (scopeKey !== INTERNAL_SCOPE_KEY) {
         throw new Error(`getTrendSeriesData: external scope not yet supported (got ${scopeKey})`);
       }
-      return getTrendSeriesData(metric, filters, dateFrom, dateTo, INTERNAL_USER_CTX);
+      const canonical = canonicaliseSeriesFilters(filters);
+      return getTrendSeriesData(metric, canonical, dateFrom, dateTo, INTERNAL_USER_CTX);
     },
   ),
   ['analytics', 'getTrendSeriesData', 'v1'],

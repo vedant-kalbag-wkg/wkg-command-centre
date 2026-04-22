@@ -11,7 +11,13 @@ export type CachedQueryScope = typeof INTERNAL_SCOPE_KEY | `ext:${string}`;
 // buildScopeFilter() returns null (unrestricted) — correctness for the
 // shared cache depends on every cached call resolving to the same WHERE
 // clause regardless of which internal user made the request.
-const INTERNAL_USER_CTX: UserCtx = {
+//
+// Exported so the few queries that wrap unstable_cache directly (bypassing
+// wrapAnalyticsQuery — e.g. trend-series, where signatures don't fit the
+// wrapper's (filters, userCtx, ...rest) contract) can reuse the same
+// sentinel. If this shape ever drifts, all consumers break in lockstep
+// rather than silently diverging.
+export const INTERNAL_USER_CTX: UserCtx = {
   id: '__internal__',
   userType: 'internal',
   role: 'admin',

@@ -15,9 +15,8 @@ export async function fetchComparisonData(
   entityIds: string[],
   filters: AnalyticsFilters,
 ): Promise<ComparisonEntity[]> {
-  await getUserCtx();
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getEntityMetricsCached(canonical, scopeKey, entityType, entityIds);
 }
 

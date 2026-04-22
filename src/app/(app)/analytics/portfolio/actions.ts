@@ -40,9 +40,8 @@ export async function fetchPortfolioData(
   filters: AnalyticsFilters,
   comparison: ComparisonMode = "mom",
 ): Promise<PortfolioData> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
 
   const { prevFrom, prevTo } = getComparisonDates(filters.dateFrom, filters.dateTo, comparison);
   const previousCanonical = canonicaliseFilters({ ...filters, dateFrom: prevFrom, dateTo: prevTo });

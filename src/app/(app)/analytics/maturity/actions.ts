@@ -9,8 +9,7 @@ import type { AnalyticsFilters, MaturityAnalysis } from "@/lib/analytics/types";
 export async function fetchMaturityAnalysis(
   filters: AnalyticsFilters,
 ): Promise<MaturityAnalysis> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getMaturityAnalysisCached(canonical, scopeKey);
 }

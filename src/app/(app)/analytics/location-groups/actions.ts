@@ -16,9 +16,8 @@ import type {
 export async function fetchLocationGroupsList(
   filters: AnalyticsFilters,
 ): Promise<LocationGroupData[]> {
-  await getUserCtx();
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getLocationGroupsListCached(canonical, scopeKey);
 }
 
@@ -26,8 +25,7 @@ export async function fetchLocationGroupDetail(
   groupIds: string[],
   filters: AnalyticsFilters,
 ): Promise<LocationGroupDetail> {
-  await getUserCtx();
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getLocationGroupDetailCached(canonical, scopeKey, groupIds);
 }

@@ -18,9 +18,8 @@ export async function fetchHeatMapData(
   filters: AnalyticsFilters,
   weights?: ScoreWeights,
 ): Promise<HeatMapData> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getHeatMapDataCached(canonical, scopeKey, weights);
 }
 

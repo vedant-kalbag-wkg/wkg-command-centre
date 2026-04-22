@@ -25,8 +25,7 @@ export async function fetchTrendSeriesData(
   dateFrom: string,
   dateTo: string,
 ): Promise<TrendDataPoint[]> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
-  const scopeKey = await getCacheScopeKey();
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   return getTrendSeriesDataCached(metric, filters, dateFrom, dateTo, scopeKey);
 }
 
@@ -99,8 +98,7 @@ export async function fetchTrendSeriesDataYoY(
   dateFrom: string,
   dateTo: string,
 ): Promise<TrendDataPoint[]> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
-  const scopeKey = await getCacheScopeKey();
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const { prevFrom, prevTo } = getComparisonDates(dateFrom, dateTo, "yoy");
   const data = await getTrendSeriesDataCached(metric, filters, prevFrom, prevTo, scopeKey);
 

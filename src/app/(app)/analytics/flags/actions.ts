@@ -15,13 +15,11 @@ const FLAGS_TAG = "analytics:flags";
 // ---------------------------------------------------------------------------
 
 async function requireAuth() {
-  const ctx = await getUserCtx();
-  // Resolve actor name from the session (getUserCtx returns the effective user,
-  // which may be an impersonation target — we need the *real* actor).
-  const { auth } = await import("@/lib/auth");
-  const { headers } = await import("next/headers");
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) throw new Error("Not authenticated");
+  // Resolve the effective user (respects impersonation) and the real actor
+  // session in parallel. Both calls are React.cache'd so within a single
+  // request they reuse the same auth lookup regardless of call order.
+  const { getSessionOrThrow } = await import("@/lib/rbac");
+  const [ctx, session] = await Promise.all([getUserCtx(), getSessionOrThrow()]);
   return { ctx, actorId: session.user.id, actorName: session.user.name };
 }
 

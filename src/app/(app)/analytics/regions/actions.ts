@@ -16,9 +16,8 @@ import type {
 export async function fetchRegionsList(
   filters: AnalyticsFilters,
 ): Promise<RegionData[]> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getRegionsListCached(canonical, scopeKey);
 }
 
@@ -26,8 +25,7 @@ export async function fetchRegionDetail(
   regionIds: string[],
   filters: AnalyticsFilters,
 ): Promise<RegionDetail> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getRegionDetailCached(canonical, scopeKey, regionIds);
 }

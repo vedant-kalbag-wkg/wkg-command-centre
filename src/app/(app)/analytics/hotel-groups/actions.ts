@@ -16,9 +16,8 @@ import type {
 export async function fetchHotelGroupsList(
   filters: AnalyticsFilters,
 ): Promise<HotelGroupData[]> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getHotelGroupsListCached(canonical, scopeKey);
 }
 
@@ -26,8 +25,7 @@ export async function fetchHotelGroupDetail(
   groupIds: string[],
   filters: AnalyticsFilters,
 ): Promise<HotelGroupDetail> {
-  await getUserCtx(); // auth gate — caching safely collapses internal users
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const canonical = canonicaliseFilters(filters);
-  const scopeKey = await getCacheScopeKey();
   return getHotelGroupDetailCached(canonical, scopeKey, groupIds);
 }
