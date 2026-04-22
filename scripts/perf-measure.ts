@@ -23,12 +23,18 @@ import { performance } from "node:perf_hooks";
 import { chromium } from "@playwright/test";
 
 const PAGES = [
+  "/analytics/portfolio",
+  "/analytics/regions",
+  "/analytics/maturity",
   "/analytics/heat-map",
+  "/analytics/location-groups",
   "/analytics/hotel-groups",
+  "/analytics/compare",
+  "/analytics/pivot-table",
+  "/analytics/trend-builder",
   "/installations",
   "/kiosks",
   "/locations",
-  "/analytics/portfolio",
 ] as const;
 
 type CliArgs = {
