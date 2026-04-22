@@ -21,6 +21,7 @@ import {
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getPreviousPeriodDates, calculatePeriodChange } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
@@ -268,3 +269,29 @@ export async function getRegionDetail(
     previousMetrics,
   };
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// Cache key = ['analytics', <name>, 'v1'] + JSON-serialised args.
+// TTL = 24h (overnight UK ETL). Tags: ['analytics', 'analytics:regions'].
+//
+// getRegionDetail's uncached signature is (regionIds, filters, userCtx) — it
+// predates the wrapAnalyticsQuery contract. Rather than rename/re-export the
+// uncached fn, we adapt via a local shim that matches (filters, userCtx, ...rest)
+// and forwards regionIds as the rest arg.
+
+const REGIONS_TAGS = ['analytics', 'analytics:regions'];
+
+export const getRegionsListCached = wrapAnalyticsQuery(getRegionsList, {
+  name: 'getRegionsList',
+  tags: REGIONS_TAGS,
+});
+
+export const getRegionDetailCached = wrapAnalyticsQuery(
+  (filters: AnalyticsFilters, userCtx: UserCtx, regionIds: string[]) =>
+    getRegionDetail(regionIds, filters, userCtx),
+  {
+    name: 'getRegionDetail',
+    tags: REGIONS_TAGS,
+  },
+);
