@@ -23,6 +23,7 @@ import {
   buildPivotSQL,
   formatPivotResults,
 } from "@/lib/analytics/pivot-engine";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
   PivotConfig,
@@ -296,4 +297,28 @@ async function addPeriodComparison(
     truncated: currentResult.truncated,
   };
 }
+
+// ─── Cached variant (Phase 3) ───────────────────────────────────────────────
+//
+// Wrap executePivot with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', 'executePivot', 'v1'] + JSON.stringify(canonicalFilters, scopeKey, config).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:pivot-table'] — invalidate via /admin/cache.
+//
+// `executePivot` takes args in the unusual order `(config, filters, userCtx)`.
+// `wrapAnalyticsQuery` expects `(filters, userCtx, ...rest)`, so we reorder
+// internally via an un-exported shim.
+
+async function executePivotReordered(
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  config: PivotConfig,
+): Promise<PivotResponse> {
+  return executePivot(config, filters, userCtx);
+}
+
+export const executePivotCached = wrapAnalyticsQuery(executePivotReordered, {
+  name: 'executePivot',
+  tags: ['analytics', 'analytics:pivot-table'],
+});
 

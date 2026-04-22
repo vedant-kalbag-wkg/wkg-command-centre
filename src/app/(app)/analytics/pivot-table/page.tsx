@@ -99,7 +99,7 @@ export default function PivotTablePage() {
         periodComparison,
       };
 
-      const data = await fetchPivot(config, filters);
+      const data = await fetchPivot(filters, config);
       // `null` from the abortable dispatcher means a newer call superseded
       // this one (or the component unmounted) — discard this batch.
       if (data === null) return;
