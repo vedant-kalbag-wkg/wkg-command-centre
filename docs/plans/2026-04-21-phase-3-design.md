@@ -24,7 +24,7 @@ Caching plus Suspense streaming applied to all nine heavy analytics pages:
 - `/analytics/portfolio` (pilot — proves the pattern)
 - `/analytics/hotel-groups`
 - `/analytics/regions`
-- `/analytics/heatmap`
+- `/analytics/heat-map`
 - `/analytics/location-groups`
 - `/analytics/maturity`
 - `/analytics/trend-builder`
@@ -211,7 +211,7 @@ async function KpiTiles({ filters, scopeKey, activeLocationIds }) {
 | `/analytics/portfolio` | `portfolio.ts`, subset of `hotel-groups.ts`, `location-revenues.ts` |
 | `/analytics/hotel-groups` | `hotel-groups.ts` (full) |
 | `/analytics/regions` | `regions.ts` |
-| `/analytics/heatmap` | `heatmap.ts` |
+| `/analytics/heat-map` | `heat-map.ts` |
 | `/analytics/location-groups` | `location-groups.ts` |
 | `/analytics/maturity` | `maturity.ts` |
 | `/analytics/trend-builder` | `trends.ts` |
@@ -283,11 +283,11 @@ export async function purgeAnalyticsCache(scope: 'all' | AnalyticsPageTag = 'all
 | `analytics:portfolio` | All queries used by `/analytics/portfolio` |
 | `analytics:hotel-groups` | `/analytics/hotel-groups` |
 | `analytics:regions` | `/analytics/regions` |
-| `analytics:heatmap` | `/analytics/heatmap` |
+| `analytics:heat-map` | `/analytics/heat-map` |
 | `analytics:location-groups` | `/analytics/location-groups` |
 | `analytics:maturity` | `/analytics/maturity` |
 | `analytics:trend-builder` | `/analytics/trend-builder` |
-| `analytics:pivot` | `/analytics/pivot` |
+| `analytics:pivot-table` | `/analytics/pivot-table` |
 | `analytics:compare` | `/analytics/compare` |
 
 Each cached function declares the `analytics` tag plus its page-specific tag. A query used by multiple pages (e.g. `getHotelGroupsList` used by both portfolio and hotel-groups) declares both page tags so a single-page purge invalidates correctly. UI copy flags this for users ("Refreshing portfolio also refreshes any shared queries used by other pages").
@@ -385,7 +385,7 @@ One commit per page, light-to-heavy:
 
 1. `/analytics/regions`
 2. `/analytics/maturity`
-3. `/analytics/heatmap`
+3. `/analytics/heat-map`
 4. `/analytics/location-groups`
 5. `/analytics/hotel-groups` (verify cross-purge tag taxonomy with portfolio)
 6. `/analytics/compare`
