@@ -18,8 +18,8 @@ test.describe("@analytics/portfolio Phase 3 streaming", () => {
   test("filter bar appears before data islands resolve", async ({ page }) => {
     await page.goto("/analytics/portfolio");
     // AnalyticsFilterBar lives in the layout — outside every island Suspense.
-    // Verify one of its controls is reachable early.
-    await expect(page.getByRole("button", { name: /filters|date|preset/i }).first()).toBeVisible({
+    // Targeted via data-testid to avoid coupling to dropdown labels.
+    await expect(page.locator("[data-testid='analytics-filter-bar']")).toBeVisible({
       timeout: 3000,
     });
   });
