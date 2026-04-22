@@ -18,6 +18,7 @@ import {
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
   ComparisonEntity,
@@ -231,3 +232,21 @@ export async function getEntityOptions(
     }
   }
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+// Existing `getEntityMetrics` signature is (entityType, entityIds, filters,
+// userCtx) — doesn't match wrapAnalyticsQuery's (filters, userCtx, ...rest)
+// contract. Thin shim reorders args at the call site without mutating the
+// uncached export (callers of the uncached fn keep working unchanged).
+
+const getEntityMetricsReordered = (
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  entityType: ComparisonEntityType,
+  entityIds: string[],
+): Promise<ComparisonEntity[]> => getEntityMetrics(entityType, entityIds, filters, userCtx);
+
+export const getEntityMetricsCached = wrapAnalyticsQuery(getEntityMetricsReordered, {
+  name: "getEntityMetrics",
+  tags: ["analytics", "analytics:compare"],
+});

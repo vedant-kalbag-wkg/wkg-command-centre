@@ -1,0 +1,35 @@
+import type { AnalyticsFilters } from '@/lib/analytics/types';
+
+export interface CanonicalFilters {
+  dateFrom: string | null;
+  dateTo: string | null;
+  hotelIds: string[];
+  regionIds: string[];
+  productIds: string[];
+  hotelGroupIds: string[];
+  locationGroupIds: string[];
+  maturityBuckets: string[];
+}
+
+function sortedUnique(xs: string[] | undefined): string[] {
+  return [...new Set(xs ?? [])].sort();
+}
+
+// AnalyticsFilters from types.ts requires dateFrom/dateTo. Input relaxes
+// those to optional so tests can construct partial filters without forcing
+// every call-site to fill them in; callers passing a real AnalyticsFilters
+// satisfy the optional signature trivially.
+export type CanonicaliseInput = Partial<AnalyticsFilters>;
+
+export function canonicaliseFilters(f: CanonicaliseInput): CanonicalFilters {
+  return {
+    dateFrom: f.dateFrom ?? null,
+    dateTo:   f.dateTo   ?? null,
+    hotelIds:         sortedUnique(f.hotelIds),
+    regionIds:        sortedUnique(f.regionIds),
+    productIds:       sortedUnique(f.productIds),
+    hotelGroupIds:    sortedUnique(f.hotelGroupIds),
+    locationGroupIds: sortedUnique(f.locationGroupIds),
+    maturityBuckets:  sortedUnique(f.maturityBuckets),
+  };
+}

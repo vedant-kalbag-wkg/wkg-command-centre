@@ -12,6 +12,7 @@ import {
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
   MaturityBucketMetrics,
@@ -223,3 +224,12 @@ export async function getMaturityAnalysis(
 
   return { bucketMetrics, rampCurve, installCohorts };
 }
+
+// ─── Cached variants (Phase 3) ──────────────────────────────────────────────
+
+const PAGE_TAGS = ['analytics', 'analytics:maturity'];
+
+export const getMaturityAnalysisCached = wrapAnalyticsQuery(getMaturityAnalysis, {
+  name: 'getMaturityAnalysis',
+  tags: PAGE_TAGS,
+});

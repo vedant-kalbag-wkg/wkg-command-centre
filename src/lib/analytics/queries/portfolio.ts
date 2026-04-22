@@ -12,6 +12,7 @@ import {
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getComparisonDates, classifyOutletTier } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
@@ -395,3 +396,45 @@ export async function getPortfolioData(
     outletTiers,
   };
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// Wrap each portfolio query with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', <name>, 'v1'] + JSON.stringify(canonicalFilters, scopeKey, ...rest).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:portfolio'] — invalidate via /admin/cache (Stage 4).
+//
+// Existing uncached exports above remain callable for the legacy server-action
+// path (fetchPortfolioData) and the in-page orchestrator (getPortfolioData).
+
+const PORTFOLIO_TAGS = ['analytics', 'analytics:portfolio'];
+
+export const getPortfolioSummaryCached = wrapAnalyticsQuery(getPortfolioSummary, {
+  name: 'getPortfolioSummary',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getCategoryPerformanceCached = wrapAnalyticsQuery(getCategoryPerformance, {
+  name: 'getCategoryPerformance',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getTopProductsCached = wrapAnalyticsQuery(getTopProducts, {
+  name: 'getTopProducts',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getDailyTrendsCached = wrapAnalyticsQuery(getDailyTrends, {
+  name: 'getDailyTrends',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getHourlyDistributionCached = wrapAnalyticsQuery(getHourlyDistribution, {
+  name: 'getHourlyDistribution',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getOutletTiersCached = wrapAnalyticsQuery(getOutletTiers, {
+  name: 'getOutletTiers',
+  tags: PORTFOLIO_TAGS,
+});
