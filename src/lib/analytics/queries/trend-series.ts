@@ -13,6 +13,12 @@ import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import { combineConditions } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { unstable_cache } from "next/cache";
+import { withStats } from "@/lib/analytics/cache-stats";
+import {
+  INTERNAL_SCOPE_KEY,
+  type CachedQueryScope,
+} from "@/lib/analytics/cached-query";
 import type {
   TrendMetric,
   SeriesFilters,
@@ -175,3 +181,55 @@ export async function getBusinessEvents(
     scopeValue: row.scope_value,
   }));
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// trend-series has two queries with non-standard shapes that don't fit
+// wrapAnalyticsQuery (which assumes `(AnalyticsFilters, UserCtx, ...rest)`):
+//
+//   getTrendSeriesData: `(metric, SeriesFilters, dateFrom, dateTo, userCtx)`
+//   getBusinessEvents:  `(dateFrom, dateTo)` — no auth/scoping
+//
+// Both wrap directly with unstable_cache + withStats. Scope participates in
+// the trend-series key (via scopeKey arg) to collapse internal users while
+// isolating external scopes; getBusinessEvents is scope-free.
+//
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:trend-builder'] — invalidate via /admin/cache.
+
+const TREND_BUILDER_TAGS = ['analytics', 'analytics:trend-builder'];
+
+// Sentinel userCtx mirrors cached-query.ts — admin internal so
+// buildScopeFilter() returns null (unrestricted). Shared-cache correctness
+// depends on every cached call resolving to the same WHERE clause.
+const INTERNAL_USER_CTX: UserCtx = {
+  id: '__internal__',
+  userType: 'internal',
+  role: 'admin',
+};
+
+export const getTrendSeriesDataCached = unstable_cache(
+  withStats(
+    'getTrendSeriesData',
+    async (
+      metric: TrendMetric,
+      filters: SeriesFilters,
+      dateFrom: string,
+      dateTo: string,
+      scopeKey: CachedQueryScope,
+    ): Promise<TrendDataPoint[]> => {
+      if (scopeKey !== INTERNAL_SCOPE_KEY) {
+        throw new Error(`getTrendSeriesData: external scope not yet supported (got ${scopeKey})`);
+      }
+      return getTrendSeriesData(metric, filters, dateFrom, dateTo, INTERNAL_USER_CTX);
+    },
+  ),
+  ['analytics', 'getTrendSeriesData', 'v1'],
+  { revalidate: 86400, tags: TREND_BUILDER_TAGS },
+);
+
+export const getBusinessEventsCached = unstable_cache(
+  withStats('getBusinessEvents', getBusinessEvents),
+  ['analytics', 'getBusinessEvents', 'v1'],
+  { revalidate: 86400, tags: TREND_BUILDER_TAGS },
+);
