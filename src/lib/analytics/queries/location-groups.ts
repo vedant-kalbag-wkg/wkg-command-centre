@@ -20,6 +20,7 @@ import {
   getPreviousPeriodDates,
   calculatePercentile,
 } from "@/lib/analytics/metrics";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
   LocationGroupData,
@@ -278,3 +279,33 @@ export async function getLocationGroupDetail(
     previousMetrics,
   };
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// Wrap each location-groups query with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', <name>, 'v1'] + JSON.stringify(canonicalFilters, scopeKey, ...rest).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:location-groups'] — invalidate via /admin/cache.
+
+const LOCATION_GROUPS_TAGS = ['analytics', 'analytics:location-groups'];
+
+export const getLocationGroupsListCached = wrapAnalyticsQuery(getLocationGroupsList, {
+  name: 'getLocationGroupsList',
+  tags: LOCATION_GROUPS_TAGS,
+});
+
+// `getLocationGroupDetail` has args `(groupIds, filters, userCtx)` — reorder
+// internally to the standard `(filters, userCtx, ...rest)` shape expected by
+// `wrapAnalyticsQuery`.
+async function getLocationGroupDetailReordered(
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  groupIds: string[],
+): Promise<LocationGroupDetail> {
+  return getLocationGroupDetail(groupIds, filters, userCtx);
+}
+
+export const getLocationGroupDetailCached = wrapAnalyticsQuery(getLocationGroupDetailReordered, {
+  name: 'getLocationGroupDetail',
+  tags: LOCATION_GROUPS_TAGS,
+});
