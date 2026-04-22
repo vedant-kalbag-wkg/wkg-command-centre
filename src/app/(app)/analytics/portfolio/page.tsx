@@ -38,9 +38,14 @@ export default async function PortfolioPage({
     comparisonRaw === "yoy" ? "yoy" : "mom";
 
   // Fetched once at the page level so the header count and the outlet-tiers
-  // island share the same list. If contention becomes a concern this can move
-  // into its own Suspense boundary.
+  // island share the same list. The underlying query is wrapped with
+  // `unstable_cache` (tag: analytics:flags) so this await is cheap and
+  // doesn't block streaming of the island shells.
   const flags = await fetchLocationFlags();
+
+  // Stable per-filter key so ErrorBoundaries reset when the user changes
+  // filters — otherwise a transient island failure persists forever.
+  const resetKey = `${JSON.stringify(canonical)}|${comparisonMode}`;
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
@@ -66,7 +71,7 @@ export default async function PortfolioPage({
       <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
         {/* KPI strip */}
         <Suspense fallback={<KpiStripSkeleton />}>
-          <ErrorBoundary fallback={<DataIslandError section="KPIs" />}>
+          <ErrorBoundary fallback={<DataIslandError section="KPIs" />} resetKey={resetKey}>
             <KpiStripIsland
               canonical={canonical}
               scopeKey={scopeKey}
@@ -79,44 +84,44 @@ export default async function PortfolioPage({
         <ThresholdEditor />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <Suspense fallback={<ChartCardSkeleton title="High Performer Patterns" />}>
-            <ErrorBoundary fallback={<DataIslandError section="High performer patterns" />}>
+          <Suspense fallback={<ChartCardSkeleton title="High Performer Patterns" approxHeight="h-64" />}>
+            <ErrorBoundary fallback={<DataIslandError section="High performer patterns" />} resetKey={resetKey}>
               <HighPerformerIsland filters={filters} />
             </ErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<ChartCardSkeleton title="Low Performer Patterns" />}>
-            <ErrorBoundary fallback={<DataIslandError section="Low performer patterns" />}>
+          <Suspense fallback={<ChartCardSkeleton title="Low Performer Patterns" approxHeight="h-64" />}>
+            <ErrorBoundary fallback={<DataIslandError section="Low performer patterns" />} resetKey={resetKey}>
               <LowPerformerIsland filters={filters} />
             </ErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<ChartCardSkeleton title="Daily Trends" />}>
-            <ErrorBoundary fallback={<DataIslandError section="Daily trends" />}>
+          <Suspense fallback={<ChartCardSkeleton title="Daily Trends" approxHeight="h-80" />}>
+            <ErrorBoundary fallback={<DataIslandError section="Daily trends" />} resetKey={resetKey}>
               <DailyTrendsIsland canonical={canonical} scopeKey={scopeKey} />
             </ErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<ChartCardSkeleton title="Category Performance" />}>
-            <ErrorBoundary fallback={<DataIslandError section="Category performance" />}>
+          <Suspense fallback={<ChartCardSkeleton title="Category Performance" approxHeight="h-64" />}>
+            <ErrorBoundary fallback={<DataIslandError section="Category performance" />} resetKey={resetKey}>
               <CategoryPerformanceIsland canonical={canonical} scopeKey={scopeKey} />
             </ErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<ChartCardSkeleton title="Top Products" />}>
-            <ErrorBoundary fallback={<DataIslandError section="Top products" />}>
+          <Suspense fallback={<ChartCardSkeleton title="Top Products" approxHeight="h-80" />}>
+            <ErrorBoundary fallback={<DataIslandError section="Top products" />} resetKey={resetKey}>
               <TopProductsIsland canonical={canonical} scopeKey={scopeKey} />
             </ErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<ChartCardSkeleton title="Hourly Distribution" />}>
-            <ErrorBoundary fallback={<DataIslandError section="Hourly distribution" />}>
+          <Suspense fallback={<ChartCardSkeleton title="Hourly Distribution" approxHeight="h-64" />}>
+            <ErrorBoundary fallback={<DataIslandError section="Hourly distribution" />} resetKey={resetKey}>
               <HourlyDistributionIsland canonical={canonical} scopeKey={scopeKey} />
             </ErrorBoundary>
           </Suspense>
 
-          <Suspense fallback={<ChartCardSkeleton title="Outlet Tiers" />}>
-            <ErrorBoundary fallback={<DataIslandError section="Outlet tiers" />}>
+          <Suspense fallback={<ChartCardSkeleton title="Outlet Tiers" approxHeight="h-[500px]" />}>
+            <ErrorBoundary fallback={<DataIslandError section="Outlet tiers" />} resetKey={resetKey}>
               <OutletTiersIsland
                 canonical={canonical}
                 scopeKey={scopeKey}

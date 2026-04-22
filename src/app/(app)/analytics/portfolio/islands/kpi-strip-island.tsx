@@ -48,12 +48,6 @@ export async function KpiStripIsland({
   );
   const previousCanonical = canonicaliseFilters({
     ...canonical,
-    hotelIds: canonical.hotelIds,
-    regionIds: canonical.regionIds,
-    productIds: canonical.productIds,
-    hotelGroupIds: canonical.hotelGroupIds,
-    locationGroupIds: canonical.locationGroupIds,
-    maturityBuckets: canonical.maturityBuckets,
     dateFrom: prevFrom,
     dateTo: prevTo,
   });
