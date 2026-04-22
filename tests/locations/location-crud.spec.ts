@@ -54,11 +54,20 @@ test.describe("Location CRUD (LOC-01, LOC-02)", () => {
     await expect(input).toBeVisible();
     await input.fill("123 Test Street, London");
 
-    // Blur by pressing Tab — safe non-destructive blur
-    await input.press("Tab");
+    // Click the page heading outside the form to blur the input. Dispatching
+    // a raw native blur() via evaluate() is not always caught by React's
+    // focusout delegation; clicking a sibling focusable is more reliable.
+    await page.getByRole("heading", { level: 1 }).first().click();
 
-    // Value should persist after save
-    await expect(page.getByText("123 Test Street, London")).toBeVisible({ timeout: 8000 });
+    // Input exits edit mode once save completes.
+    await expect(input).not.toBeVisible({ timeout: 10000 });
+
+    // Value should persist after save. The saved address shows up in both
+    // the header description and the inline-edit span — .first() collapses
+    // the strict-mode match to the first visible occurrence.
+    await expect(
+      page.getByText("123 Test Street, London").first(),
+    ).toBeVisible({ timeout: 10000 });
   });
 
   test("LOC-02: can archive a location", async ({ page }) => {

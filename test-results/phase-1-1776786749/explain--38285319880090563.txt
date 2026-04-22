@@ -1,0 +1,45 @@
+-- Query:
+SELECT
+    pg_database_size(datname) AS db_size,
+    datid
+FROM
+    pg_stat_database
+WHERE datname IN (
+    SELECT datname
+    FROM pg_database
+    WHERE datconnlimit != -2
+    AND datname <> 'postgres'
+    AND NOT datistemplate
+    ORDER BY oid
+    LIMIT 10
+)
+
+-- Plan:
+Nested Loop Semi Join  (cost=1.04..2.19 rows=1 width=12) (actual time=2.390..2.396 rows=1 loops=1)
+  Join Filter: ((NULL::name) = "ANY_subquery".datname)
+  Rows Removed by Join Filter: 4
+  Buffers: shared hit=7
+  ->  Append  (cost=0.00..1.05 rows=3 width=68) (actual time=0.002..0.007 rows=5 loops=1)
+        Buffers: shared hit=1
+        ->  Subquery Scan on "*SELECT* 1"  (cost=0.00..0.02 rows=1 width=68) (actual time=0.001..0.002 rows=1 loops=1)
+              ->  Result  (cost=0.00..0.01 rows=1 width=68) (actual time=0.001..0.001 rows=1 loops=1)
+        ->  Seq Scan on pg_database  (cost=0.00..1.02 rows=2 width=68) (actual time=0.001..0.003 rows=4 loops=1)
+              Buffers: shared hit=1
+  ->  Materialize  (cost=1.04..1.06 rows=1 width=64) (actual time=0.004..0.004 rows=1 loops=5)
+        Buffers: shared hit=4
+        ->  Subquery Scan on "ANY_subquery"  (cost=1.04..1.05 rows=1 width=64) (actual time=0.016..0.018 rows=1 loops=1)
+              Buffers: shared hit=4
+              ->  Limit  (cost=1.04..1.04 rows=1 width=68) (actual time=0.016..0.017 rows=1 loops=1)
+                    Buffers: shared hit=4
+                    ->  Sort  (cost=1.04..1.04 rows=1 width=68) (actual time=0.015..0.015 rows=1 loops=1)
+                          Sort Key: pg_database_1.oid
+                          Sort Method: quicksort  Memory: 25kB
+                          Buffers: shared hit=4
+                          ->  Seq Scan on pg_database pg_database_1  (cost=0.00..1.03 rows=1 width=68) (actual time=0.006..0.006 rows=1 loops=1)
+                                Filter: ((NOT datistemplate) AND (datconnlimit <> '-2'::integer) AND (datname <> 'postgres'::name))
+                                Rows Removed by Filter: 3
+                                Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=202 read=3
+Planning Time: 4.842 ms
+Execution Time: 2.426 ms

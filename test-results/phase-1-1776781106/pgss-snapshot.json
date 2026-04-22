@@ -1,0 +1,252 @@
+[
+  {
+    "queryid": "2876412854933992484",
+    "query": "SELECT\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"), $4) AS total_revenue,\n      COUNT(*)::text AS total_transactions,\n      COALESCE(SUM(\"sales_records\".\"quantity\"), $5)::text AS total_quantity,\n      COUNT(DISTINCT \"sales_records\".\"product_id\")::text AS unique_products,\n      COUNT(DISTINCT \"sales_records\".\"location_id\")::text AS unique_outlets\n    FROM \"sales_records\"\n    INNER JOIN \"loca",
+    "calls": 10,
+    "total_exec_time": 1470.658936,
+    "mean_exec_time": 147.0658936,
+    "stddev_exec_time": 188.51953142266453,
+    "impact": 1470.658936,
+    "rows": 10
+  },
+  {
+    "queryid": "883656055125514950",
+    "query": "SELECT\n      \"products\".\"name\" AS category_name,\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"), $4) AS revenue,\n      COUNT(*)::text AS transactions,\n      COALESCE(SUM(\"sales_records\".\"quantity\"), $5)::text AS quantity,\n      COALESCE(AVG(\"sales_records\".\"gross_amount\"), $6) AS avg_value\n    FROM \"sales_records\"\n    INNER JOIN \"locations\" ON \"sales_records\".\"location_id\" = \"locations\".\"id\"\n ",
+    "calls": 5,
+    "total_exec_time": 1087.315332,
+    "mean_exec_time": 217.4630664,
+    "stddev_exec_time": 39.698256569021524,
+    "impact": 1087.3153320000001,
+    "rows": 65
+  },
+  {
+    "queryid": "-7832206712676690579",
+    "query": "SELECT\n      \"products\".\"name\" AS product_name,\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"), $5) AS revenue,\n      COUNT(*)::text AS transactions,\n      COALESCE(SUM(\"sales_records\".\"quantity\"), $6)::text AS quantity\n    FROM \"sales_records\"\n    INNER JOIN \"locations\" ON \"sales_records\".\"location_id\" = \"locations\".\"id\"\n    INNER JOIN \"products\" ON \"sales_records\".\"product_id\" = \"products\".\"",
+    "calls": 5,
+    "total_exec_time": 1000.287859,
+    "mean_exec_time": 200.0575718,
+    "stddev_exec_time": 57.83203509398021,
+    "impact": 1000.287859,
+    "rows": 65
+  },
+  {
+    "queryid": "-296059890286988519",
+    "query": "SELECT\n      \"sales_records\".\"transaction_date\"::text AS date,\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"), $4) AS revenue,\n      COUNT(*)::text AS transactions\n    FROM \"sales_records\"\n    INNER JOIN \"locations\" ON \"sales_records\".\"location_id\" = \"locations\".\"id\"\n    WHERE \"sales_records\".\"transaction_date\" >= $1 AND \"sales_records\".\"transaction_date\" <= $2 AND NOT (\"locations\".\"outlet_cod",
+    "calls": 5,
+    "total_exec_time": 879.6980339999999,
+    "mean_exec_time": 175.9396068,
+    "stddev_exec_time": 45.27100864493008,
+    "impact": 879.698034,
+    "rows": 1825
+  },
+  {
+    "queryid": "2494768760741788218",
+    "query": "SELECT\n      \"locations\".\"id\" AS location_id,\n      COALESCE(\"locations\".\"outlet_code\", $4) AS outlet_code,\n      \"locations\".\"name\" AS hotel_name,\n      (SELECT MIN(\"kiosk_assignments\".\"assigned_at\") FROM \"kiosk_assignments\" WHERE \"kiosk_assignments\".\"location_id\" = \"locations\".\"id\")::text AS live_date,\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"), $5) AS revenue,\n      COUNT(*)::text AS tr",
+    "calls": 5,
+    "total_exec_time": 625.315388,
+    "mean_exec_time": 125.06307760000001,
+    "stddev_exec_time": 44.23800156815989,
+    "impact": 625.3153880000001,
+    "rows": 1000
+  },
+  {
+    "queryid": "-6188082297284223554",
+    "query": "SELECT\n      \"sales_records\".\"location_id\" AS location_id,\n      \"locations\".\"name\" AS location_name,\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"), $4) AS revenue,\n      \"locations\".\"num_rooms\"::text AS num_rooms\n    FROM \"sales_records\"\n      INNER JOIN \"locations\" ON \"sales_records\".\"location_id\" = \"locations\".\"id\"\n    WHERE \"sales_records\".\"transaction_date\" >= $1 AND \"sales_records\".\"tra",
+    "calls": 10,
+    "total_exec_time": 585.000414,
+    "mean_exec_time": 58.50004140000001,
+    "stddev_exec_time": 2.0212739474288095,
+    "impact": 585.0004140000001,
+    "rows": 2430
+  },
+  {
+    "queryid": "-6634863189833404805",
+    "query": "SELECT\n      \"hotel_groups\".\"id\" AS group_id,\n      \"hotel_groups\".\"name\" AS group_name,\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"), $4) AS revenue,\n      COUNT(*)::text AS transactions,\n      COUNT(DISTINCT \"sales_records\".\"location_id\")::text AS hotel_count\n    FROM \"sales_records\"\n    INNER JOIN \"locations\" ON \"sales_records\".\"location_id\" = \"locations\".\"id\"\n    INNER JOIN \"location_hot",
+    "calls": 5,
+    "total_exec_time": 574.328651,
+    "mean_exec_time": 114.8657302,
+    "stddev_exec_time": 2.8989727097427718,
+    "impact": 574.328651,
+    "rows": 360
+  },
+  {
+    "queryid": "-6485876512338032616",
+    "query": "SELECT\n          \"products\".\"name\" AS name,\n          COALESCE(SUM(\"sales_records\".\"gross_amount\"), $5) AS revenue\n        FROM \"sales_records\"\n          INNER JOIN \"products\" ON \"sales_records\".\"product_id\" = \"products\".\"id\"\n          INNER JOIN \"locations\" ON \"sales_records\".\"location_id\" = \"locations\".\"id\"\n        WHERE \"sales_records\".\"location_id\" = ANY($1::uuid[])\n          AND \"sales_record",
+    "calls": 10,
+    "total_exec_time": 417.860561,
+    "mean_exec_time": 41.7860561,
+    "stddev_exec_time": 32.851388929774444,
+    "impact": 417.860561,
+    "rows": 50
+  },
+  {
+    "queryid": "-3265543506531508125",
+    "query": "SELECT\n      \"sales_records\".\"location_id\" AS location_id,\n      COALESCE(\"locations\".\"outlet_code\", $4) AS outlet_code,\n      \"locations\".\"name\" AS hotel_name,\n      \"locations\".\"num_rooms\"::text AS num_rooms,\n      (SELECT MIN(\"kiosk_assignments\".\"assigned_at\") FROM \"kiosk_assignments\" WHERE \"kiosk_assignments\".\"location_id\" = \"locations\".\"id\")::text AS live_date,\n      COALESCE(SUM(\"sales_recor",
+    "calls": 5,
+    "total_exec_time": 268.688634,
+    "mean_exec_time": 53.7377268,
+    "stddev_exec_time": 1.0167990426139095,
+    "impact": 268.688634,
+    "rows": 1215
+  },
+  {
+    "queryid": "-8558234332791204324",
+    "query": "SELECT\n      \"sales_records\".\"transaction_date\"::text AS date,\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"::numeric), $4) AS value\n    FROM \"sales_records\"\n      INNER JOIN \"locations\" ON \"sales_records\".\"location_id\" = \"locations\".\"id\"\n    WHERE \"sales_records\".\"transaction_date\" >= $1 AND \"sales_records\".\"transaction_date\" <= $2 AND NOT (\"locations\".\"outlet_code\" = $3)\n    GROUP BY \"sales_",
+    "calls": 5,
+    "total_exec_time": 259.319366,
+    "mean_exec_time": 51.86387320000001,
+    "stddev_exec_time": 0.4114012995640136,
+    "impact": 259.31936600000006,
+    "rows": 1825
+  },
+  {
+    "queryid": "7722848944034765718",
+    "query": "SELECT\n      EXTRACT($4 FROM \"sales_records\".\"transaction_time\")::int::text AS hour,\n      COALESCE(SUM(\"sales_records\".\"gross_amount\"), $5) AS revenue,\n      COUNT(*)::text AS transactions\n    FROM \"sales_records\"\n    INNER JOIN \"locations\" ON \"sales_records\".\"location_id\" = \"locations\".\"id\"\n    WHERE \"sales_records\".\"transaction_date\" >= $1 AND \"sales_records\".\"transaction_date\" <= $2 AND NOT (\"",
+    "calls": 5,
+    "total_exec_time": 194.106763,
+    "mean_exec_time": 38.8213526,
+    "stddev_exec_time": 20.345622083790996,
+    "impact": 194.106763,
+    "rows": 0
+  },
+  {
+    "queryid": "9097245178603701535",
+    "query": "SELECT state, pg_catalog.to_char(state_change, $1::pg_catalog.text) AS state_change\n                FROM pg_stat_activity\n                    WHERE backend_type OPERATOR(pg_catalog.=) $2::pg_catalog.text\n                    AND pid OPERATOR(pg_catalog.!=) pg_catalog.pg_backend_pid()\n                    AND usename OPERATOR(pg_catalog.!=) $3::pg_catalog.name",
+    "calls": 973,
+    "total_exec_time": 128.12716900000012,
+    "mean_exec_time": 0.13168259917780079,
+    "stddev_exec_time": 0.03719108637586071,
+    "impact": 128.12716900000015,
+    "rows": 4583
+  },
+  {
+    "queryid": "-38285319880090563",
+    "query": "SELECT\n    pg_database_size(datname) AS db_size,\n    datid\nFROM\n    pg_stat_database\nWHERE datname IN (\n    SELECT datname\n    FROM pg_database\n    WHERE datconnlimit != -2\n    AND datname <> 'postgres'\n    AND NOT datistemplate\n    ORDER BY oid\n    LIMIT 10\n)",
+    "calls": 58,
+    "total_exec_time": 99.47703300000002,
+    "mean_exec_time": 1.7151212586206892,
+    "stddev_exec_time": 0.1967516524277593,
+    "impact": 99.47703299999998,
+    "rows": 58
+  },
+  {
+    "queryid": "5625563864176894035",
+    "query": "-- We export stats for 10 non-system databases. Without this limit it is too\n-- easy to abuse the system by creating lots of databases.\n\nSELECT pg_catalog.pg_database_size(datname) AS db_size,\n  deadlocks,\n  tup_inserted AS inserted,\n  tup_updated AS updated,\n  tup_deleted AS deleted,\n  datname,\n  datid\nFROM pg_catalog.pg_stat_database\nWHERE datname IN (\n  SELECT datname FROM pg_database\n  -- Igno",
+    "calls": 58,
+    "total_exec_time": 98.52886099999999,
+    "mean_exec_time": 1.6987734655172415,
+    "stddev_exec_time": 0.21367045744123206,
+    "impact": 98.528861,
+    "rows": 58
+  },
+  {
+    "queryid": "4033131363921143169",
+    "query": "select count(*) from pg_stat_replication where application_name != $1",
+    "calls": 973,
+    "total_exec_time": 97.42260800000007,
+    "mean_exec_time": 0.10012601027749223,
+    "stddev_exec_time": 0.03202795046589999,
+    "impact": 97.42260799999994,
+    "rows": 973
+  },
+  {
+    "queryid": "517372453386758448",
+    "query": "select count(*) from pg_stat_activity where backend_type = $1",
+    "calls": 973,
+    "total_exec_time": 80.67314,
+    "mean_exec_time": 0.082911757451182,
+    "stddev_exec_time": 0.025114631137412715,
+    "impact": 80.67314000000009,
+    "rows": 973
+  },
+  {
+    "queryid": "2416558306535109381",
+    "query": "select \"id\", \"expires_at\", \"token\", \"created_at\", \"updated_at\", \"ip_address\", \"user_agent\", \"user_id\" from \"session\" where \"session\".\"token\" = $1",
+    "calls": 2393,
+    "total_exec_time": 61.78470399999998,
+    "mean_exec_time": 0.025818931884663623,
+    "stddev_exec_time": 0.01661090949566744,
+    "impact": 61.78470400000005,
+    "rows": 2393
+  },
+  {
+    "queryid": "-2734344730570548385",
+    "query": "select \"id\", \"name\", \"email\", \"email_verified\", \"image\", \"created_at\", \"updated_at\", \"role\", \"banned\", \"ban_reason\", \"ban_expires\", \"user_type\" from \"user\" where \"user\".\"id\" = $1",
+    "calls": 2394,
+    "total_exec_time": 59.35402199999993,
+    "mean_exec_time": 0.024792824561403498,
+    "stddev_exec_time": 0.01182176924542296,
+    "impact": 59.35402199999997,
+    "rows": 2394
+  },
+  {
+    "queryid": "-5070390565979994163",
+    "query": "-- NOTE: This is the \"internal\" / \"machine-readable\" version. This outputs the\n-- working set size looking back 1..60 minutes, labeled with the number of\n-- minutes.\n\nSELECT\n  x::pg_catalog.text AS duration_seconds,\n  COALESCE(neon.approximate_working_set_size_seconds(x), 0) AS size\nFROM (SELECT generate_series * 60 AS x FROM generate_series(1, 60)) AS t (x)",
+    "calls": 32,
+    "total_exec_time": 57.70398499999999,
+    "mean_exec_time": 1.8032495312499999,
+    "stddev_exec_time": 0.2008743243604046,
+    "impact": 57.703984999999996,
+    "rows": 1920
+  },
+  {
+    "queryid": "5234510687426100582",
+    "query": "SELECT\n  (SELECT setting FROM pg_catalog.pg_settings WHERE name = 'neon.timeline_id') AS timeline_id,\n  -- Postgres creates temporary snapshot files of the form %X-%X.snap.%d.tmp.\n  -- These temporary snapshot files are renamed to the actual snapshot files\n  -- after they are completely built. We only WAL-log the completely built\n  -- snapshot files\n  (SELECT COUNT(*) FROM pg_catalog.pg_ls_dir('pg",
+    "calls": 58,
+    "total_exec_time": 42.645348999999996,
+    "mean_exec_time": 0.7352646379310345,
+    "stddev_exec_time": 0.05451184972908317,
+    "impact": 42.645348999999996,
+    "rows": 58
+  },
+  {
+    "queryid": "-3199569652821965128",
+    "query": "SELECT setting::pg_catalog.int4 AS max_cluster_size FROM pg_catalog.pg_settings WHERE name = 'neon.max_cluster_size'",
+    "calls": 58,
+    "total_exec_time": 40.719581999999996,
+    "mean_exec_time": 0.7020617586206896,
+    "stddev_exec_time": 0.06202447197715742,
+    "impact": 40.719582,
+    "rows": 58
+  },
+  {
+    "queryid": "-1462211710821605229",
+    "query": "SELECT bucket_le, value FROM neon.neon_perf_counters WHERE metric = 'getpage_wait_seconds_bucket'",
+    "calls": 232,
+    "total_exec_time": 33.88951500000001,
+    "mean_exec_time": 0.14607549568965528,
+    "stddev_exec_time": 0.03452479095906624,
+    "impact": 33.889515000000024,
+    "rows": 6322
+  },
+  {
+    "queryid": "6321867954868336198",
+    "query": "SELECT COALESCE(pg_catalog.sum(active_time), $1)::pg_catalog.float8 AS total_active_time,\n            COALESCE(pg_catalog.sum(sessions), $2)::pg_catalog.int8 AS total_sessions\n        FROM pg_catalog.pg_stat_database\n        WHERE datname NOT IN (\n                $3,\n                $4,\n                $5\n            )",
+    "calls": 973,
+    "total_exec_time": 23.606030999999977,
+    "mean_exec_time": 0.024261080164439883,
+    "stddev_exec_time": 0.014608816852825949,
+    "impact": 23.606031000000005,
+    "rows": 973
+  },
+  {
+    "queryid": "485729796070283292",
+    "query": "-- This query is copied from postgres exporter - pg_locks metrics\n-- https://github.com/prometheus-community/postgres_exporter/blob/master/collector/pg_locks.go\n-- The difference is that we add datid column.\nSELECT \n    pg_database.datname as datname,\n    pg_database.oid as datid,\n    tmp.mode as mode,\n    COALESCE(count, 0) as count \nFROM \n    (\n    VALUES \n        ('accesssharelock'), \n        (",
+    "calls": 58,
+    "total_exec_time": 17.275613999999997,
+    "mean_exec_time": 0.2978554137931034,
+    "stddev_exec_time": 0.039543837302257294,
+    "impact": 17.275613999999997,
+    "rows": 2088
+  },
+  {
+    "queryid": "3108639971307608547",
+    "query": "WITH c AS (SELECT pg_catalog.jsonb_object_agg(metric, value) jb FROM neon.neon_perf_counters)\n\nSELECT d.* FROM pg_catalog.jsonb_to_record((SELECT jb FROM c)) AS d(\n  file_cache_read_wait_seconds_count numeric,\n  file_cache_read_wait_seconds_sum numeric,\n  file_cache_write_wait_seconds_count numeric,\n  file_cache_write_wait_seconds_sum numeric,\n  getpage_wait_seconds_count numeric,\n  getpage_wait_s",
+    "calls": 58,
+    "total_exec_time": 16.492222999999996,
+    "mean_exec_time": 0.28434867241379314,
+    "stddev_exec_time": 0.030197847048394105,
+    "impact": 16.492223000000003,
+    "rows": 58
+  }
+]

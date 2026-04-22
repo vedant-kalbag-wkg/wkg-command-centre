@@ -1,42 +1,16 @@
 import { test, expect } from "@playwright/test";
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import { signInAsAdmin } from "../helpers/auth";
 
 /**
- * Auth helper with fallback: prefer signInAsAdmin (seeded creds). If those
- * fail in dev environments where the admin password was rotated, fall back
- * to injecting the session cookie from auth.json at the repo root.
+ * Auth helper. Uses credentials-based signInAsAdmin — the more robust path
+ * for both local and remote preview runs. (A prior cookie-injection fallback
+ * was removed because a stale localhost `auth.json` silently masked real
+ * auth failures when running against remote previews.)
  */
 async function authenticateAdmin(
   page: import("@playwright/test").Page,
-  baseURL: string | undefined,
+  _baseURL: string | undefined,
 ) {
-  const authJsonPath = join(process.cwd(), "auth.json");
-  if (existsSync(authJsonPath)) {
-    try {
-      const raw = JSON.parse(readFileSync(authJsonPath, "utf-8")) as {
-        cookies?: Array<{
-          name: string;
-          value: string;
-          domain: string;
-          path: string;
-          expires?: number;
-          httpOnly?: boolean;
-          secure?: boolean;
-          sameSite?: "Strict" | "Lax" | "None";
-        }>;
-      };
-      if (raw.cookies?.length) {
-        await page.context().addCookies(raw.cookies);
-        await page.goto(baseURL ?? "http://localhost:3003");
-        // If cookie is valid we'll not get redirected to /login
-        return;
-      }
-    } catch {
-      /* fall through to credentials path */
-    }
-  }
   await signInAsAdmin(page);
 }
 

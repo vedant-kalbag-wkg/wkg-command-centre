@@ -1,0 +1,13 @@
+-- Query:
+SELECT
+      "products"."name" AS category_name,
+      COALESCE(SUM("sales_records"."gross_amount"), $4) AS revenue,
+      COUNT(*)::text AS transactions,
+      COALESCE(SUM("sales_records"."quantity"), $5)::text AS quantity,
+      COALESCE(AVG("sales_records"."gross_amount"), $6) AS avg_value
+    FROM "sales_records"
+    INNER JOIN "locations" ON "sales_records"."location_id" = "locations"."id"
+ 
+
+-- Plan:
+EXPLAIN failed: missing FROM-clause entry for table "products"

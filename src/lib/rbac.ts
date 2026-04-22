@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
@@ -8,11 +9,14 @@ export type UserCtx = {
   role: "admin" | "member" | "viewer" | null;
 };
 
-export async function getSessionOrThrow() {
+// React.cache dedupes session lookups within a single request. The RSC tree
+// can call getSessionOrThrow from multiple islands without re-hitting the
+// auth DB — session resolves once, then every subsequent call reuses it.
+export const getSessionOrThrow = cache(async () => {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) throw new Error("Unauthorized");
   return session;
-}
+});
 
 export async function requireRole(...roles: Role[]) {
   const session = await getSessionOrThrow();

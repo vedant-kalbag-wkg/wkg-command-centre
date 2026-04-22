@@ -5,20 +5,23 @@ test.describe("Performance Flagging & Actions Workflow", () => {
   test("heat map shows performance rankings section", async ({ page }) => {
     await signInAsAdmin(page);
     await page.goto("/analytics/heat-map?from=2025-01-01&to=2025-12-31");
-    // The heat map should show the Performance Rankings section
-    // Even without data, the section and tabs render
-    await expect(page.getByText("Performance Rankings")).toBeVisible({
+    // The heat map should show "Top 20 Performers" and "Bottom 20 Performers"
+    // ChartCards. Both render whether or not data is present.
+    await expect(page.getByText("Top 20 Performers").first()).toBeVisible({
       timeout: 15000,
     });
-    // The tabs should be visible
-    await expect(page.getByRole("tab", { name: "Top 20" })).toBeVisible();
+    await expect(page.getByText("Bottom 20 Performers").first()).toBeVisible();
   });
 
   test("portfolio shows category performance section", async ({ page }) => {
     await signInAsAdmin(page);
     await page.goto("/analytics/portfolio?from=2025-01-01&to=2025-12-31");
-    // Portfolio page should show Summary and Category Performance sections
-    await expect(page.getByText("Summary")).toBeVisible({ timeout: 15000 });
+    // Portfolio page renders the "Category Performance" ChartCard. There is
+    // no explicit "Summary" section heading on this page; the KPI strip
+    // (Revenue, Transactions, …) is the summary surface.
+    await expect(
+      page.getByRole("heading", { name: "Portfolio", exact: true }),
+    ).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("Category Performance")).toBeVisible();
   });
 

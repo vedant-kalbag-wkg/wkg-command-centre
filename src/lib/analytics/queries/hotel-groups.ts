@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -15,6 +16,7 @@ import {
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getPreviousPeriodDates, calculatePeriodChange } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
@@ -61,6 +63,22 @@ function baseFromWithHotelGroups(): SQL {
     INNER JOIN ${hotelGroups} ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}`;
 }
 
+// ─── Internal: per-location aggregate FROM (no membership join) ─────────────
+//
+// Used by getHotelGroupsList to pre-aggregate sales_records by location_id
+// BEFORE joining location_hotel_group_memberships. The membership join is
+// many-to-many (a location can belong to multiple hotel groups), so joining
+// first explodes the working set from ~124k rows to ~148k and forces a 9 MB
+// external merge sort on the outer COUNT(DISTINCT location_id).
+//
+// Pre-aggregating collapses 124k rows to ~200 (one per location) — the
+// membership fan-out then happens at ~200→~240 rows, and the outer
+// GROUP BY hotel_group sorts ~240 rows in memory. See Phase 1 diagnosis #8.
+function baseFromLocationsOnly(): SQL {
+  return sql`${salesRecords}
+    INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}`;
+}
+
 // ─── 1. Hotel Groups List ───────────────────────────────────────────────────
 
 export async function getHotelGroupsList(
@@ -69,22 +87,48 @@ export async function getHotelGroupsList(
 ): Promise<HotelGroupData[]> {
   const whereClause = await buildHotelGroupWhere(filters, userCtx);
 
-  // Current period
-  const rows = await db.execute<{
+  // Current period — pre-aggregate by location in a CTE, then join memberships
+  // + hotel_groups. The inner aggregate keeps every filter the original query
+  // applied (they all reference salesRecords/locations columns, not hotel
+  // group columns), so the result set is semantically identical:
+  //
+  //   outer revenue      = SUM(per-location revenue) per hotel_group
+  //                      = SUM(sales_records.gross_amount) per hotel_group
+  //   outer transactions = SUM(per-location txn count) per hotel_group
+  //                      = COUNT(*) of sales_records per hotel_group
+  //   outer hotel_count  = COUNT(DISTINCT per-location rows) per hotel_group
+  //                      = COUNT(DISTINCT sales_records.location_id) per hotel_group
+  //
+  // The (location_id, hotel_group_id) PK on location_hotel_group_memberships
+  // guarantees the outer membership join doesn't multi-count a location
+  // within the same group.
+  const rows = await executeRows<{
     group_id: string;
     group_name: string;
     revenue: string;
     transactions: string;
     hotel_count: string;
   }>(sql`
+    WITH loc_agg AS (
+      SELECT
+        ${salesRecords.locationId} AS location_id,
+        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COUNT(*) AS transactions
+      FROM ${baseFromLocationsOnly()}
+      ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      GROUP BY ${salesRecords.locationId}
+    )
     SELECT
       ${hotelGroups.id} AS group_id,
       ${hotelGroups.name} AS group_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(DISTINCT ${salesRecords.locationId})::text AS hotel_count
-    FROM ${baseFromWithHotelGroups()}
-    ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      COALESCE(SUM(la.revenue), 0) AS revenue,
+      SUM(la.transactions)::text AS transactions,
+      COUNT(DISTINCT la.location_id)::text AS hotel_count
+    FROM loc_agg la
+    INNER JOIN ${locationHotelGroupMemberships}
+      ON la.location_id = ${locationHotelGroupMemberships.locationId}
+    INNER JOIN ${hotelGroups}
+      ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
     GROUP BY ${hotelGroups.id}, ${hotelGroups.name}
     ORDER BY revenue DESC
   `);
@@ -94,18 +138,28 @@ export async function getHotelGroupsList(
   const prevFilters: AnalyticsFilters = { ...filters, dateFrom: prevFrom, dateTo: prevTo };
   const prevWhereClause = await buildHotelGroupWhere(prevFilters, userCtx);
 
-  const prevRows = await db.execute<{
+  const prevRows = await executeRows<{
     group_id: string;
     revenue: string;
     transactions: string;
   }>(sql`
+    WITH loc_agg AS (
+      SELECT
+        ${salesRecords.locationId} AS location_id,
+        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COUNT(*) AS transactions
+      FROM ${baseFromLocationsOnly()}
+      ${prevWhereClause ? sql`WHERE ${prevWhereClause}` : sql``}
+      GROUP BY ${salesRecords.locationId}
+    )
     SELECT
-      ${hotelGroups.id} AS group_id,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
-    FROM ${baseFromWithHotelGroups()}
-    ${prevWhereClause ? sql`WHERE ${prevWhereClause}` : sql``}
-    GROUP BY ${hotelGroups.id}
+      ${locationHotelGroupMemberships.hotelGroupId} AS group_id,
+      COALESCE(SUM(la.revenue), 0) AS revenue,
+      SUM(la.transactions)::text AS transactions
+    FROM loc_agg la
+    INNER JOIN ${locationHotelGroupMemberships}
+      ON la.location_id = ${locationHotelGroupMemberships.locationId}
+    GROUP BY ${locationHotelGroupMemberships.hotelGroupId}
   `);
 
   const prevMap = new Map(
@@ -141,7 +195,7 @@ export async function getHotelGroupDetail(
   const fullWhere = combineConditions([whereClause, groupFilter]);
 
   // Summary metrics
-  const summaryRows = await db.execute<{
+  const summaryRows = await executeRows<{
     revenue: string;
     transactions: string;
     hotel_count: string;
@@ -160,7 +214,7 @@ export async function getHotelGroupDetail(
   const hotelCount = Number(summary.hotel_count);
 
   // Hotel breakdown
-  const hotelRows = await db.execute<{
+  const hotelRows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -205,7 +259,7 @@ export async function getHotelGroupDetail(
   });
 
   // Daily trends
-  const trendRows = await db.execute<{
+  const trendRows = await executeRows<{
     date: string;
     revenue: string;
     transactions: string;
@@ -234,7 +288,7 @@ export async function getHotelGroupDetail(
 
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
-    const prevSummary = await db.execute<{
+    const prevSummary = await executeRows<{
       revenue: string;
       transactions: string;
     }>(sql`
@@ -264,3 +318,28 @@ export async function getHotelGroupDetail(
     previousMetrics,
   };
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// Cache key = ['analytics', <name>, 'v1'] + JSON-serialised args.
+// TTL = 24h (overnight UK ETL). Tags: ['analytics', 'analytics:hotel-groups'].
+//
+// getHotelGroupDetail's uncached signature is (groupIds, filters, userCtx) —
+// it predates the wrapAnalyticsQuery contract. Adapted via a local shim that
+// matches (filters, userCtx, ...rest) and forwards groupIds as the rest arg.
+
+const HOTEL_GROUPS_TAGS = ['analytics', 'analytics:hotel-groups'];
+
+export const getHotelGroupsListCached = wrapAnalyticsQuery(getHotelGroupsList, {
+  name: 'getHotelGroupsList',
+  tags: HOTEL_GROUPS_TAGS,
+});
+
+export const getHotelGroupDetailCached = wrapAnalyticsQuery(
+  (filters: AnalyticsFilters, userCtx: UserCtx, groupIds: string[]) =>
+    getHotelGroupDetail(groupIds, filters, userCtx),
+  {
+    name: 'getHotelGroupDetail',
+    tags: HOTEL_GROUPS_TAGS,
+  },
+);

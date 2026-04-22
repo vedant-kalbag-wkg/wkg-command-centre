@@ -1,16 +1,18 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { salesRecords, locations, kioskAssignments } from "@/db/schema";
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import {
   calculateCompositeScore,
   calculateRevenuePerRoom,
@@ -64,9 +66,13 @@ async function buildHeatMapWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  // JOIN stays — heat-map SELECTs outletCode/name/numRooms — but the
+  // predicate lets the planner filter sales_records on its covering index
+  // before joining.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -76,7 +82,7 @@ async function buildHeatMapWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
@@ -101,7 +107,7 @@ export async function getHeatMapData(
   const whereClause = await buildHeatMapWhere(filters, userCtx);
 
   // 1. Query sales grouped by location
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -129,7 +135,7 @@ export async function getHeatMapData(
   // Kiosk count: scoped to locations from the sales query results
   const locationIds = rows.map((r) => r.location_id);
   const kioskCountRows = locationIds.length > 0
-    ? await db.execute<{
+    ? await executeRows<{
         location_id: string;
         kiosk_count: string;
       }>(sql`
@@ -256,3 +262,20 @@ export async function getHeatMapData(
     scoreWeights: SCORE_WEIGHTS,
   };
 }
+
+// ─── Cached variant (Phase 3) ────────────────────────────────────────────────
+//
+// Wrap getHeatMapData with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', 'getHeatMapData', 'v1'] + JSON.stringify(
+//   canonicalFilters, scopeKey, weightsInput).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:heat-map'] — invalidate via /admin/cache.
+//
+// Uncached export above remains callable for any non-cached code paths.
+
+const HEAT_MAP_TAGS = ['analytics', 'analytics:heat-map'];
+
+export const getHeatMapDataCached = wrapAnalyticsQuery(getHeatMapData, {
+  name: 'getHeatMapData',
+  tags: HEAT_MAP_TAGS,
+});

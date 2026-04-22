@@ -1,0 +1,11 @@
+-- Query:
+SELECT
+      "sales_records"."transaction_date"::text AS date,
+      COALESCE(SUM("sales_records"."gross_amount"::numeric), $4) AS value
+    FROM "sales_records"
+      INNER JOIN "locations" ON "sales_records"."location_id" = "locations"."id"
+    WHERE "sales_records"."transaction_date" >= $1 AND "sales_records"."transaction_date" <= $2 AND NOT ("locations"."outlet_code" = $3)
+    GROUP BY "sales_
+
+-- Plan:
+EXPLAIN failed: unterminated quoted identifier at or near ""sales_"

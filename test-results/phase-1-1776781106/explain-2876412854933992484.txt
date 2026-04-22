@@ -1,0 +1,12 @@
+-- Query:
+SELECT
+      COALESCE(SUM("sales_records"."gross_amount"), $4) AS total_revenue,
+      COUNT(*)::text AS total_transactions,
+      COALESCE(SUM("sales_records"."quantity"), $5)::text AS total_quantity,
+      COUNT(DISTINCT "sales_records"."product_id")::text AS unique_products,
+      COUNT(DISTINCT "sales_records"."location_id")::text AS unique_outlets
+    FROM "sales_records"
+    INNER JOIN "loca
+
+-- Plan:
+EXPLAIN failed: unterminated quoted identifier at or near ""loca"

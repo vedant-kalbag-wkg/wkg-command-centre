@@ -4,7 +4,11 @@ import { db } from "@/db";
 import { locations, locationGroupMemberships } from "@/db/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
-import { getTrendSeriesData, getBusinessEvents } from "@/lib/analytics/queries/trend-series";
+import {
+  getTrendSeriesDataCached,
+  getBusinessEventsCached,
+} from "@/lib/analytics/queries/trend-series";
+import { getCacheScopeKey } from "@/lib/analytics/cache-scope";
 import { getComparisonDates } from "@/lib/analytics/metrics";
 import { fetchWeatherData as fetchWeatherFromApi } from "@/lib/weather/open-meteo";
 import type {
@@ -21,8 +25,8 @@ export async function fetchTrendSeriesData(
   dateFrom: string,
   dateTo: string,
 ): Promise<TrendDataPoint[]> {
-  const userCtx = await getUserCtx();
-  return getTrendSeriesData(metric, filters, dateFrom, dateTo, userCtx);
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
+  return getTrendSeriesDataCached(metric, filters, dateFrom, dateTo, scopeKey);
 }
 
 export async function fetchWeatherData(
@@ -80,7 +84,7 @@ export async function fetchBusinessEvents(
 ): Promise<BusinessEventDisplay[]> {
   const userCtx = await getUserCtx();
   if (userCtx.userType === "external") return [];
-  return getBusinessEvents(dateFrom, dateTo);
+  return getBusinessEventsCached(dateFrom, dateTo);
 }
 
 /**
@@ -94,9 +98,9 @@ export async function fetchTrendSeriesDataYoY(
   dateFrom: string,
   dateTo: string,
 ): Promise<TrendDataPoint[]> {
-  const userCtx = await getUserCtx();
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const { prevFrom, prevTo } = getComparisonDates(dateFrom, dateTo, "yoy");
-  const data = await getTrendSeriesData(metric, filters, prevFrom, prevTo, userCtx);
+  const data = await getTrendSeriesDataCached(metric, filters, prevFrom, prevTo, scopeKey);
 
   // Shift dates forward by 1 year so they align with the current period on the chart
   return data.map((pt) => {

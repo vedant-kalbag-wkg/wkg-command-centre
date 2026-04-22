@@ -1,7 +1,12 @@
 "use server";
 
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
-import { getHotelGroupsList, getHotelGroupDetail } from "@/lib/analytics/queries/hotel-groups";
+import {
+  getHotelGroupsListCached,
+  getHotelGroupDetailCached,
+} from "@/lib/analytics/queries/hotel-groups";
+import { canonicaliseFilters } from "@/lib/analytics/canonicalise-filters";
+import { getCacheScopeKey } from "@/lib/analytics/cache-scope";
 import type {
   AnalyticsFilters,
   HotelGroupData,
@@ -11,14 +16,16 @@ import type {
 export async function fetchHotelGroupsList(
   filters: AnalyticsFilters,
 ): Promise<HotelGroupData[]> {
-  const userCtx = await getUserCtx();
-  return getHotelGroupsList(filters, userCtx);
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
+  const canonical = canonicaliseFilters(filters);
+  return getHotelGroupsListCached(canonical, scopeKey);
 }
 
 export async function fetchHotelGroupDetail(
   groupIds: string[],
   filters: AnalyticsFilters,
 ): Promise<HotelGroupDetail> {
-  const userCtx = await getUserCtx();
-  return getHotelGroupDetail(groupIds, filters, userCtx);
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
+  const canonical = canonicaliseFilters(filters);
+  return getHotelGroupDetailCached(canonical, scopeKey, groupIds);
 }

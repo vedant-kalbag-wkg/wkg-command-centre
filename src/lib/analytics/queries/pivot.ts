@@ -6,22 +6,24 @@
  */
 
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { sql } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationConditionForRawContext } from "@/lib/analytics/active-locations";
 import { getComparisonDates } from "@/lib/analytics/metrics";
 import {
   validatePivotConfig,
   buildPivotSQL,
   formatPivotResults,
 } from "@/lib/analytics/pivot-engine";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
   PivotConfig,
@@ -41,9 +43,14 @@ async function buildPivotWhereString(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<string | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  // Use the raw-context variant here because this function serializes the
+  // Drizzle SQL to a literal string (see loop below); the ANY($::uuid[])
+  // form would stringify its single array param incorrectly, whereas the
+  // IN ($1, $2, …) form yields scalar params the loop handles natively.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationConditionForRawContext(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -53,7 +60,7 @@ async function buildPivotWhereString(
   const combined = combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
@@ -128,7 +135,7 @@ export async function executePivot(
   const pivotSQL = buildPivotSQL(config, whereClause);
 
   // 4. Execute query
-  const rawRows = await db.execute(sql.raw(pivotSQL));
+  const rawRows = await executeRows(sql.raw(pivotSQL));
 
   // 5. Format results
   const result = formatPivotResults(
@@ -172,7 +179,7 @@ async function addPeriodComparison(
 
   const prevWhereClause = await buildPivotWhereString(prevFilters, userCtx);
   const prevSQL = buildPivotSQL(prevConfig, prevWhereClause);
-  const prevRawRows = await db.execute(sql.raw(prevSQL));
+  const prevRawRows = await executeRows(sql.raw(prevSQL));
   const prevResult = formatPivotResults(
     prevRawRows as unknown as Record<string, unknown>[],
     prevConfig,
@@ -290,4 +297,28 @@ async function addPeriodComparison(
     truncated: currentResult.truncated,
   };
 }
+
+// ─── Cached variant (Phase 3) ───────────────────────────────────────────────
+//
+// Wrap executePivot with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', 'executePivot', 'v1'] + JSON.stringify(canonicalFilters, scopeKey, config).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:pivot-table'] — invalidate via /admin/cache.
+//
+// `executePivot` takes args in the unusual order `(config, filters, userCtx)`.
+// `wrapAnalyticsQuery` expects `(filters, userCtx, ...rest)`, so we reorder
+// internally via an un-exported shim.
+
+async function executePivotReordered(
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  config: PivotConfig,
+): Promise<PivotResponse> {
+  return executePivot(config, filters, userCtx);
+}
+
+export const executePivotCached = wrapAnalyticsQuery(executePivotReordered, {
+  name: 'executePivot',
+  tags: ['analytics', 'analytics:pivot-table'],
+});
 

@@ -1,8 +1,11 @@
+import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { headers, cookies } from "next/headers";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 
-export async function getUserCtx(): Promise<UserCtx> {
+// React.cache dedupes across an RSC render pass — multiple islands call
+// this once per request instead of hitting the auth DB per caller.
+export const getUserCtx = cache(async (): Promise<UserCtx> => {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error("Not authenticated");
 
@@ -36,4 +39,4 @@ export async function getUserCtx(): Promise<UserCtx> {
         .userType ?? "internal",
     role: (session.user.role ?? null) as "admin" | "member" | "viewer" | null,
   };
-}
+});
