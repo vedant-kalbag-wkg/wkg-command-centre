@@ -294,6 +294,21 @@ export type HighPerformerPatterns = {
   regionDistribution: { name: string; count: number; percentage: number }[];
   avgKioskCount: number | null;
   avgRoomCount: number | null;
+  avgRevenuePerRoom: number | null;
+  topProducts: { name: string; revenue: number }[];
+};
+
+// ─── Low Performer Patterns ──────────────────────────────────────────────────
+
+export type LowPerformerPatterns = {
+  redCount: number;
+  totalCount: number;
+  insights: string[];
+  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
+  regionDistribution: { name: string; count: number; percentage: number }[];
+  avgKioskCount: number | null;
+  avgRoomCount: number | null;
+  avgRevenuePerRoom: number | null;
   topProducts: { name: string; revenue: number }[];
 };
 

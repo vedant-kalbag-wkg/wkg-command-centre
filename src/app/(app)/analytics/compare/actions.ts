@@ -1,7 +1,9 @@
 "use server";
 
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
-import { getEntityMetrics, getEntityOptions } from "@/lib/analytics/queries/comparison";
+import { getEntityMetricsCached, getEntityOptions } from "@/lib/analytics/queries/comparison";
+import { canonicaliseFilters } from "@/lib/analytics/canonicalise-filters";
+import { getCacheScopeKey } from "@/lib/analytics/cache-scope";
 import type {
   AnalyticsFilters,
   ComparisonEntity,
@@ -13,8 +15,9 @@ export async function fetchComparisonData(
   entityIds: string[],
   filters: AnalyticsFilters,
 ): Promise<ComparisonEntity[]> {
-  const userCtx = await getUserCtx();
-  return getEntityMetrics(entityType, entityIds, filters, userCtx);
+  const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
+  const canonical = canonicaliseFilters(filters);
+  return getEntityMetricsCached(canonical, scopeKey, entityType, entityIds);
 }
 
 export async function fetchEntityOptions(

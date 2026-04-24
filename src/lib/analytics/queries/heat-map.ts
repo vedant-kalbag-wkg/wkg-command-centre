@@ -1,16 +1,18 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { salesRecords, locations, kioskAssignments } from "@/db/schema";
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import {
   calculateCompositeScore,
   calculateRevenuePerRoom,
@@ -30,7 +32,7 @@ const dbAny = db as any;
 
 // ─── Score Weights ──────────────────────────────────────────────────────────
 
-const SCORE_WEIGHTS: ScoreWeights = {
+const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
   revenue: 0.3,
   transactions: 0.2,
   revenuePerRoom: 0.25,
@@ -38,15 +40,39 @@ const SCORE_WEIGHTS: ScoreWeights = {
   basketValue: 0.1,
 };
 
+/**
+ * Accepts fraction weights summing to ~1. If input is missing, invalid, or
+ * sums to zero, falls back to defaults. This is a defensive guard — the UI
+ * already enforces sum=100 before submitting.
+ */
+function resolveWeights(input?: ScoreWeights): ScoreWeights {
+  if (!input) return DEFAULT_SCORE_WEIGHTS;
+  const values = [
+    input.revenue,
+    input.transactions,
+    input.revenuePerRoom,
+    input.txnPerKiosk,
+    input.basketValue,
+  ];
+  if (values.some((v) => !Number.isFinite(v) || v < 0)) return DEFAULT_SCORE_WEIGHTS;
+  const total = values.reduce((a, b) => a + b, 0);
+  if (total <= 0) return DEFAULT_SCORE_WEIGHTS;
+  return input;
+}
+
 // ─── Internal: build WHERE clause ───────────────────────────────────────────
 
 async function buildHeatMapWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  // JOIN stays — heat-map SELECTs outletCode/name/numRooms — but the
+  // predicate lets the planner filter sales_records on its covering index
+  // before joining.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -56,7 +82,7 @@ async function buildHeatMapWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
@@ -75,11 +101,13 @@ function minMaxNormalize(value: number | null, min: number, max: number): number
 export async function getHeatMapData(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
+  weightsInput?: ScoreWeights,
 ): Promise<HeatMapData> {
+  const SCORE_WEIGHTS = resolveWeights(weightsInput);
   const whereClause = await buildHeatMapWhere(filters, userCtx);
 
   // 1. Query sales grouped by location
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -107,7 +135,7 @@ export async function getHeatMapData(
   // Kiosk count: scoped to locations from the sales query results
   const locationIds = rows.map((r) => r.location_id);
   const kioskCountRows = locationIds.length > 0
-    ? await db.execute<{
+    ? await executeRows<{
         location_id: string;
         kiosk_count: string;
       }>(sql`
@@ -234,3 +262,20 @@ export async function getHeatMapData(
     scoreWeights: SCORE_WEIGHTS,
   };
 }
+
+// ─── Cached variant (Phase 3) ────────────────────────────────────────────────
+//
+// Wrap getHeatMapData with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', 'getHeatMapData', 'v1'] + JSON.stringify(
+//   canonicalFilters, scopeKey, weightsInput).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:heat-map'] — invalidate via /admin/cache.
+//
+// Uncached export above remains callable for any non-cached code paths.
+
+const HEAT_MAP_TAGS = ['analytics', 'analytics:heat-map'];
+
+export const getHeatMapDataCached = wrapAnalyticsQuery(getHeatMapData, {
+  name: 'getHeatMapData',
+  tags: HEAT_MAP_TAGS,
+});

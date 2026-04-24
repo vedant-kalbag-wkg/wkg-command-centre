@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Flag } from "lucide-react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { ChartCard } from "@/components/ui/chart-card";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -20,6 +21,7 @@ import {
   fetchThresholdConfig,
   fetchPortfolioEvents,
   fetchHighPerformerPatterns,
+  fetchLowPerformerPatterns,
   fetchActiveFlags,
 } from "./actions";
 import { EVENT_CATEGORIES } from "@/lib/stores/trend-store";
@@ -29,6 +31,9 @@ import { DailyTrends } from "./daily-trends";
 import { HourlyDistribution } from "./hourly-distribution";
 import { OutletTiers } from "./outlet-tiers";
 import { HighPerformerPatterns } from "./high-performer-patterns";
+import { LowPerformerPatterns } from "./low-performer-patterns";
+import { ThresholdEditor } from "./threshold-editor";
+import { usePerformerThresholdStore } from "@/lib/stores/performer-threshold-store";
 import {
   formatCurrency,
   formatNumber,
@@ -41,6 +46,7 @@ import type {
   PortfolioData,
   BusinessEventDisplay,
   HighPerformerPatterns as HighPerformerPatternsData,
+  LowPerformerPatterns as LowPerformerPatternsData,
   LocationFlag,
 } from "@/lib/analytics/types";
 import type { ThresholdConfig } from "@/lib/analytics/thresholds";
@@ -75,7 +81,11 @@ export default function PortfolioPage() {
   const [events, setEvents] = useState<BusinessEventDisplay[]>([]);
   const [highPerformerData, setHighPerformerData] =
     useState<HighPerformerPatternsData | null>(null);
+  const [lowPerformerData, setLowPerformerData] =
+    useState<LowPerformerPatternsData | null>(null);
   const [flags, setFlags] = useState<LocationFlag[]>([]);
+  const greenCutoff = usePerformerThresholdStore((s) => s.greenCutoff);
+  const redCutoff = usePerformerThresholdStore((s) => s.redCutoff);
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("mom");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,52 +96,45 @@ export default function PortfolioPage() {
 
   // Serialize filters for effect dependency (stable reference comparison)
   const filtersJson = JSON.stringify(filters);
-  const abortRef = useRef<AbortController | null>(null);
+
+  // Discard stale server-action results on unmount / newer dispatch.
+  const fetchPortfolio = useAbortableAction(fetchPortfolioData);
 
   const loadData = useCallback(async () => {
-    // Cancel any in-flight request
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setLoading(true);
     setError(null);
 
     try {
       const parsed = JSON.parse(filtersJson) as AnalyticsFilters;
-      const [result, thresholds, eventsResult, hpResult, activeFlags] =
+      const [result, thresholds, eventsResult, hpResult, lpResult, activeFlags] =
         await Promise.all([
-          fetchPortfolioData(parsed, comparisonMode),
+          fetchPortfolio(parsed, comparisonMode),
           fetchThresholdConfig(),
           fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo).catch(() => []),
-          fetchHighPerformerPatterns(parsed).catch(() => null),
+          fetchHighPerformerPatterns(parsed, greenCutoff).catch(() => null),
+          fetchLowPerformerPatterns(parsed, redCutoff).catch(() => null),
           fetchActiveFlags().catch(() => []),
         ]);
-      if (!controller.signal.aborted) {
-        setData(result);
-        setThresholdConfig(thresholds);
-        setEvents(eventsResult);
-        setHighPerformerData(hpResult);
-        setFlags(activeFlags);
-      }
+      // `null` from the abortable dispatcher means a newer call superseded
+      // this one (or the component unmounted) — discard this batch.
+      if (result === null) return;
+      setData(result);
+      setThresholdConfig(thresholds);
+      setEvents(eventsResult);
+      setHighPerformerData(hpResult);
+      setLowPerformerData(lpResult);
+      setFlags(activeFlags);
     } catch (err) {
-      if (!controller.signal.aborted) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load portfolio data",
-        );
-      }
+      setError(
+        err instanceof Error ? err.message : "Failed to load portfolio data",
+      );
     } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [filtersJson, comparisonMode]);
+  }, [filtersJson, comparisonMode, greenCutoff, redCutoff, fetchPortfolio]);
 
   useEffect(() => {
     loadData();
-    return () => {
-      abortRef.current?.abort();
-    };
   }, [loadData]);
 
   const comparisonLabel = comparisonMode === "mom" ? "vs. prev." : "vs. prev. yr";
@@ -191,6 +194,9 @@ export default function PortfolioPage() {
   const hasHighPerformerData =
     !!highPerformerData &&
     (highPerformerData.greenCount > 0 || highPerformerData.totalCount > 0);
+  const hasLowPerformerData =
+    !!lowPerformerData &&
+    (lowPerformerData.redCount > 0 || lowPerformerData.totalCount > 0);
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
@@ -262,6 +268,9 @@ export default function PortfolioPage() {
           ))}
         </div>
 
+        {/* Threshold editor drives both performer cards */}
+        <ThresholdEditor />
+
         {/* 12-col chart grid */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           <ChartCard
@@ -275,6 +284,20 @@ export default function PortfolioPage() {
           >
             {highPerformerData && (
               <HighPerformerPatterns data={highPerformerData} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Low Performer Patterns"
+            description="Traits shared by bottom-tier outlets"
+            className="gap-0 py-0 lg:col-span-12"
+            loading={loading}
+            empty={!loading && !hasLowPerformerData}
+            emptyMessage="No performance data for selected filters"
+            collapsible
+          >
+            {lowPerformerData && (
+              <LowPerformerPatterns data={lowPerformerData} />
             )}
           </ChartCard>
 

@@ -118,7 +118,11 @@ test.describe("Kanban View (KANBAN-01, KANBAN-02, KANBAN-03)", () => {
     const firstCard = page.locator('[data-slot="sheet-content"]').first();
 
     // Find and click the first kiosk card (a div with cursor-pointer inside a column)
-    const kioskCards = page.locator('.cursor-pointer.select-none.bg-white');
+    // Match kanban cards. Once the preview includes data-testid="kiosk-card",
+    // prefer that; until then fall back to the known class signature.
+    const kioskCards = page
+      .getByTestId("kiosk-card")
+      .or(page.locator(".cursor-pointer.select-none.bg-card"));
     await expect(kioskCards.first()).toBeVisible();
     await kioskCards.first().click();
 
@@ -143,7 +147,11 @@ test.describe("Kanban View (KANBAN-01, KANBAN-02, KANBAN-03)", () => {
     await page.getByRole("tab", { name: /kanban/i }).click();
 
     // Click first card
-    const kioskCards = page.locator('.cursor-pointer.select-none.bg-white');
+    // Match kanban cards. Once the preview includes data-testid="kiosk-card",
+    // prefer that; until then fall back to the known class signature.
+    const kioskCards = page
+      .getByTestId("kiosk-card")
+      .or(page.locator(".cursor-pointer.select-none.bg-card"));
     await expect(kioskCards.first()).toBeVisible();
     await kioskCards.first().click();
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { MapPin } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionAccordion } from "@/components/analytics/section-accordion";
@@ -14,10 +15,23 @@ import { HotelGroupBreakdown } from "./hotel-group-breakdown";
 import { LocationGroupBreakdown } from "./location-group-breakdown";
 import type { RegionData, RegionDetail } from "@/lib/analytics/types";
 
+function parseIdParam(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export default function RegionsPage() {
   const filters = useAnalyticsFilters();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialUrlRegionIds = parseIdParam(searchParams?.get("region") ?? null);
   const [regionsList, setRegionsList] = useState<RegionData[]>([]);
-  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [selectedRegionIds, setSelectedRegionIds] = useState<string[]>(
+    initialUrlRegionIds,
+  );
   const [detail, setDetail] = useState<RegionDetail | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -41,14 +55,17 @@ export default function RegionsPage() {
       const result = await fetchRegionsList(parsed);
       if (!controller.signal.aborted) {
         setRegionsList(result);
-        // Clear selection if it's no longer in the filtered result set.
-        // Do NOT auto-select a default — the user must pick a region explicitly,
+        // Drop any previously selected ids that fell out of the filtered set.
+        // Do NOT auto-select a default — the user must pick regions explicitly,
         // which drives the "no region selected" EmptyState below.
-        const stillValid = result.some((r) => r.id === selectedRegionId);
-        if (!stillValid) {
-          setSelectedRegionId(null);
-          setDetail(null);
-        }
+        const validIds = new Set(result.map((r) => r.id));
+        setSelectedRegionIds((prev) => {
+          const kept = prev.filter((id) => validIds.has(id));
+          if (kept.length !== prev.length && kept.length === 0) {
+            setDetail(null);
+          }
+          return kept;
+        });
       }
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -71,9 +88,10 @@ export default function RegionsPage() {
     };
   }, [loadRegions]);
 
-  // Load detail when selected region changes
+  // Load detail when selected regions change
+  const selectedKey = selectedRegionIds.join(",");
   const loadDetail = useCallback(async () => {
-    if (!selectedRegionId) {
+    if (selectedRegionIds.length === 0) {
       setDetail(null);
       return;
     }
@@ -86,7 +104,7 @@ export default function RegionsPage() {
 
     try {
       const parsed = JSON.parse(filtersJson);
-      const result = await fetchRegionDetail([selectedRegionId], parsed);
+      const result = await fetchRegionDetail(selectedRegionIds, parsed);
       if (!controller.signal.aborted) {
         setDetail(result);
       }
@@ -101,7 +119,8 @@ export default function RegionsPage() {
         setDetailLoading(false);
       }
     }
-  }, [selectedRegionId, filtersJson]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, filtersJson]);
 
   useEffect(() => {
     loadDetail();
@@ -118,6 +137,17 @@ export default function RegionsPage() {
   };
 
   const regionDetail = detail ?? emptyDetail;
+
+  function handleSelectionChange(ids: string[]) {
+    setSelectedRegionIds(ids);
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (ids.length === 0) {
+      params.delete("region");
+    } else {
+      params.set("region", ids.join(","));
+    }
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
@@ -137,13 +167,13 @@ export default function RegionsPage() {
         <SectionAccordion title="Regions">
           <RegionSelector
             regions={regionsList}
-            selectedId={selectedRegionId}
-            onSelect={setSelectedRegionId}
+            selected={selectedRegionIds}
+            onChange={handleSelectionChange}
             loading={listLoading}
           />
         </SectionAccordion>
 
-        {!selectedRegionId && !listLoading && regionsList.length > 0 && (
+        {selectedRegionIds.length === 0 && !listLoading && regionsList.length > 0 && (
           <EmptyState
             icon={MapPin}
             title="No region selected"
@@ -151,7 +181,7 @@ export default function RegionsPage() {
           />
         )}
 
-        {selectedRegionId && (
+        {selectedRegionIds.length > 0 && (
           <>
             <SectionAccordion title="Region Metrics">
               {detailLoading ? (

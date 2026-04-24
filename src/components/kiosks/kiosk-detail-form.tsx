@@ -298,8 +298,12 @@ function ExistingKioskForm({
       if ("error" in result) {
         throw new Error(result.error);
       }
+      // Refresh RSC so the inline-edit display renders the saved value.
+      // Without this the span falls back to the stale (pre-edit) prop, which
+      // makes the change invisible until the user navigates away and back.
+      router.refresh();
     },
-    [kiosk.id]
+    [kiosk.id, router]
   );
 
   const handleAssign = () => {

@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { appSettings } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
-import { getThresholds } from "@/lib/analytics/thresholds-server";
+import { getThresholds, THRESHOLDS_TAG } from "@/lib/analytics/thresholds-server";
+import { revalidateTag } from "next/cache";
 import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 
 export async function fetchThresholds(): Promise<ThresholdConfig> {
@@ -56,6 +57,8 @@ export async function saveThresholds(
       oldValue: JSON.stringify(old),
       newValue: JSON.stringify(config),
     });
+
+    revalidateTag(THRESHOLDS_TAG, "max");
 
     return { success: true };
   } catch (err) {

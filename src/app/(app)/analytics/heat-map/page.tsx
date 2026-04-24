@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import {
+  useHeatmapWeightsStore,
+  toScoreWeights,
+} from "@/lib/stores/heatmap-weights-store";
+import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { ChartCard } from "@/components/ui/chart-card";
 import { fetchHeatMapData, fetchThresholdConfig, fetchActiveFlags } from "./actions";
-import { ScoreLegend } from "./score-legend";
+import { WeightEditor } from "./weight-editor";
 import { PerformanceTable } from "./performance-table";
 import type { HeatMapData, LocationFlag } from "@/lib/analytics/types";
 import type { ThresholdConfig } from "@/lib/analytics/thresholds";
 
 export default function HeatMapPage() {
   const filters = useAnalyticsFilters();
+  const appliedWeights = useHeatmapWeightsStore((s) => s.weights);
   const [data, setData] = useState<HeatMapData | null>(null);
   const [thresholdConfig, setThresholdConfig] = useState<ThresholdConfig>({ redMax: 500, greenMin: 1500 });
   const [flags, setFlags] = useState<LocationFlag[]>([]);
@@ -19,46 +25,40 @@ export default function HeatMapPage() {
   const [error, setError] = useState<string | null>(null);
 
   const filtersJson = JSON.stringify(filters);
-  const abortRef = useRef<AbortController | null>(null);
+  const weightsJson = JSON.stringify(appliedWeights);
+
+  // Discard stale server-action results on unmount / newer dispatch.
+  const fetchHeatMap = useAbortableAction(fetchHeatMapData);
 
   const loadData = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setLoading(true);
     setError(null);
 
     try {
-      const parsed = JSON.parse(filtersJson);
+      const parsedFilters = JSON.parse(filtersJson);
+      const parsedWeights = JSON.parse(weightsJson);
       const [result, thresholds, activeFlags] = await Promise.all([
-        fetchHeatMapData(parsed),
+        fetchHeatMap(parsedFilters, toScoreWeights(parsedWeights)),
         fetchThresholdConfig(),
         fetchActiveFlags(),
       ]);
-      if (!controller.signal.aborted) {
-        setData(result);
-        setThresholdConfig(thresholds);
-        setFlags(activeFlags);
-      }
+      // `null` from the abortable dispatcher means a newer call superseded
+      // this one (or the component unmounted) — discard this batch.
+      if (result === null) return;
+      setData(result);
+      setThresholdConfig(thresholds);
+      setFlags(activeFlags);
     } catch (err) {
-      if (!controller.signal.aborted) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load heat map data",
-        );
-      }
+      setError(
+        err instanceof Error ? err.message : "Failed to load heat map data",
+      );
     } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [filtersJson]);
+  }, [filtersJson, weightsJson, fetchHeatMap]);
 
   useEffect(() => {
     loadData();
-    return () => {
-      abortRef.current?.abort();
-    };
   }, [loadData]);
 
   const emptyData: HeatMapData = {
@@ -95,11 +95,11 @@ export default function HeatMapPage() {
 
       <ChartCard
         title="Score Weights"
-        description="Composite score formula weights"
-        loading={loading}
+        description="Configure how each metric contributes to the composite score"
+        loading={false}
         collapsible
       >
-        <ScoreLegend weights={heatMap.scoreWeights} />
+        <WeightEditor />
       </ChartCard>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

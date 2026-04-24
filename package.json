@@ -16,7 +16,8 @@
     "db:import:monday": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-from-monday.ts",
     "db:enrich:locations": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/enrich-locations-from-monday.ts",
     "db:import:location-products": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-location-products-from-monday.ts",
-    "etl:azure": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/run-azure-etl.ts"
+    "etl:azure": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/run-azure-etl.ts",
+    "test:e2e:remote": "playwright test --config=playwright.remote.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1012.0",
@@ -30,6 +31,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
+    "@neondatabase/serverless": "^1.1.0",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@supabase/supabase-js": "^2.103.3",
     "@svar-ui/react-gantt": "^2.5.2",
@@ -43,7 +45,7 @@
     "drizzle-orm": "^0.45.1",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.577.0",
-    "next": "16.1.7",
+    "next": "16.2.4",
     "next-themes": "^0.4.6",
     "nodemailer": "^8.0.3",
     "papaparse": "^5.5.3",
@@ -72,6 +74,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "dotenv": "^17.3.1",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
@@ -80,6 +83,10 @@
     "tailwindcss": "^4",
     "testcontainers": "^11.14.0",
     "typescript": "^5",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "ws": "^8.20.0"
+  },
+  "overrides": {
+    "esbuild": ">=0.25.0"
   }
 }

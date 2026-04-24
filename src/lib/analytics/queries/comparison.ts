@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -11,12 +12,13 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
   ComparisonEntity,
@@ -32,9 +34,10 @@ async function buildComparisonWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -44,7 +47,7 @@ async function buildComparisonWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
@@ -83,7 +86,7 @@ async function getLocationMetrics(
   const entityFilter = sql`${salesRecords.locationId} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
     revenue: string;
@@ -124,7 +127,7 @@ async function getHotelGroupMetrics(
   const entityFilter = sql`${hotelGroups.id} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
     revenue: string;
@@ -167,7 +170,7 @@ async function getRegionMetrics(
   const entityFilter = sql`${regions.id} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
     revenue: string;
@@ -229,3 +232,21 @@ export async function getEntityOptions(
     }
   }
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+// Existing `getEntityMetrics` signature is (entityType, entityIds, filters,
+// userCtx) — doesn't match wrapAnalyticsQuery's (filters, userCtx, ...rest)
+// contract. Thin shim reorders args at the call site without mutating the
+// uncached export (callers of the uncached fn keep working unchanged).
+
+const getEntityMetricsReordered = (
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  entityType: ComparisonEntityType,
+  entityIds: string[],
+): Promise<ComparisonEntity[]> => getEntityMetrics(entityType, entityIds, filters, userCtx);
+
+export const getEntityMetricsCached = wrapAnalyticsQuery(getEntityMetricsReordered, {
+  name: "getEntityMetrics",
+  tags: ["analytics", "analytics:compare"],
+});

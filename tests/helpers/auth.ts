@@ -34,6 +34,12 @@ export const TEST_VIEWER = {
   role: "viewer",
 } as const;
 
+// Sign-in takes longer on remote preview cold starts (Vercel function wake + DB
+// handshake). 10s was enough for local dev but flakes intermittently against
+// a Vercel preview pointed at Neon dev. Use a wider window here so auth never
+// becomes the reason a test fails.
+const SIGN_IN_NAV_TIMEOUT_MS = 30_000;
+
 /**
  * Sign in programmatically via the login form as an admin.
  * Waits for redirect to /kiosks after successful sign-in.
@@ -43,7 +49,7 @@ export async function signInAsAdmin(page: Page) {
   await page.getByLabel("Email address").fill(TEST_ADMIN.email);
   await page.locator("input#password").fill(TEST_ADMIN.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("**/kiosks", { timeout: 10000 });
+  await page.waitForURL("**/kiosks", { timeout: SIGN_IN_NAV_TIMEOUT_MS });
 }
 
 /**
@@ -57,7 +63,7 @@ export async function signInAsMember(page: Page) {
   await page.getByLabel("Email address").fill(TEST_MEMBER.email);
   await page.locator("input#password").fill(TEST_MEMBER.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("**/kiosks", { timeout: 10000 });
+  await page.waitForURL("**/kiosks", { timeout: SIGN_IN_NAV_TIMEOUT_MS });
 }
 
 /**
@@ -71,5 +77,5 @@ export async function signInAsViewer(page: Page) {
   await page.getByLabel("Email address").fill(TEST_VIEWER.email);
   await page.locator("input#password").fill(TEST_VIEWER.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("**/kiosks", { timeout: 10000 });
+  await page.waitForURL("**/kiosks", { timeout: SIGN_IN_NAV_TIMEOUT_MS });
 }

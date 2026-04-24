@@ -1,0 +1,5 @@
+-- Query:
+select count(*) from pg_stat_replication where application_name != $1
+
+-- Plan:
+EXPLAIN failed: there is no parameter $1

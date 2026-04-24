@@ -3,6 +3,13 @@
 import * as React from "react";
 import type { Table, RowData } from "@tanstack/react-table";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Extend TableMeta to include our updateField callback
 declare module "@tanstack/react-table" {
@@ -16,14 +23,25 @@ declare module "@tanstack/react-table" {
   }
 }
 
+export type EditableCellOption = { value: string; label: string };
+
 interface EditableCellProps {
   value: string | number | null;
   rowId: string;
   columnId: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   table: Table<any>;
-  type?: "text" | "number";
+  type?: "text" | "number" | "select";
   placeholder?: string;
+  /**
+   * When type === "select", `options` is required. The stored value is
+   * matched against `value`; the shown label comes from `label`.
+   * `displayValue` is an optional override for showing the label outside the
+   * dropdown (e.g. when the underlying cell value is an FK id but the row
+   * already denormalises the display name).
+   */
+  options?: EditableCellOption[];
+  displayValue?: string | null;
 }
 
 export const EditableCell = React.memo(function EditableCell({
@@ -33,11 +51,14 @@ export const EditableCell = React.memo(function EditableCell({
   table,
   type = "text",
   placeholder = "—",
+  options,
+  displayValue,
 }: EditableCellProps) {
   const [isEditing, setIsEditing] = React.useState(false);
   const [editValue, setEditValue] = React.useState(
     value !== null && value !== undefined ? String(value) : ""
   );
+  const [isSaving, setIsSaving] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync external value changes (e.g. after router.refresh)
@@ -49,11 +70,11 @@ export const EditableCell = React.memo(function EditableCell({
 
   // Focus the input when entering edit mode
   React.useEffect(() => {
-    if (isEditing) {
+    if (isEditing && type !== "select") {
       inputRef.current?.focus();
       inputRef.current?.select();
     }
-  }, [isEditing]);
+  }, [isEditing, type]);
 
   function handleClick(e: React.MouseEvent) {
     // Stop propagation to prevent row onClick (navigation) from firing
@@ -61,13 +82,30 @@ export const EditableCell = React.memo(function EditableCell({
     setIsEditing(true);
   }
 
-  async function commitEdit() {
+  async function commitEdit(next?: string | null) {
     const originalStr =
       value !== null && value !== undefined ? String(value) : "";
+    const raw = next !== undefined ? next : editValue;
     setIsEditing(false);
-    if (editValue === originalStr) return;
-    const newValue = editValue.trim() === "" ? null : editValue.trim();
-    await table.options.meta?.updateField?.(rowId, columnId, newValue);
+    if (raw === null) {
+      if (originalStr === "") return;
+      setIsSaving(true);
+      try {
+        await table.options.meta?.updateField?.(rowId, columnId, null);
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+    const trimmed = typeof raw === "string" ? raw.trim() : String(raw);
+    if (trimmed === originalStr) return;
+    const newValue = trimmed === "" ? null : trimmed;
+    setIsSaving(true);
+    try {
+      await table.options.meta?.updateField?.(rowId, columnId, newValue);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function handleBlur() {
@@ -87,6 +125,75 @@ export const EditableCell = React.memo(function EditableCell({
     }
   }
 
+  // --- Select type ---------------------------------------------------------
+  if (type === "select") {
+    const opts = options ?? [];
+    const currentValueStr =
+      value !== null && value !== undefined ? String(value) : "";
+    const matched = opts.find((o) => o.value === currentValueStr);
+    const label =
+      displayValue !== undefined && displayValue !== null && displayValue !== ""
+        ? displayValue
+        : matched?.label ?? currentValueStr;
+
+    if (!isEditing) {
+      return (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={handleClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.stopPropagation();
+              setIsEditing(true);
+            }
+          }}
+          className="inline-flex items-center min-w-[60px] max-w-full cursor-pointer rounded px-1 -mx-1 hover:bg-border/20 transition-colors overflow-hidden"
+          title="Click to edit"
+        >
+          {label ? (
+            <span className="text-sm truncate">{label}</span>
+          ) : (
+            <span className="text-muted-foreground text-sm">{placeholder}</span>
+          )}
+        </span>
+      );
+    }
+
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+        <Select
+          items={opts}
+          value={currentValueStr}
+          onValueChange={(val) => {
+            // null = user cleared. base-ui may emit null/undefined on clear.
+            void commitEdit(val === null || val === undefined ? null : String(val));
+          }}
+          defaultOpen
+        >
+          <SelectTrigger
+            size="sm"
+            className="h-8 min-w-[120px] w-full text-sm"
+            onBlur={() => {
+              // Close edit on blur without forced save (value already saved on change)
+              setIsEditing(false);
+            }}
+          >
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {opts.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
+
+  // --- Text / number -------------------------------------------------------
   if (isEditing) {
     return (
       <Input
@@ -102,7 +209,7 @@ export const EditableCell = React.memo(function EditableCell({
     );
   }
 
-  const displayValue =
+  const display =
     value !== null && value !== undefined && String(value) !== "" ? (
       <span className="text-sm truncate">{String(value)}</span>
     ) : (
@@ -120,10 +227,11 @@ export const EditableCell = React.memo(function EditableCell({
           setIsEditing(true);
         }
       }}
+      aria-busy={isSaving || undefined}
       className="inline-flex items-center min-w-[60px] max-w-full cursor-text rounded px-1 -mx-1 hover:bg-border/20 transition-colors overflow-hidden"
       title="Click to edit"
     >
-      {displayValue}
+      {display}
     </span>
   );
 });

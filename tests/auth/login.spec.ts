@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { TEST_ADMIN } from "../helpers/auth";
 
 test.describe("Login page", () => {
   test.beforeEach(async ({ page }) => {
@@ -34,8 +35,8 @@ test.describe("Login page", () => {
   test("@smoke user can sign in with valid credentials and land on /kiosks", async ({
     page,
   }) => {
-    await page.getByLabel("Email address").fill("admin@weknow.co");
-    await page.locator("#password").fill("Admin123!");
+    await page.getByLabel("Email address").fill(TEST_ADMIN.email);
+    await page.locator("#password").fill(TEST_ADMIN.password);
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/kiosks/, { timeout: 10000 });
   });

@@ -1,12 +1,7 @@
 "use client";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useMemo } from "react";
+import { MultiSelectFilter } from "@/components/analytics/multi-select-filter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
@@ -14,8 +9,8 @@ import type { LocationGroupData } from "@/lib/analytics/types";
 
 interface LocationSelectorProps {
   groups: LocationGroupData[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
+  selected: string[];
+  onChange: (ids: string[]) => void;
   loading?: boolean;
 }
 
@@ -26,10 +21,15 @@ function groupLabel(group: LocationGroupData): string {
 
 export function LocationSelector({
   groups,
-  selectedId,
-  onSelect,
+  selected,
+  onChange,
   loading = false,
 }: LocationSelectorProps) {
+  const options = useMemo(
+    () => groups.map((g) => ({ value: g.id, label: groupLabel(g) })),
+    [groups],
+  );
+
   if (loading) {
     return <Skeleton className="h-9 w-full max-w-md rounded-lg" />;
   }
@@ -39,25 +39,17 @@ export function LocationSelector({
   }
 
   return (
-    <Select
-      value={selectedId ?? undefined}
-      onValueChange={(value) => {
-        if (typeof value === "string") onSelect(value);
-      }}
-    >
-      <SelectTrigger
-        aria-label="Select location group"
-        className="w-full max-w-md"
-      >
-        <SelectValue placeholder="Select a location group" />
-      </SelectTrigger>
-      <SelectContent>
-        {groups.map((group) => (
-          <SelectItem key={group.id} value={group.id}>
-            {groupLabel(group)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-muted-foreground">
+        Select one or more location groups
+      </label>
+      <MultiSelectFilter
+        label="Select location group"
+        options={options}
+        selected={selected}
+        onChange={onChange}
+        placeholder="Search location groups..."
+      />
+    </div>
   );
 }

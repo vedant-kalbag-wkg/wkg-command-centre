@@ -90,6 +90,8 @@ export type InstallationWithRelations = {
   status: string;
   plannedStart: Date | null;
   plannedEnd: Date | null;
+  internalPocId: string | null;
+  internalPocName: string | null;
   createdAt: Date;
   updatedAt: Date;
   milestones: MilestoneRecord[];
@@ -152,8 +154,20 @@ export async function listInstallations(): Promise<
     await requireRole("admin", "member", "viewer");
 
     const installationRows = await db
-      .select()
+      .select({
+        id: installations.id,
+        name: installations.name,
+        region: installations.region,
+        status: installations.status,
+        plannedStart: installations.plannedStart,
+        plannedEnd: installations.plannedEnd,
+        internalPocId: installations.internalPocId,
+        internalPocName: user.name,
+        createdAt: installations.createdAt,
+        updatedAt: installations.updatedAt,
+      })
       .from(installations)
+      .leftJoin(user, eq(installations.internalPocId, user.id))
       .orderBy(installations.createdAt);
 
     // Early return is load-bearing: the inArray() calls below require a non-empty array
@@ -211,6 +225,7 @@ export async function listInstallations(): Promise<
 
     return installationRows.map((i) => ({
       ...i,
+      internalPocName: i.internalPocName ?? null,
       milestones: milestonesByInstallation.get(i.id) ?? [],
       members: membersByInstallation.get(i.id) ?? [],
     }));
@@ -234,8 +249,20 @@ export async function getInstallation(id: string): Promise<
     await requireRole("admin", "member", "viewer");
 
     const [row] = await db
-      .select()
+      .select({
+        id: installations.id,
+        name: installations.name,
+        region: installations.region,
+        status: installations.status,
+        plannedStart: installations.plannedStart,
+        plannedEnd: installations.plannedEnd,
+        internalPocId: installations.internalPocId,
+        internalPocName: user.name,
+        createdAt: installations.createdAt,
+        updatedAt: installations.updatedAt,
+      })
       .from(installations)
+      .leftJoin(user, eq(installations.internalPocId, user.id))
       .where(eq(installations.id, id))
       .limit(1);
 
@@ -270,6 +297,7 @@ export async function getInstallation(id: string): Promise<
 
     return {
       ...row,
+      internalPocName: row.internalPocName ?? null,
       milestones: milestoneRows,
       members: memberRows.map((m) => ({
         userId: m.userId,
@@ -511,6 +539,114 @@ export async function listUsersForSelect(): Promise<
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to list users";
+    return { error: message };
+  }
+}
+
+/**
+ * List admin/member users eligible as the installation-level internal POC /
+ * assignee. Mirrors the locations + kiosks helpers for parity across tables.
+ */
+export async function listInstallationPocCandidates(): Promise<
+  Array<{ id: string; name: string; email: string }>
+> {
+  try {
+    await requireRole("admin", "member", "viewer");
+    const rows = await db
+      .select({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      })
+      .from(user)
+      .orderBy(user.name);
+
+    return rows
+      .filter((r) => r.role === "admin" || r.role === "member")
+      .map((r) => ({ id: r.id, name: r.name, email: r.email }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Field-level inline update for an installation. Mirrors updateLocationField /
+ * updateKioskField so the same EditableCell wiring works on the installations
+ * table. Narrowed to the editable column allow-list.
+ */
+const EDITABLE_INSTALLATION_FIELDS = [
+  "name",
+  "region",
+  "status",
+  "plannedStart",
+  "plannedEnd",
+  "internalPocId",
+] as const;
+
+export type EditableInstallationField = (typeof EDITABLE_INSTALLATION_FIELDS)[number];
+
+export async function updateInstallationField(
+  installationId: string,
+  field: string,
+  value: string | null,
+  oldValue?: string
+) {
+  try {
+    const session = await requireRole("admin", "member");
+
+    if (!(EDITABLE_INSTALLATION_FIELDS as readonly string[]).includes(field)) {
+      return { error: `Invalid field: ${field}` };
+    }
+    const validField = field as EditableInstallationField;
+
+    const [existing] = await db
+      .select({ name: installations.name })
+      .from(installations)
+      .where(eq(installations.id, installationId))
+      .limit(1);
+
+    if (!existing) return { error: "Not found" };
+
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (validField === "plannedStart" || validField === "plannedEnd") {
+      updateData[validField] = value ? new Date(value) : null;
+    } else if (validField === "status") {
+      // Enum: planned | active | complete. Fall back to "planned" if invalid
+      // input slips past the UI.
+      const allowed = new Set(["planned", "active", "complete"]);
+      if (value && !allowed.has(value)) {
+        return { error: `Invalid status: ${value}` };
+      }
+      updateData.status = value ?? "planned";
+    } else if (validField === "internalPocId") {
+      updateData.internalPocId = value && value !== "" ? value : null;
+    } else {
+      updateData[validField] = value;
+    }
+
+    await db
+      .update(installations)
+      .set(updateData)
+      .where(eq(installations.id, installationId));
+
+    await writeAuditLog({
+      actorId: session.user.id,
+      actorName: session.user.name,
+      entityType: "installation",
+      entityId: installationId,
+      entityName: existing.name,
+      action: "update",
+      field: validField,
+      oldValue,
+      newValue: value !== null && value !== undefined ? String(value) : undefined,
+    });
+
+    return { success: true as const };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to update field";
     return { error: message };
   }
 }

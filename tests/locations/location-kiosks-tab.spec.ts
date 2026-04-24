@@ -22,7 +22,7 @@ test.describe("Location Kiosks Tab (LOC-05)", () => {
     await page.getByRole("tab", { name: "Kiosks" }).click();
 
     // Should show empty state message
-    await expect(page.getByText("No kiosks assigned.")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("No kiosks assigned")).toBeVisible({ timeout: 5000 });
     await expect(
       page.getByText("Kiosks assigned to this location will appear here.")
     ).toBeVisible();

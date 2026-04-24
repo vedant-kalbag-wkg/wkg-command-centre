@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -14,12 +15,13 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getPreviousPeriodDates, calculatePeriodChange } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
@@ -37,9 +39,10 @@ async function buildRegionWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -49,7 +52,7 @@ async function buildRegionWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
@@ -74,7 +77,7 @@ export async function getRegionsList(
   const whereClause = await buildRegionWhere(filters, userCtx);
 
   const [rows, countRows] = await Promise.all([
-    db.execute<{
+    executeRows<{
       region_id: string;
       region_name: string;
       market_id: string | null;
@@ -94,7 +97,7 @@ export async function getRegionsList(
       GROUP BY ${regions.id}, ${regions.name}, ${markets.id}, ${markets.name}
       ORDER BY revenue DESC
     `),
-    db.execute<{
+    executeRows<{
       region_id: string;
       hotel_group_count: string;
       location_group_count: string;
@@ -140,7 +143,7 @@ export async function getRegionDetail(
   const fullWhere = combineConditions([whereClause, regionFilter]);
 
   // Summary metrics
-  const summaryRows = await db.execute<{
+  const summaryRows = await executeRows<{
     revenue: string;
     transactions: string;
   }>(sql`
@@ -163,7 +166,7 @@ export async function getRegionDetail(
   `;
 
   // Hotel group breakdown within region
-  const hgRows = await db.execute<{
+  const hgRows = await executeRows<{
     group_name: string;
     revenue: string;
     transactions: string;
@@ -197,7 +200,7 @@ export async function getRegionDetail(
   });
 
   // Location group breakdown within region
-  const lgRows = await db.execute<{
+  const lgRows = await executeRows<{
     group_name: string;
     revenue: string;
     transactions: string;
@@ -236,7 +239,7 @@ export async function getRegionDetail(
 
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
-    const prevSummary = await db.execute<{
+    const prevSummary = await executeRows<{
       revenue: string;
       transactions: string;
     }>(sql`
@@ -266,3 +269,29 @@ export async function getRegionDetail(
     previousMetrics,
   };
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// Cache key = ['analytics', <name>, 'v1'] + JSON-serialised args.
+// TTL = 24h (overnight UK ETL). Tags: ['analytics', 'analytics:regions'].
+//
+// getRegionDetail's uncached signature is (regionIds, filters, userCtx) — it
+// predates the wrapAnalyticsQuery contract. Rather than rename/re-export the
+// uncached fn, we adapt via a local shim that matches (filters, userCtx, ...rest)
+// and forwards regionIds as the rest arg.
+
+const REGIONS_TAGS = ['analytics', 'analytics:regions'];
+
+export const getRegionsListCached = wrapAnalyticsQuery(getRegionsList, {
+  name: 'getRegionsList',
+  tags: REGIONS_TAGS,
+});
+
+export const getRegionDetailCached = wrapAnalyticsQuery(
+  (filters: AnalyticsFilters, userCtx: UserCtx, regionIds: string[]) =>
+    getRegionDetail(regionIds, filters, userCtx),
+  {
+    name: 'getRegionDetail',
+    tags: REGIONS_TAGS,
+  },
+);

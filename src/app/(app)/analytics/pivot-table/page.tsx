@@ -11,6 +11,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { usePivotFilters } from "@/lib/stores/analytics-filter-store";
+import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import {
   usePivotStore,
   type FieldDefinition,
@@ -80,6 +81,10 @@ export default function PivotTablePage() {
 
   // ─── Run Pivot ─────────────────────────────────────────────────────────
 
+  // Discard stale server-action results on unmount / newer dispatch (e.g.
+  // the user navigates away while a pivot query is still running).
+  const fetchPivot = useAbortableAction(fetchPivotData);
+
   const runPivot = useCallback(async () => {
     if (values.length === 0) return;
 
@@ -94,7 +99,10 @@ export default function PivotTablePage() {
         periodComparison,
       };
 
-      const data = await fetchPivotData(config, filters);
+      const data = await fetchPivot(filters, config);
+      // `null` from the abortable dispatcher means a newer call superseded
+      // this one (or the component unmounted) — discard this batch.
+      if (data === null) return;
       setResult(data);
     } catch (err) {
       setError(
@@ -104,7 +112,7 @@ export default function PivotTablePage() {
     } finally {
       setLoading(false);
     }
-  }, [rowFields, columnFields, values, periodComparison, filters]);
+  }, [rowFields, columnFields, values, periodComparison, filters, fetchPivot]);
 
   return (
     <div className="flex flex-col gap-6">

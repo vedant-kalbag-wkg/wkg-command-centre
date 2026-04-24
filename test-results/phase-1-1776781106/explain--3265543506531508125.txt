@@ -1,0 +1,11 @@
+-- Query:
+SELECT
+      "sales_records"."location_id" AS location_id,
+      COALESCE("locations"."outlet_code", $4) AS outlet_code,
+      "locations"."name" AS hotel_name,
+      "locations"."num_rooms"::text AS num_rooms,
+      (SELECT MIN("kiosk_assignments"."assigned_at") FROM "kiosk_assignments" WHERE "kiosk_assignments"."location_id" = "locations"."id")::text AS live_date,
+      COALESCE(SUM("sales_recor
+
+-- Plan:
+EXPLAIN failed: unterminated quoted identifier at or near ""sales_recor"

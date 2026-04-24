@@ -5,20 +5,21 @@ import { locationFlags } from "@/db/schema";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { writeAuditLog } from "@/lib/audit";
 import { eq, isNull, and } from "drizzle-orm";
+import { unstable_cache, revalidateTag } from "next/cache";
 import type { FlagType, LocationFlag } from "@/lib/analytics/types";
+
+const FLAGS_TAG = "analytics:flags";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 async function requireAuth() {
-  const ctx = await getUserCtx();
-  // Resolve actor name from the session (getUserCtx returns the effective user,
-  // which may be an impersonation target — we need the *real* actor).
-  const { auth } = await import("@/lib/auth");
-  const { headers } = await import("next/headers");
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) throw new Error("Not authenticated");
+  // Resolve the effective user (respects impersonation) and the real actor
+  // session in parallel. Both calls are React.cache'd so within a single
+  // request they reuse the same auth lookup regardless of call order.
+  const { getSessionOrThrow } = await import("@/lib/rbac");
+  const [ctx, session] = await Promise.all([getUserCtx(), getSessionOrThrow()]);
   return { ctx, actorId: session.user.id, actorName: session.user.name };
 }
 
@@ -41,24 +42,37 @@ function rowToFlag(row: typeof locationFlags.$inferSelect): LocationFlag {
 
 /**
  * Fetch all active (unresolved) flags, optionally filtered to a single location.
+ *
+ * The underlying DB fetch is wrapped with `unstable_cache` (tag:
+ * `analytics:flags`) so repeated reads across a request — and across
+ * requests within the TTL — hit the cache instead of the DB. The auth
+ * gate stays OUTSIDE the cache so every caller is still authorised.
+ * Mutations below call `revalidateTag("analytics:flags")` to invalidate.
  */
+const fetchLocationFlagsCached = unstable_cache(
+  async (locationId?: string): Promise<LocationFlag[]> => {
+    const conditions = [isNull(locationFlags.resolvedAt)];
+    if (locationId) {
+      conditions.push(eq(locationFlags.locationId, locationId));
+    }
+
+    const rows = await db
+      .select()
+      .from(locationFlags)
+      .where(and(...conditions))
+      .orderBy(locationFlags.createdAt);
+
+    return rows.map(rowToFlag);
+  },
+  ["analytics", "locationFlags", "v1"],
+  { revalidate: 86400, tags: ["analytics", FLAGS_TAG] },
+);
+
 export async function fetchLocationFlags(
   locationId?: string,
 ): Promise<LocationFlag[]> {
-  await getUserCtx(); // auth gate
-
-  const conditions = [isNull(locationFlags.resolvedAt)];
-  if (locationId) {
-    conditions.push(eq(locationFlags.locationId, locationId));
-  }
-
-  const rows = await db
-    .select()
-    .from(locationFlags)
-    .where(and(...conditions))
-    .orderBy(locationFlags.createdAt);
-
-  return rows.map(rowToFlag);
+  await getUserCtx(); // auth gate — kept OUTSIDE the cache
+  return fetchLocationFlagsCached(locationId);
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +111,8 @@ export async function createFlag(data: {
     field: "flagType",
   });
 
+  revalidateTag(FLAGS_TAG, "max");
+
   return rowToFlag(row);
 }
 
@@ -131,6 +147,8 @@ export async function resolveFlag(
     field: "resolvedAt",
     newValue: row.resolvedAt?.toISOString(),
   });
+
+  revalidateTag(FLAGS_TAG, "max");
 
   return rowToFlag(row);
 }

@@ -5,10 +5,13 @@ import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import type { KioskListItem } from "@/app/(app)/kiosks/actions";
-import { EditableCell } from "@/components/table/editable-cell";
+import { EditableCell, type EditableCellOption } from "@/components/table/editable-cell";
 import { ColumnHeaderFilter } from "@/components/table/column-header-filter";
 
-export const kioskColumns: ColumnDef<KioskListItem>[] = [
+export function makeKioskColumns(
+  pocOptions: EditableCellOption[] = []
+): ColumnDef<KioskListItem>[] {
+  return [
   // 1. Select
   {
     id: "select",
@@ -266,7 +269,27 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
       return val ? "Yes" : "No";
     },
   },
-  // 14. Created At (hidden by default) — non-editable (system field)
+  // 14. Internal POC / assignee — editable via user picker
+  {
+    accessorKey: "internalPocId",
+    size: 150,
+    header: "Internal POC",
+    enableSorting: true,
+    enableGrouping: true,
+    cell: ({ row, table }) => (
+      <EditableCell
+        value={row.original.internalPocId}
+        rowId={row.original.id}
+        columnId="internalPocId"
+        table={table}
+        type="select"
+        options={pocOptions}
+        displayValue={row.original.internalPocName}
+        placeholder="Unassigned"
+      />
+    ),
+  },
+  // 15. Created At (hidden by default) — non-editable (system field)
   {
     accessorKey: "createdAt",
     size: 100,
@@ -279,7 +302,13 @@ export const kioskColumns: ColumnDef<KioskListItem>[] = [
       return new Date(val).toLocaleDateString("en-GB");
     },
   },
-];
+  ];
+}
+
+// Back-compat: default column set with an empty POC picker. Prefer
+// makeKioskColumns(pocOptions) from the client table so the inline-edit
+// dropdown has a real user list.
+export const kioskColumns: ColumnDef<KioskListItem>[] = makeKioskColumns();
 
 // Default hidden columns — visible set per MIGR-12: Asset, Outlet Code, Venue, Region, Stage, CMS Config, Install Date
 export const kioskDefaultColumnVisibility: Record<string, boolean> = {
@@ -297,6 +326,7 @@ export const kioskGroupableColumns = [
   { id: "regionGroup", label: "Region" },
   { id: "cmsConfigStatus", label: "CMS Config" },
   { id: "freeTrialStatus", label: "Free Trial" },
+  { id: "internalPocId", label: "Internal POC" },
 ];
 
 // Filterable columns for toolbar

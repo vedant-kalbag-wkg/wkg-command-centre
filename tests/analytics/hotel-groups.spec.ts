@@ -24,7 +24,7 @@ test("@analytics/hotel-groups page does not throw", async ({ page }) => {
   expect(pageErrors).toEqual([]);
 });
 
-test("@analytics/hotel-groups dropdown renders and selection reveals analytics panel", async ({
+test("@analytics/hotel-groups multi-select trigger renders and selection reveals analytics panel", async ({
   page,
 }) => {
   await signInAsAdmin(page);
@@ -34,12 +34,21 @@ test("@analytics/hotel-groups dropdown renders and selection reveals analytics p
     page.getByRole("heading", { name: "Hotel Groups", level: 1 }),
   ).toBeVisible();
 
-  // Dropdown trigger should be rendered (labelled "Select a hotel group").
-  const trigger = page.getByLabel("Select a hotel group");
-  await expect(trigger).toBeVisible();
+  // Multi-select trigger is a button labelled "Select a hotel group".
+  const trigger = page
+    .getByRole("button", { name: /Select a hotel group/i })
+    .first();
+  await expect(trigger).toBeVisible({ timeout: 15_000 });
 
-  // After the list loads the page auto-selects the first group; the analytics
-  // sections ("Group Metrics", "Hotels in Group", "Daily Trends") must render.
+  // Nothing is pre-selected — picking the first option should reveal the
+  // analytics sections ("Group Metrics", "Hotels in Group", "Daily Trends").
+  await trigger.click();
+  const firstOption = page.getByRole("option").first();
+  await expect(firstOption).toBeVisible();
+  await firstOption.click();
+  // Close the popover by pressing Escape.
+  await page.keyboard.press("Escape");
+
   await expect(
     page.getByRole("button", { name: /Group Metrics/ }),
   ).toBeVisible({ timeout: 15_000 });

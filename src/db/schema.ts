@@ -129,6 +129,9 @@ export const kiosks = pgTable("kiosks", {
   regionGroup: text("region_group"),
   pipelineStageId: uuid("pipeline_stage_id").references(() => pipelineStages.id),
   kioskConfigGroupId: uuid("kiosk_config_group_id").references(() => kioskConfigGroups.id),
+  // Internal POC / assignee — the user responsible for this kiosk. Nullable;
+  // ON DELETE SET NULL in the migration so deleting a user doesn't cascade.
+  internalPocId: text("internal_poc_id").references(() => user.id),
   notes: text("notes"),
   customFields: jsonb("custom_fields").$type<Record<string, string>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -160,7 +163,7 @@ export const locations = pgTable(
     outletCode: text("outlet_code").notNull(),
     // NetSuite ETL region scope (2026-04-24): each location belongs to exactly
     // one canonical region. Populated from kiosk assignments / memberships
-    // during the 0018 migration; new rows must set this explicitly.
+    // during the 0022 migration; new rows must set this explicitly.
     primaryRegionId: uuid("primary_region_id")
       .notNull()
       .references(() => regions.id),
@@ -180,10 +183,17 @@ export const locations = pgTable(
     hardwareAssets: text("hardware_assets"),
     notes: text("notes"),
     // Phase 4.1 — new location fields (D-22)
-    // `region` (free-text) dropped in 0018 — use primaryRegionId + regions FK.
+    // `region` (free-text) dropped in 0022 — use primaryRegionId + regions FK.
     locationGroup: text("location_group"),
     internalPocId: text("internal_poc_id").references(() => user.id),
     status: text("status"),
+    // Kiosk config group lives on the location: each hotel belongs to one
+    // group (imported from Monday column 1466686598). Nullable FK + ON DELETE
+    // SET NULL so removing a group does not cascade-delete locations.
+    kioskConfigGroupId: uuid("kiosk_config_group_id").references(
+      () => kioskConfigGroups.id,
+      { onDelete: "set null" },
+    ),
     customFields: jsonb("custom_fields").$type<Record<string, string>>(),
     // Phase 1 M1 Task 1.5 — hotel dimension fields (ported from data-dashboard analytics schema)
     numRooms: integer("num_rooms"),
@@ -206,21 +216,27 @@ export const locations = pgTable(
 );
 
 // Kiosk assignments — temporal join table for assignment history
-export const kioskAssignments = pgTable("kiosk_assignments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  kioskId: uuid("kiosk_id")
-    .notNull()
-    .references(() => kiosks.id),
-  locationId: uuid("location_id")
-    .notNull()
-    .references(() => locations.id),
-  assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
-  unassignedAt: timestamp("unassigned_at", { withTimezone: true }),
-  reason: text("reason"),
-  assignedBy: text("assigned_by").notNull(),
-  assignedByName: text("assigned_by_name").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const kioskAssignments = pgTable(
+  "kiosk_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kioskId: uuid("kiosk_id")
+      .notNull()
+      .references(() => kiosks.id),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
+    unassignedAt: timestamp("unassigned_at", { withTimezone: true }),
+    reason: text("reason"),
+    assignedBy: text("assigned_by").notNull(),
+    assignedByName: text("assigned_by_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byLocAssigned: index("kiosk_assignments_loc_assigned_idx").on(t.locationId, t.assignedAt),
+  }),
+);
 
 // Audit log — append-only with denormalized actor/entity names
 export const auditLogs = pgTable("audit_logs", {
@@ -275,6 +291,9 @@ export const installations = pgTable("installations", {
   status: text("status").notNull().default("planned"),
   plannedStart: timestamp("planned_start", { withTimezone: true }),
   plannedEnd: timestamp("planned_end", { withTimezone: true }),
+  // Internal POC / assignee — the user responsible for this installation.
+  // Nullable; ON DELETE SET NULL in the migration.
+  internalPocId: text("internal_poc_id").references(() => user.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

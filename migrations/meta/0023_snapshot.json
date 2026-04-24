@@ -1504,6 +1504,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "internal_poc_id": {
+          "name": "internal_poc_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1520,7 +1526,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "installations_internal_poc_id_user_id_fk": {
+          "name": "installations_internal_poc_id_user_id_fk",
+          "tableFrom": "installations",
+          "tableTo": "user",
+          "columnsFrom": [
+            "internal_poc_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1589,7 +1609,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "kiosk_assignments_loc_assigned_idx": {
+          "name": "kiosk_assignments_loc_assigned_idx",
+          "columns": [
+            {
+              "expression": "location_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "assigned_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "kiosk_assignments_kiosk_id_kiosks_id_fk": {
           "name": "kiosk_assignments_kiosk_id_kiosks_id_fk",
@@ -1768,6 +1810,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "internal_poc_id": {
+          "name": "internal_poc_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "notes": {
           "name": "notes",
           "type": "text",
@@ -1822,6 +1870,19 @@
           "tableTo": "kiosk_config_groups",
           "columnsFrom": [
             "kiosk_config_group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "kiosks_internal_poc_id_user_id_fk": {
+          "name": "kiosks_internal_poc_id_user_id_fk",
+          "tableFrom": "kiosks",
+          "tableTo": "user",
+          "columnsFrom": [
+            "internal_poc_id"
           ],
           "columnsTo": [
             "id"
@@ -2547,6 +2608,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "kiosk_config_group_id": {
+          "name": "kiosk_config_group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "custom_fields": {
           "name": "custom_fields",
           "type": "jsonb",
@@ -2655,6 +2722,19 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "locations_kiosk_config_group_id_kiosk_config_groups_id_fk": {
+          "name": "locations_kiosk_config_group_id_kiosk_config_groups_id_fk",
+          "tableFrom": "locations",
+          "tableTo": "kiosk_config_groups",
+          "columnsFrom": [
+            "kiosk_config_group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

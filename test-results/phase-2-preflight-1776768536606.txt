@@ -1,0 +1,57 @@
+# Phase 2 preflight — 2026-04-21T10:48:56.606Z
+# DB host: ep-calm-sea-abn2ooob-pooler.eu-west-2.aws.neon.tech
+
+## sales_records
+rows: 124595
+current indexes (7):
+  sales_loc_date_idx: CREATE INDEX sales_loc_date_idx ON public.sales_records USING btree (location_id, transaction_date)
+  sales_prod_date_idx: CREATE INDEX sales_prod_date_idx ON public.sales_records USING btree (product_id, transaction_date)
+  sales_prov_date_idx: CREATE INDEX sales_prov_date_idx ON public.sales_records USING btree (provider_id, transaction_date)
+  sales_records_pkey: CREATE UNIQUE INDEX sales_records_pkey ON public.sales_records USING btree (id)
+  sales_records_sale_ref_transaction_date_unique: CREATE UNIQUE INDEX sales_records_sale_ref_transaction_date_unique ON public.sales_records USING btree (sale_ref, transaction_date)
+  sales_sale_ref_idx: CREATE INDEX sales_sale_ref_idx ON public.sales_records USING btree (sale_ref)
+  sales_txn_date_idx: CREATE INDEX sales_txn_date_idx ON public.sales_records USING btree (transaction_date)
+
+## kiosk_assignments
+rows: 381
+current indexes (1):
+  kiosk_assignments_pkey: CREATE UNIQUE INDEX kiosk_assignments_pkey ON public.kiosk_assignments USING btree (id)
+
+## EXPLAIN: getPortfolioSummary-shape
+  GroupAggregate  (cost=16.09..16.11 rows=1 width=56) (actual time=0.023..0.024 rows=0 loops=1)
+    Group Key: sr.location_id
+    Buffers: shared hit=5
+    ->  Sort  (cost=16.09..16.09 rows=1 width=26) (actual time=0.022..0.023 rows=0 loops=1)
+          Sort Key: sr.location_id
+          Sort Method: quicksort  Memory: 25kB
+          Buffers: shared hit=5
+          ->  Nested Loop  (cost=0.57..16.08 rows=1 width=26) (actual time=0.009..0.010 rows=0 loops=1)
+                Buffers: shared hit=2
+                ->  Index Scan using sales_txn_date_idx on sales_records sr  (cost=0.30..7.73 rows=1 width=26) (actual time=0.009..0.009 rows=0 loops=1)
+                      Index Cond: (transaction_date >= ((CURRENT_DATE - '90 days'::interval))::date)
+                      Buffers: shared hit=2
+                ->  Index Scan using locations_pkey on locations l  (cost=0.27..8.29 rows=1 width=16) (never executed)
+                      Index Cond: (id = sr.location_id)
+                      Filter: (outlet_code <> 'TEST'::text)
+  Planning:
+    Buffers: shared hit=131 read=32 dirtied=11
+  Planning Time: 45.406 ms
+  Execution Time: 0.080 ms
+
+## EXPLAIN: kioskLiveDateSubquery-shape (correlated MIN)
+  Limit  (cost=0.00..688.84 rows=50 width=24) (actual time=0.986..2.876 rows=50 loops=1)
+    Buffers: shared hit=451 read=2 dirtied=2
+    ->  Seq Scan on locations l  (cost=0.00..4532.54 rows=329 width=24) (actual time=0.984..2.869 rows=50 loops=1)
+          Filter: (outlet_code <> 'TEST'::text)
+          Buffers: shared hit=451 read=2 dirtied=2
+          SubPlan 1
+            ->  Aggregate  (cost=13.70..13.71 rows=1 width=8) (actual time=0.024..0.024 rows=1 loops=50)
+                  Buffers: shared hit=450
+                  ->  Seq Scan on kiosk_assignments ka  (cost=0.00..13.70 rows=1 width=8) (actual time=0.008..0.023 rows=1 loops=50)
+                        Filter: (location_id = l.id)
+                        Rows Removed by Filter: 380
+                        Buffers: shared hit=450
+  Planning:
+    Buffers: shared hit=24 read=4 dirtied=3
+  Planning Time: 5.268 ms
+  Execution Time: 2.905 ms

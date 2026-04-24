@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import {
   salesRecords,
   locations,
@@ -9,16 +10,17 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import {
   getPreviousPeriodDates,
   calculatePercentile,
 } from "@/lib/analytics/metrics";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
   LocationGroupData,
@@ -36,9 +38,10 @@ async function buildLocationGroupWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: active-location predicate replaces outlet_code exclusion.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -48,7 +51,7 @@ async function buildLocationGroupWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
@@ -71,7 +74,7 @@ export async function getLocationGroupsList(
 ): Promise<LocationGroupData[]> {
   const whereClause = await buildLocationGroupWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     group_id: string;
     group_name: string;
     revenue: string;
@@ -126,7 +129,7 @@ export async function getLocationGroupDetail(
   const fullWhere = combineConditions([whereClause, groupFilter]);
 
   // Summary + capacity metrics
-  const summaryRows = await db.execute<{
+  const summaryRows = await executeRows<{
     revenue: string;
     transactions: string;
     hotel_count: string;
@@ -191,7 +194,7 @@ export async function getLocationGroupDetail(
   }
 
   // Hotel breakdown
-  const hotelRows = await db.execute<{
+  const hotelRows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -243,7 +246,7 @@ export async function getLocationGroupDetail(
 
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
-    const prevSummary = await db.execute<{
+    const prevSummary = await executeRows<{
       revenue: string;
       transactions: string;
     }>(sql`
@@ -276,3 +279,33 @@ export async function getLocationGroupDetail(
     previousMetrics,
   };
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// Wrap each location-groups query with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', <name>, 'v1'] + JSON.stringify(canonicalFilters, scopeKey, ...rest).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:location-groups'] — invalidate via /admin/cache.
+
+const LOCATION_GROUPS_TAGS = ['analytics', 'analytics:location-groups'];
+
+export const getLocationGroupsListCached = wrapAnalyticsQuery(getLocationGroupsList, {
+  name: 'getLocationGroupsList',
+  tags: LOCATION_GROUPS_TAGS,
+});
+
+// `getLocationGroupDetail` has args `(groupIds, filters, userCtx)` — reorder
+// internally to the standard `(filters, userCtx, ...rest)` shape expected by
+// `wrapAnalyticsQuery`.
+async function getLocationGroupDetailReordered(
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
+  groupIds: string[],
+): Promise<LocationGroupDetail> {
+  return getLocationGroupDetail(groupIds, filters, userCtx);
+}
+
+export const getLocationGroupDetailCached = wrapAnalyticsQuery(getLocationGroupDetailReordered, {
+  name: 'getLocationGroupDetail',
+  tags: LOCATION_GROUPS_TAGS,
+});

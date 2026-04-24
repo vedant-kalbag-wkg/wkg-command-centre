@@ -1,12 +1,7 @@
 "use client";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useMemo } from "react";
+import { MultiSelectFilter } from "@/components/analytics/multi-select-filter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCompactNumber, formatNumber } from "@/lib/analytics/formatters";
@@ -14,8 +9,8 @@ import type { HotelGroupData } from "@/lib/analytics/types";
 
 interface GroupSelectorProps {
   groups: HotelGroupData[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
+  selected: string[];
+  onChange: (ids: string[]) => void;
   loading?: boolean;
 }
 
@@ -24,12 +19,21 @@ function formatRevenueCompact(value: number): string {
   return `£${formatCompactNumber(value).toLowerCase()}`;
 }
 
+function groupOptionLabel(group: HotelGroupData): string {
+  return `${group.name} (${formatNumber(group.hotelCount)} hotels) ${formatRevenueCompact(group.revenue)} revenue`;
+}
+
 export function GroupSelector({
   groups,
-  selectedId,
-  onSelect,
+  selected,
+  onChange,
   loading = false,
 }: GroupSelectorProps) {
+  const options = useMemo(
+    () => groups.map((g) => ({ value: g.id, label: groupOptionLabel(g) })),
+    [groups],
+  );
+
   if (loading) {
     return <Skeleton className="h-9 w-full max-w-md rounded-lg" />;
   }
@@ -44,39 +48,15 @@ export function GroupSelector({
         htmlFor="hotel-group-select"
         className="text-xs font-medium text-muted-foreground"
       >
-        Select a hotel group
+        Select one or more hotel groups
       </label>
-      <Select
-        value={selectedId ?? undefined}
-        onValueChange={(v) => {
-          if (typeof v === "string") onSelect(v);
-        }}
-      >
-        <SelectTrigger
-          id="hotel-group-select"
-          className="w-full max-w-md"
-          aria-label="Select a hotel group"
-        >
-          <SelectValue placeholder="Choose a hotel group..." />
-        </SelectTrigger>
-        <SelectContent>
-          {groups.map((group) => (
-            <SelectItem key={group.id} value={group.id}>
-              <span className="flex w-full items-center gap-3">
-                <span className="flex-1 truncate font-medium">
-                  {group.name}
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  ({formatNumber(group.hotelCount)} hotels)
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {formatRevenueCompact(group.revenue)} revenue
-                </span>
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <MultiSelectFilter
+        label="Select a hotel group"
+        options={options}
+        selected={selected}
+        onChange={onChange}
+        placeholder="Search hotel groups..."
+      />
     </div>
   );
 }

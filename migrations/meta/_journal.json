@@ -131,15 +131,43 @@
     {
       "idx": 18,
       "version": "7",
-      "when": 1777005374407,
-      "tag": "0018_restructure_salesrecords_region_scoped",
+      "when": 1777336700000,
+      "tag": "0018_location_kiosk_config_group",
       "breakpoints": true
     },
     {
       "idx": 19,
       "version": "7",
+      "when": 1777336800000,
+      "tag": "0019_internal_poc_kiosks_installations",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1777336800001,
+      "tag": "0020_phase_2_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1777336800002,
+      "tag": "0021_phase_2_product_covering_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1777005374407,
+      "tag": "0022_restructure_salesrecords_region_scoped",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
       "when": 1777016694346,
-      "tag": "0019_sales_imports_region_id",
+      "tag": "0023_sales_imports_region_id",
       "breakpoints": true
     }
   ]

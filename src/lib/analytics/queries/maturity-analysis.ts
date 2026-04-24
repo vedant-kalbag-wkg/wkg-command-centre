@@ -1,16 +1,18 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { salesRecords, locations } from "@/db/schema";
 import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
   MaturityBucketMetrics,
@@ -28,9 +30,13 @@ async function buildMaturityWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: swap buildExclusionCondition → buildActiveLocationCondition.
+  // JOIN stays (kioskLiveDateSubquery references locations.id), but the
+  // location predicate now filters via the sales_records covering index
+  // before the JOIN rather than through a locations scan.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -40,7 +46,7 @@ async function buildMaturityWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
@@ -69,7 +75,7 @@ export async function getRevenueByMaturityBucket(
   // its maturity today, ignoring the selected reporting window.
   const referenceDate = sql`${filters.dateTo}::timestamp`;
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     bucket: string;
     location_count: string;
     avg_revenue: string;
@@ -129,7 +135,7 @@ export async function getRevenueRampCurve(
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     months_since: string;
     avg_revenue: string;
     location_count: string;
@@ -182,7 +188,7 @@ export async function getInstallCohorts(
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     install_month: string;
     location_count: string;
     avg_monthly_revenue: string;
@@ -218,3 +224,12 @@ export async function getMaturityAnalysis(
 
   return { bucketMetrics, rampCurve, installCohorts };
 }
+
+// ─── Cached variants (Phase 3) ──────────────────────────────────────────────
+
+const PAGE_TAGS = ['analytics', 'analytics:maturity'];
+
+export const getMaturityAnalysisCached = wrapAnalyticsQuery(getMaturityAnalysis, {
+  name: 'getMaturityAnalysis',
+  tags: PAGE_TAGS,
+});

@@ -26,8 +26,15 @@ import {
   locationHotelGroupMemberships,
   locationRegionMemberships,
   locationGroupMemberships,
+  kioskConfigGroups,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
+import {
+  HOTEL_BOARD_CORE_COLUMNS,
+  HOTEL_LIVE_ONLY_COLUMNS,
+  assertBoardColumns,
+  warnBoardColumns,
+} from "./monday-schema";
 
 const MONDAY_API_TOKEN = process.env.MONDAY_API_TOKEN;
 
@@ -117,6 +124,11 @@ interface HotelItem {
   locationGroup: string | null;
   sourcedBy: string | null;
   notes: string | null;
+  // SSM config group name resolved via the Live Estate board's
+  // link_to_ssm_groups__1 board_relation column (points to SSM Groups
+  // board 1466686598, where each item is a named config group such as
+  // "LDNC1 (All products)" or "Leonardo Royal Hotels").
+  configGroupName: string | null;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -148,6 +160,7 @@ async function fetchAllHotels(): Promise<HotelItem[]> {
           ... on EmailValue { text }
           ... on LongTextValue { text }
           ... on CheckboxValue { text }
+          ... on BoardRelationValue { display_value }
         }
       `;
 
@@ -209,6 +222,15 @@ async function fetchAllHotels(): Promise<HotelItem[]> {
         const numRoomsText = getText("number_of_rooms");
         const ratingText = getText("rating__1");
 
+        // Resolve the SSM config group. For board_relation columns Monday
+        // returns the linked item's name via text/display_value. Take the
+        // first if multiple are linked (groups are single-assignment in
+        // practice; multiple would imply config ambiguity we can't resolve).
+        const groupText = getText("link_to_ssm_groups__1");
+        const configGroupName = groupText
+          ? groupText.split(",")[0].trim() || null
+          : null;
+
         allHotels.push({
           id: item.id,
           name: item.name,
@@ -230,6 +252,7 @@ async function fetchAllHotels(): Promise<HotelItem[]> {
           locationGroup: getText("status_11"),
           sourcedBy: getText("label8__1"),
           notes: getText("long_text__1"),
+          configGroupName,
         });
       }
 
@@ -285,19 +308,58 @@ async function enrichLocations(hotels: HotelItem[]) {
     .from(locationGroups);
   const lgMap = new Map(lgRows.map((r) => [r.name, r.id]));
 
+  const kcgRows = await db
+    .select({ id: kioskConfigGroups.id, name: kioskConfigGroups.name })
+    .from(kioskConfigGroups);
+  const kcgMap = new Map(kcgRows.map((r) => [r.name, r.id]));
+
   // Load all locations
-  const allLocs = await db
+  let allLocs = await db
     .select({
       id: locations.id,
       name: locations.name,
       outletCode: locations.outletCode,
+      address: locations.address,
     })
     .from(locations);
+
+  // Create stub locations for any Monday outlet code we don't have yet.
+  // Without this pass, hotels added to Monday after the initial Supabase
+  // seed never surface in our DB, and their kiosks import but never get
+  // an assignment (symptom: outlet 2W = ibis Berlin Kurfuerstendamm).
+  const existingOutletCodes = new Set(
+    allLocs.map((l) => l.outletCode).filter((c): c is string => c !== null),
+  );
+  let createdStubs = 0;
+  for (const [outletCode, hotel] of outletToHotel) {
+    if (existingOutletCodes.has(outletCode)) continue;
+    const [row] = await db
+      .insert(locations)
+      .values({ name: hotel.name, outletCode })
+      .returning({
+        id: locations.id,
+        name: locations.name,
+        outletCode: locations.outletCode,
+        address: locations.address,
+      });
+    if (row) {
+      allLocs.push(row);
+      existingOutletCodes.add(outletCode);
+      createdStubs++;
+    }
+  }
+  if (createdStubs > 0) {
+    log("ENRICH", `Created ${createdStubs} new location stubs from Monday`);
+  }
 
   let updated = 0;
   let skippedNoMatch = 0;
   let enrichedStubs = 0;
   let enrichedExisting = 0;
+  let addressMissing = 0;
+  let addressBackfilled = 0;
+  let configGroupLinked = 0;
+  let configGroupMissing = 0;
 
   for (const loc of allLocs) {
     if (!loc.outletCode) continue;
@@ -330,6 +392,13 @@ async function enrichLocations(hotels: HotelItem[]) {
     if (hotel.numRooms) updateValues.numRooms = hotel.numRooms;
     if (hotel.starRating) updateValues.starRating = hotel.starRating;
     if (hotel.hotelAddress) updateValues.hotelAddress = hotel.hotelAddress;
+    // /locations reads from locations.address (not hotelAddress). Mirror
+    // Monday's address value into `address` when it is still NULL so the
+    // locations list UI surfaces it. Don't overwrite an existing address.
+    if (hotel.hotelAddress && !loc.address) {
+      updateValues.address = hotel.hotelAddress;
+      addressBackfilled++;
+    }
     if (hotel.liveDate) updateValues.liveDate = new Date(hotel.liveDate);
     if (hotel.launchPhase) updateValues.launchPhase = hotel.launchPhase;
     if (hotel.keyContactName)
@@ -351,6 +420,54 @@ async function enrichLocations(hotels: HotelItem[]) {
       .set(updateValues)
       .where(eq(locations.id, loc.id));
     updated++;
+
+    // Structured audit log: surface outlets that still have no address after
+    // we've matched them to a Monday hotel row. Helps identify whether the
+    // Monday "Location" column is genuinely empty or sitting in a different
+    // column we aren't yet reading.
+    const finalAddress = (updateValues.address as string | undefined) ?? loc.address ?? null;
+    if (!finalAddress) {
+      addressMissing++;
+      log(
+        "MONDAY-ENRICH",
+        `outlet=${loc.outletCode} name="${loc.name}" mondayItemId=${hotel.id} missing: address=null (Monday 'location' column empty)`,
+      );
+    }
+
+    // Attach kiosk config group via the Live Estate's SSM Group relation.
+    // Each hotel has one group; we upsert kiosk_config_groups by name and
+    // set locations.kiosk_config_group_id. A hotel with no group link just
+    // leaves the FK null (rendered as "Unassigned" in the UI).
+    if (hotel.configGroupName) {
+      let kcgId = kcgMap.get(hotel.configGroupName);
+      if (!kcgId) {
+        const [row] = await db
+          .insert(kioskConfigGroups)
+          .values({ name: hotel.configGroupName })
+          .onConflictDoNothing({ target: kioskConfigGroups.name })
+          .returning({ id: kioskConfigGroups.id });
+        if (row) {
+          kcgId = row.id;
+        } else {
+          const [existing] = await db
+            .select({ id: kioskConfigGroups.id })
+            .from(kioskConfigGroups)
+            .where(eq(kioskConfigGroups.name, hotel.configGroupName))
+            .limit(1);
+          kcgId = existing?.id;
+        }
+        if (kcgId) kcgMap.set(hotel.configGroupName, kcgId);
+      }
+      if (kcgId) {
+        await db
+          .update(locations)
+          .set({ kioskConfigGroupId: kcgId, updatedAt: new Date() })
+          .where(eq(locations.id, loc.id));
+        configGroupLinked++;
+      }
+    } else {
+      configGroupMissing++;
+    }
 
     // Create dimension memberships if hotel group/region/location group exist
     if (hotel.hotelGroup) {
@@ -446,6 +563,14 @@ async function enrichLocations(hotels: HotelItem[]) {
     "ENRICH",
     `Done: ${updated} updated (${enrichedStubs} stubs renamed, ${enrichedExisting} existing enriched), ${skippedNoMatch} no Monday.com match`
   );
+  log(
+    "ENRICH",
+    `Address backfills: ${addressBackfilled} (mirrored hotelAddress → address); still missing address: ${addressMissing}`,
+  );
+  log(
+    "ENRICH",
+    `Config groups linked: ${configGroupLinked}; hotels with no SSM Group on Live Estate: ${configGroupMissing}`,
+  );
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -506,6 +631,29 @@ async function verify() {
 
 async function main() {
   console.log("=== Monday.com Hotel → Location Enrichment ===\n");
+
+  // Fail loudly only on Live Estate — it's the primary hotel source and
+  // silent drift there corrupts every downstream enrichment. The sibling
+  // boards (Ready to Launch, Removed, Australia DCM) carry partial schemas
+  // by design (e.g. Removed has no room count / star rating); for those we
+  // log a warning per missing column but continue — enrichLocations'
+  // `getText()` already handles absences with null.
+  const LIVE_ESTATE_BOARD_ID = 1356570756;
+  const mq = mondayQuery as (q: string) => Promise<unknown>;
+  for (const boardId of HOTEL_BOARD_IDS) {
+    const label = BOARD_NAMES[boardId] ?? `Board ${boardId}`;
+    if (boardId === LIVE_ESTATE_BOARD_ID) {
+      await assertBoardColumns(
+        mq,
+        boardId,
+        [...HOTEL_BOARD_CORE_COLUMNS, ...HOTEL_LIVE_ONLY_COLUMNS],
+        label,
+      );
+    } else {
+      await warnBoardColumns(mq, boardId, HOTEL_BOARD_CORE_COLUMNS, label);
+    }
+  }
+
   const hotels = await fetchAllHotels();
   await enrichLocations(hotels);
   await verify();

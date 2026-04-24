@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 import { getDimensionOptions } from "@/app/(app)/analytics/actions";
 import {
@@ -22,10 +22,26 @@ export function AnalyticsFilterBar({
 } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [options, setOptions] = useState<DimensionOptions | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
+
+  // On the three per-dimension analytics pages, the page's primary selector IS
+  // the filter for that dimension — hide the corresponding chip here so it
+  // does not double up.
+  const hideDimension: "hotelGroups" | "locationGroups" | "regions" | null =
+    pathname === "/analytics/hotel-groups"
+      ? "hotelGroups"
+      : pathname === "/analytics/location-groups"
+        ? "locationGroups"
+        : pathname === "/analytics/regions"
+          ? "regions"
+          : null;
 
   const store = useAnalyticsFilterStore();
+  // Track mount so the initial store state (post URL hydration) does not
+  // immediately stomp the URL on first render.
+  const hasHydratedRef = useRef(false);
 
   // Load dimension options on mount
   useEffect(() => {
@@ -41,16 +57,34 @@ export function AnalyticsFilterBar({
     if (parsed) {
       useAnalyticsFilterStore.setState(parsed);
     }
+    hasHydratedRef.current = true;
     // Only run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleApply() {
-    const params = filtersToSearchParams(
-      useAnalyticsFilterStore.getState() as Parameters<typeof filtersToSearchParams>[0]
-    );
-    router.replace(`?${params.toString()}`);
-  }
+  // Auto-apply filters: when any filter slice changes, debounce a URL replace.
+  // Serialized deps keep the effect stable across reference-only re-renders.
+  const filterSignature = JSON.stringify({
+    from: store.dateRange.from,
+    to: store.dateRange.to,
+    hotel: store.hotelFilter,
+    product: store.productFilter,
+    hotelGroup: store.hotelGroupFilter,
+    region: store.regionFilter,
+    locationGroup: store.locationGroupFilter,
+    maturity: store.maturityFilter,
+  });
+
+  useEffect(() => {
+    if (!hasHydratedRef.current) return;
+    const id = setTimeout(() => {
+      const params = filtersToSearchParams(
+        useAnalyticsFilterStore.getState() as Parameters<typeof filtersToSearchParams>[0]
+      );
+      router.replace(`?${params.toString()}`);
+    }, 150);
+    return () => clearTimeout(id);
+  }, [filterSignature, router]);
 
   function handleReset() {
     store.clearAllFilters();
@@ -83,7 +117,10 @@ export function AnalyticsFilterBar({
   }));
 
   return (
-    <div className="sticky top-14 z-20 flex items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-2.5">
+    <div
+      data-testid="analytics-filter-bar"
+      className="sticky top-14 z-20 flex items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-2.5"
+    >
       <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
         <DateRangePicker
           from={store.dateRange.from}
@@ -107,29 +144,35 @@ export function AnalyticsFilterBar({
           placeholder="Search products..."
         />
 
-        <MultiSelectFilter
-          label="Hotel Groups"
-          options={hotelGroupOptions}
-          selected={store.hotelGroupFilter}
-          onChange={(values) => store.setFilter("hotelGroupFilter", values)}
-          placeholder="Search hotel groups..."
-        />
+        {hideDimension !== "hotelGroups" && (
+          <MultiSelectFilter
+            label="Hotel Groups"
+            options={hotelGroupOptions}
+            selected={store.hotelGroupFilter}
+            onChange={(values) => store.setFilter("hotelGroupFilter", values)}
+            placeholder="Search hotel groups..."
+          />
+        )}
 
-        <MultiSelectFilter
-          label="Regions"
-          options={regionOptions}
-          selected={store.regionFilter}
-          onChange={(values) => store.setFilter("regionFilter", values)}
-          placeholder="Search regions..."
-        />
+        {hideDimension !== "regions" && (
+          <MultiSelectFilter
+            label="Regions"
+            options={regionOptions}
+            selected={store.regionFilter}
+            onChange={(values) => store.setFilter("regionFilter", values)}
+            placeholder="Search regions..."
+          />
+        )}
 
-        <MultiSelectFilter
-          label="Location Groups"
-          options={locationGroupOptions}
-          selected={store.locationGroupFilter}
-          onChange={(values) => store.setFilter("locationGroupFilter", values)}
-          placeholder="Search location groups..."
-        />
+        {hideDimension !== "locationGroups" && (
+          <MultiSelectFilter
+            label="Location Groups"
+            options={locationGroupOptions}
+            selected={store.locationGroupFilter}
+            onChange={(values) => store.setFilter("locationGroupFilter", values)}
+            placeholder="Search location groups..."
+          />
+        )}
 
         <MultiSelectFilter
           label="Maturity"
@@ -149,14 +192,6 @@ export function AnalyticsFilterBar({
         >
           <RotateCcw className="size-3.5" />
           Reset
-        </Button>
-        <Button
-          size="sm"
-          className="h-8"
-          onClick={handleApply}
-          disabled={isPending}
-        >
-          Apply Filters
         </Button>
       </div>
     </div>

@@ -1,16 +1,18 @@
 import { db } from "@/db";
+import { executeRows } from "@/db/execute-rows";
 import { salesRecords, locations, products } from "@/db/schema";
 import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getComparisonDates, classifyOutletTier } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
@@ -36,9 +38,14 @@ async function buildPortfolioWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6: `buildActiveLocationCondition` replaces
+  // `buildExclusionCondition` + the INNER JOIN on locations with a
+  // `location_id = ANY($1::uuid[])` predicate. The predicate hits the
+  // sales_records covering index (index-only scan) and the active ID list is
+  // React.cache'd per request.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -48,25 +55,33 @@ async function buildPortfolioWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);
 }
 
-// All portfolio queries JOIN locations for exclusion filtering (outlet_code).
-// The exclusion condition references locations.outletCode, so we always need
-// the JOIN even when the query doesn't otherwise use locations columns.
+// Portfolio queries that only used the locations JOIN for outlet_code
+// exclusion can now read straight from sales_records: the active-location
+// predicate replaces the exclusion filter. Queries that still need location
+// columns in SELECT/GROUP BY (e.g. getOutletTiers) keep the JOIN.
 
 function baseFrom(): SQL {
-  return sql`${salesRecords}
-    INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}`;
+  return sql`${salesRecords}`;
 }
 
 function baseFromWithProducts(): SQL {
   return sql`${salesRecords}
-    INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}`;
+}
+
+// Outlet-tier aggregation still needs locations.name / outlet_code / id in
+// the SELECT, so it keeps the JOIN. The active-location predicate in
+// buildPortfolioWhere lets the planner filter sales_records first (via the
+// covering index) before joining, so the extra JOIN is cheap.
+function baseFromWithLocations(): SQL {
+  return sql`${salesRecords}
+    INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}`;
 }
 
 // ─── 1. Portfolio Summary ────────────────────────────────────────────────────
@@ -77,7 +92,7 @@ export async function getPortfolioSummary(
 ): Promise<PortfolioSummary> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     total_revenue: string;
     total_transactions: string;
     total_quantity: string;
@@ -116,7 +131,7 @@ export async function getCategoryPerformance(
 ): Promise<CategoryPerformanceRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     category_name: string;
     revenue: string;
     transactions: string;
@@ -153,7 +168,7 @@ export async function getTopProducts(
 ): Promise<TopProductRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     product_name: string;
     revenue: string;
     transactions: string;
@@ -189,7 +204,7 @@ export async function getDailyTrends(
 ): Promise<DailyTrendRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     date: string;
     revenue: string;
     transactions: string;
@@ -221,7 +236,7 @@ export async function getHourlyDistribution(
   const timeNotNull = sql`${salesRecords.transactionTime} IS NOT NULL`;
   const whereClause = combineConditions([baseWhere, timeNotNull]);
 
-  const rows = await db.execute<{
+  const rows = await executeRows<{
     hour: string;
     revenue: string;
     transactions: string;
@@ -251,7 +266,7 @@ export async function getOutletTiers(
 ): Promise<OutletTierRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
-  const rawRows = await db.execute<{
+  const rawRows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
@@ -266,7 +281,7 @@ export async function getOutletTiers(
       ${kioskLiveDateSubquery}::text AS live_date,
       COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
-    FROM ${baseFrom()}
+    FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}
     ORDER BY revenue DESC
@@ -381,3 +396,45 @@ export async function getPortfolioData(
     outletTiers,
   };
 }
+
+// ─── Cached variants (Phase 3) ───────────────────────────────────────────────
+//
+// Wrap each portfolio query with unstable_cache via wrapAnalyticsQuery.
+// Cache key = ['analytics', <name>, 'v1'] + JSON.stringify(canonicalFilters, scopeKey, ...rest).
+// TTL = 24h, aligned with overnight UK ETL.
+// Tags: ['analytics', 'analytics:portfolio'] — invalidate via /admin/cache (Stage 4).
+//
+// Existing uncached exports above remain callable for the legacy server-action
+// path (fetchPortfolioData) and the in-page orchestrator (getPortfolioData).
+
+const PORTFOLIO_TAGS = ['analytics', 'analytics:portfolio'];
+
+export const getPortfolioSummaryCached = wrapAnalyticsQuery(getPortfolioSummary, {
+  name: 'getPortfolioSummary',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getCategoryPerformanceCached = wrapAnalyticsQuery(getCategoryPerformance, {
+  name: 'getCategoryPerformance',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getTopProductsCached = wrapAnalyticsQuery(getTopProducts, {
+  name: 'getTopProducts',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getDailyTrendsCached = wrapAnalyticsQuery(getDailyTrends, {
+  name: 'getDailyTrends',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getHourlyDistributionCached = wrapAnalyticsQuery(getHourlyDistribution, {
+  name: 'getHourlyDistribution',
+  tags: PORTFOLIO_TAGS,
+});
+
+export const getOutletTiersCached = wrapAnalyticsQuery(getOutletTiers, {
+  name: 'getOutletTiers',
+  tags: PORTFOLIO_TAGS,
+});
