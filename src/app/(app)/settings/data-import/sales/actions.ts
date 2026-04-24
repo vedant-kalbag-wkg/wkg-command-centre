@@ -1,51 +1,26 @@
 "use server";
 
 /**
- * Public server actions for the sales CSV import pipeline.
+ * Manual sales CSV import has been replaced by the Azure ETL (Phase 5 of the
+ * NetSuite ETL restructure). The legacy server actions — stageImport,
+ * commitImport, cancelImport — are retained as stubs that throw a clear
+ * migration pointer so anything still wired to them surfaces loudly instead
+ * of silently doing the wrong thing.
  *
- * Each action gates on `requireRole('admin')` and then delegates to the
- * _*ForActor helpers in `./pipeline.ts`. Implementation, types, and the
- * testable internal helpers all live there — see its file header for the
- * (security + Turbopack) rationale.
+ * Phase 8 will remove this file entirely along with the upload UI.
  */
 
-import { db } from "@/db";
-import { requireRole } from "@/lib/rbac";
-import { CsvFileSource } from "@/lib/sales/csv-file-source";
-import {
-  _cancelImportForActor,
-  _commitImportForActor,
-  _stageImportForActor,
-  type CommitResult,
-  type ImportActor,
-  type StageSummary,
-} from "./pipeline";
+const DEPRECATION_MESSAGE =
+  "Manual CSV import has been replaced by the Azure ETL. See POST /api/etl/azure/run or `npm run etl:azure`.";
 
-async function getActor(): Promise<ImportActor> {
-  const session = await requireRole("admin");
-  return { id: session.user.id, name: session.user.name ?? session.user.email ?? "admin" };
+export async function stageImport(_formData: FormData): Promise<never> {
+  throw new Error(DEPRECATION_MESSAGE);
 }
 
-/**
- * Stage a CSV upload. Call from a <form action={stageImport}> — the form must
- * include a `file` field of type File.
- */
-export async function stageImport(formData: FormData): Promise<StageSummary> {
-  const actor = await getActor();
-
-  const file = formData.get("file");
-  if (!(file instanceof File)) throw new Error("No file uploaded");
-  if (!file.name.toLowerCase().endsWith(".csv")) throw new Error("Only .csv files are supported");
-
-  return _stageImportForActor(new CsvFileSource(file), actor, db);
+export async function commitImport(_importId: string): Promise<never> {
+  throw new Error(DEPRECATION_MESSAGE);
 }
 
-export async function commitImport(importId: string): Promise<CommitResult> {
-  const actor = await getActor();
-  return _commitImportForActor(importId, actor, db);
-}
-
-export async function cancelImport(importId: string): Promise<void> {
-  const actor = await getActor();
-  return _cancelImportForActor(importId, actor, db);
+export async function cancelImport(_importId: string): Promise<never> {
+  throw new Error(DEPRECATION_MESSAGE);
 }

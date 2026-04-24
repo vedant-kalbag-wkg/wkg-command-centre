@@ -580,6 +580,9 @@ export const salesImports = pgTable("sales_imports", {
     .notNull()
     .default("staging"),
   errors: jsonb("errors"),
+  // NetSuite ETL (2026-04-24): an import is always region-scoped. Set at stage
+  // time; downstream salesRecords.regionId is propagated from this value.
+  regionId: uuid("region_id").references(() => regions.id),
 });
 
 export const importStagings = pgTable(

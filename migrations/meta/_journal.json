@@ -134,6 +134,13 @@
       "when": 1777005374407,
       "tag": "0018_restructure_salesrecords_region_scoped",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1777016694346,
+      "tag": "0019_sales_imports_region_id",
+      "breakpoints": true
     }
   ]
 }

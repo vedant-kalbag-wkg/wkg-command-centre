@@ -17,6 +17,12 @@
  * The _*ForActor helpers accept the `actor` as an explicit parameter so
  * integration tests can drive them directly without monkey-patching
  * next/headers.
+ *
+ * NetSuite ETL (2026-04-24): stage + commit now require an explicit
+ * `regionId` (one import belongs to exactly one region) and the parser's
+ * fee-code fallbacks map. Callers are the Azure ETL orchestrator (see
+ * `src/lib/sales/etl/azure-etl.ts`); the manual-upload server actions have
+ * been stubbed out pending Phase 8 UI removal.
  */
 
 import { and, eq, inArray } from "drizzle-orm";
@@ -58,6 +64,11 @@ export type StageSummary = {
 
 export type CommitResult = { committedRows: number };
 
+export type StageOptions = {
+  regionId: string;
+  feeCodeFallbacks: Map<string, string>;
+};
+
 type StoredStagedRow = {
   parsed: ParsedSalesRow;
   resolution: { locationId: string; productId: string; providerId: string | null };
@@ -72,6 +83,7 @@ export async function _stageImportForActor(
   source: SalesDataSource,
   actor: ImportActor,
   db: AnyDb,
+  opts: StageOptions,
 ): Promise<StageSummary> {
   const pulled = await source.pull();
   const { filename, bytes, sourceHash } = pulled;
@@ -88,7 +100,7 @@ export async function _stageImportForActor(
   }
 
   const text = new TextDecoder().decode(bytes);
-  const parseResult = parseSalesCsv(text);
+  const parseResult = parseSalesCsv(text, { feeCodeFallbacks: opts.feeCodeFallbacks });
 
   const parsedRows: Array<{ rowNumber: number; parsed: ParsedSalesRow }> = [];
   for (const row of parseResult.rows) {
@@ -99,9 +111,15 @@ export async function _stageImportForActor(
     rowNumber: r.rowNumber,
     outletCode: r.parsed.outletCode,
     productName: r.parsed.productName,
+    netsuiteCode: r.parsed.netsuiteCode,
+    categoryCode: r.parsed.categoryCode,
+    categoryName: r.parsed.categoryName,
+    apiProductName: r.parsed.apiProductName,
     providerName: r.parsed.providerName,
   }));
-  const resolutions = await resolveDimensions(db, dimensionInputs);
+  const resolutions = await resolveDimensions(db, dimensionInputs, {
+    regionId: opts.regionId,
+  });
   const resolutionByRow = new Map<number, (typeof resolutions)[number]>();
   for (const r of resolutions) resolutionByRow.set(r.rowNumber, r);
 
@@ -116,6 +134,7 @@ export async function _stageImportForActor(
         dateRangeStart: parseResult.dateRangeStart,
         dateRangeEnd: parseResult.dateRangeEnd,
         status: "staging" as const,
+        regionId: opts.regionId,
       })
       .returning({ id: salesImports.id });
 
@@ -223,6 +242,10 @@ export async function _commitImportForActor(
   if (imp.status !== "staging") {
     throw new Error(`Import ${importId} is not in staging (status=${imp.status})`);
   }
+  if (!imp.regionId) {
+    throw new Error(`Import ${importId} has no regionId — stage must set it`);
+  }
+  const regionId: string = imp.regionId;
 
   const invalidCount = await db
     .select({ count: importStagings.id })
@@ -248,6 +271,7 @@ export async function _commitImportForActor(
         const batch = validRows.slice(i, i + CHUNK);
         const inserts = batch.map(({ parsedRow: stored }) => ({
           importId,
+          regionId,
           saleRef: stored.parsed.saleRef,
           refNo: stored.parsed.refNo,
           transactionDate: stored.parsed.transactionDate,
@@ -255,14 +279,19 @@ export async function _commitImportForActor(
           locationId: stored.resolution.locationId,
           productId: stored.resolution.productId,
           providerId: stored.resolution.providerId,
-          quantity: stored.parsed.quantity,
-          grossAmount: stored.parsed.grossAmount,
           netAmount: stored.parsed.netAmount,
-          discountCode: stored.parsed.discountCode,
-          discountAmount: stored.parsed.discountAmount,
-          bookingFee: stored.parsed.bookingFee,
-          saleCommission: stored.parsed.saleCommission,
+          vatAmount: stored.parsed.vatAmount,
+          vatRate: stored.parsed.vatRate,
           currency: stored.parsed.currency,
+          isBookingFee: stored.parsed.isBookingFee,
+          netsuiteCode: stored.parsed.netsuiteCode,
+          agent: stored.parsed.agent,
+          businessDivision: stored.parsed.businessDivision,
+          categoryCode: stored.parsed.categoryCode,
+          categoryName: stored.parsed.categoryName,
+          apiProductName: stored.parsed.apiProductName,
+          city: stored.parsed.city,
+          country: stored.parsed.country,
           customerCode: stored.parsed.customerCode,
           customerName: stored.parsed.customerName,
         }));
