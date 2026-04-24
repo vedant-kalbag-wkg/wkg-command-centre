@@ -38,4 +38,10 @@ describe("suggestLocationType", () => {
   test("first match wins — IN outletCode beats Hex-named hotel", () => {
     expect(suggestLocationType({ name: "Hex SSM IN", outletCode: "IN" })).toBe("online");
   });
+  test("numRooms: 0 still counts as hotel signal", () => {
+    expect(suggestLocationType({ name: "X", outletCode: "X", numRooms: 0 })).toBe("hotel");
+  });
+  test("starRating: 0 still counts as hotel signal", () => {
+    expect(suggestLocationType({ name: "X", outletCode: "X", starRating: 0 })).toBe("hotel");
+  });
 });

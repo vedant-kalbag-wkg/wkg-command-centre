@@ -8,6 +8,16 @@ export type LocationSignals = {
   starRating?: number | null;
 };
 
+/**
+ * In-process mirror of the SQL classifier in `scripts/backfill-location-type.ts`
+ * (that script is the source of truth). First match wins:
+ *   1. outletCode === "IN"              → "online"
+ *   2. outletCode === "BK"              → "retail_desk"
+ *   3. name LIKE "Hex SSM %"            → "hex_kiosk"
+ *   4. name LIKE "Heathrow Terminal%" / "Heathrow underground%" / "T_ Mobile%" / "T_ Ambassador%" → "airport"
+ *   5. hotelGroup / numRooms / starRating present → "hotel"
+ * Otherwise returns null.
+ */
 export function suggestLocationType(loc: LocationSignals): LocationType | null {
   if (loc.outletCode === "IN") return "online";
   if (loc.outletCode === "BK") return "retail_desk";
@@ -15,8 +25,8 @@ export function suggestLocationType(loc: LocationSignals): LocationType | null {
   if (
     /^Heathrow Terminal/i.test(loc.name) ||
     /^Heathrow underground/i.test(loc.name) ||
-    /^T.\s?Mobile/i.test(loc.name) ||
-    /^T.\s?Ambassador/i.test(loc.name)
+    /^T.\sMobile/i.test(loc.name) ||
+    /^T.\sAmbassador/i.test(loc.name)
   ) {
     return "airport";
   }
