@@ -29,7 +29,8 @@ export async function writeAuditLog(
       | "flag"
       | "resolve"
       | "recalculate"
-      | "purge";
+      | "purge"
+      | "set_location_type";
     field?: string;
     oldValue?: string;
     newValue?: string;
