@@ -57,9 +57,29 @@ export async function updateFeeCodeFallback(
       )
       .returning({ id: products.id });
 
-    // `products.netsuiteCode` is globally unique, so any salesRecord with
-    // `netsuiteCode = existing.netsuiteCode` necessarily points at the single
-    // product we just updated — no productId scoping needed.
+    // Drift detection: if the UPDATE above hit 0 rows, it's either (a) no
+    // product with that name exists yet, OR (b) a product with that name
+    // DOES exist but its netsuiteCode has been manually edited away from
+    // the fallback. (b) is a loud signal — don't silently overwrite.
+    if (updatedProductRows.length === 0) {
+      const driftCheck = await tx
+        .select({ netsuiteCode: products.netsuiteCode })
+        .from(products)
+        .where(eq(products.name, productName))
+        .limit(1);
+
+      if (driftCheck.length > 0) {
+        throw new Error(
+          `Product '${productName}' exists but its netsuiteCode ('${driftCheck[0].netsuiteCode}') has drifted from fallback ('${existing.netsuiteCode}'). Reconcile before updating.`,
+        );
+      }
+    }
+
+    // Scope salesRecords UPDATE on netsuiteCode alone (no productId filter):
+    // products.netsuiteCode carries a UNIQUE constraint, so the old code maps
+    // to at most one product. Adding productId would be redundant AND would
+    // mask any historical sales rows whose productId drifted from the code's
+    // current owner — we want those re-pointed too.
     const updatedSalesRows = await tx
       .update(salesRecords)
       .set({ netsuiteCode: newCode })
@@ -81,8 +101,8 @@ export async function updateFeeCodeFallback(
         oldValue: existing.netsuiteCode,
         newValue: newCode,
         metadata: {
-          affectedProducts: updatedProducts,
-          affectedSalesRecords: updatedSalesRecords,
+          updatedProducts,
+          updatedSalesRecords,
         },
       },
       tx,

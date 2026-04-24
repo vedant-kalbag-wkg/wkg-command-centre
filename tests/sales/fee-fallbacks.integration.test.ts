@@ -129,8 +129,8 @@ describe("updateFeeCodeFallback (integration)", () => {
     expect(log.oldValue).toBe("9991");
     expect(log.newValue).toBe("9993");
     expect(log.metadata).toMatchObject({
-      affectedProducts: 1,
-      affectedSalesRecords: 3,
+      updatedProducts: 1,
+      updatedSalesRecords: 3,
     });
   });
 
@@ -155,5 +155,73 @@ describe("updateFeeCodeFallback (integration)", () => {
     await expect(
       updateFeeCodeFallback(ctx.db, actor, "Nonexistent Product", "9999"),
     ).rejects.toThrow(/No fallback configured.*Nonexistent Product/);
+  });
+
+  it("updates the fallback row and writes audit even when no product/salesRecords exist yet", async () => {
+    // beforeEach seeded a product + 3 salesRecords + a fallback. Drop the
+    // downstream rows so only the fallback remains (mirrors a fresh config
+    // change before any sales have landed).
+    await ctx.db.delete(salesRecords);
+    await ctx.db.delete(products);
+
+    const result = await updateFeeCodeFallback(
+      ctx.db,
+      actor,
+      "Booking Fee",
+      "9993",
+    );
+
+    expect(result).toEqual({ updatedProducts: 0, updatedSalesRecords: 0 });
+
+    const [fallback] = await ctx.db
+      .select()
+      .from(productCodeFallbacks)
+      .where(eq(productCodeFallbacks.productName, "Booking Fee"));
+    expect(fallback.netsuiteCode).toBe("9993");
+
+    const logs = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.entityId, fallback.id));
+    expect(logs).toHaveLength(1);
+    expect(logs[0].oldValue).toBe("9991");
+    expect(logs[0].newValue).toBe("9993");
+    expect(logs[0].metadata).toEqual({
+      updatedProducts: 0,
+      updatedSalesRecords: 0,
+    });
+  });
+
+  it("throws when products.netsuiteCode has drifted from the fallback", async () => {
+    // beforeEach seeded product+fallback at 9991. Drift the product to 9999
+    // (and drop salesRecords so they don't hold the old code via FK).
+    await ctx.db.delete(salesRecords);
+    await ctx.db
+      .update(products)
+      .set({ netsuiteCode: "9999" })
+      .where(eq(products.name, "Booking Fee"));
+
+    await expect(
+      updateFeeCodeFallback(ctx.db, actor, "Booking Fee", "9993"),
+    ).rejects.toThrow(/drifted/);
+
+    // Verify rollback: fallback still at 9991, product still at 9999, no audit entry.
+    const [fallback] = await ctx.db
+      .select()
+      .from(productCodeFallbacks)
+      .where(eq(productCodeFallbacks.productName, "Booking Fee"));
+    expect(fallback.netsuiteCode).toBe("9991");
+
+    const [product] = await ctx.db
+      .select()
+      .from(products)
+      .where(eq(products.name, "Booking Fee"));
+    expect(product.netsuiteCode).toBe("9999");
+
+    const logs = await ctx.db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.entityName, "Booking Fee"));
+    expect(logs).toHaveLength(0);
   });
 });
