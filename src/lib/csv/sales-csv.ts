@@ -3,22 +3,28 @@ import Papa from "papaparse";
 
 export type ParsedSalesRow = {
   saleRef: string;
-  refNo: string | null;
+  refNo: string;
+  netsuiteCode: string;
+  productName: string;
+  categoryCode: string | null;
+  categoryName: string | null;
+  agent: string | null;
+  outletCode: string;
+  outletName: string | null;
   transactionDate: string;
   transactionTime: string | null;
-  outletCode: string;
-  productName: string;
-  providerName: string | null;
-  quantity: number;
-  grossAmount: string;
-  netAmount: string | null;
-  discountCode: string | null;
-  discountAmount: string | null;
-  bookingFee: string | null;
-  saleCommission: string | null;
-  currency: string;
   customerCode: string | null;
   customerName: string | null;
+  providerName: string | null;
+  apiProductName: string | null;
+  city: string | null;
+  country: string | null;
+  businessDivision: string | null;
+  vatRate: string | null;
+  netAmount: string;
+  vatAmount: string;
+  currency: string;
+  isBookingFee: boolean;
 };
 
 export type RowValidationError = { field: string; message: string };
@@ -37,24 +43,31 @@ export type ParseResult = {
   invalidCount: number;
 };
 
+export type ParseOptions = { feeCodeFallbacks: Map<string, string> };
+
 const HEADER_MAP: Record<string, keyof ParsedSalesRow | "ignore"> = {
   saleref: "saleRef",
   refno: "refNo",
-  din: "transactionDate",
-  time: "transactionTime",
-  outletcode: "outletCode",
+  code: "netsuiteCode",
   productname: "productName",
-  providername: "providerName",
-  quantity: "quantity",
-  gross: "grossAmount",
-  net: "netAmount",
-  discountcode: "discountCode",
-  discountamount: "discountAmount",
-  bookingfee: "bookingFee",
-  salecommission: "saleCommission",
-  currency: "currency",
+  categorycode: "categoryCode",
+  categoryname: "categoryName",
+  agent: "agent",
+  outletcode: "outletCode",
+  outletname: "outletName",
+  date: "transactionDate",
+  time: "transactionTime",
   customercode: "customerCode",
   customername: "customerName",
+  suppnam: "providerName",
+  apiproductname: "apiProductName",
+  city: "city",
+  country: "country",
+  businessdivision: "businessDivision",
+  vatrate: "vatRate",
+  netamt: "netAmount",
+  vatamt: "vatAmount",
+  currency: "currency",
 };
 
 const MONTH_ABBR: Record<string, string> = {
@@ -62,32 +75,38 @@ const MONTH_ABBR: Record<string, string> = {
   jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
 };
 
+function canonicalizeHeader(h: string): keyof ParsedSalesRow | "ignore" | undefined {
+  const key = h.trim().toLowerCase().replace(/[_\s]/g, "");
+  return HEADER_MAP[key];
+}
+
+function isAbsent(s: string | undefined): boolean {
+  if (s === undefined) return true;
+  const t = s.trim();
+  return t === "" || t.toUpperCase() === "NULL";
+}
+
 function parseDate(raw: string): string | null {
   const trimmed = raw.trim();
-  if (!trimmed) return null;
-  // ISO YYYY-MM-DD
+  if (!trimmed || trimmed.toUpperCase() === "NULL") return null;
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
   if (iso) {
     const [, y, m, d] = iso;
     if (+m >= 1 && +m <= 12 && +d >= 1 && +d <= 31) return `${y}-${m}-${d}`;
   }
-  // DD-Mon-YY (data-dashboard convention)
   const ddMonYy = /^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/.exec(trimmed);
   if (ddMonYy) {
     const [, d, monRaw, yy] = ddMonYy;
     const mm = MONTH_ABBR[monRaw.toLowerCase()];
     if (!mm) return null;
-    const year = 2000 + Number(yy);
-    const dd = d.padStart(2, "0");
-    return `${year}-${mm}-${dd}`;
+    return `${2000 + Number(yy)}-${mm}-${d.padStart(2, "0")}`;
   }
   return null;
 }
 
 function parseTime(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (isAbsent(raw)) return null;
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(raw.trim());
   if (!m) return null;
   const [, h, mm, ss] = m;
   const H = h.padStart(2, "0");
@@ -95,19 +114,18 @@ function parseTime(raw: string): string | null {
   return `${H}:${mm}:${ss ?? "00"}`;
 }
 
-function parseNumeric(raw: string): { ok: true; value: string } | { ok: false } | { ok: "empty" } {
+function parseSignedDecimal(raw: string): { ok: true; value: string } | { ok: false } | { ok: "empty" } {
+  if (isAbsent(raw)) return { ok: "empty" };
   const trimmed = raw.trim().replace(/,/g, "");
-  if (!trimmed) return { ok: "empty" };
   if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return { ok: false };
   return { ok: true, value: trimmed };
 }
 
-function canonicalizeHeader(h: string): keyof ParsedSalesRow | "ignore" | undefined {
-  const key = h.trim().toLowerCase().replace(/[_\s]/g, "");
-  return HEADER_MAP[key];
+function optText(v: string | undefined): string | null {
+  return isAbsent(v) ? null : (v as string).trim();
 }
 
-export function parseSalesCsv(text: string): ParseResult {
+export function parseSalesCsv(text: string, opts: ParseOptions): ParseResult {
   const parsed = Papa.parse<Record<string, string>>(text, {
     header: true,
     skipEmptyLines: "greedy",
@@ -132,91 +150,82 @@ export function parseSalesCsv(text: string): ParseResult {
       }
     }
 
+    // Required strings
     const saleRef = (canonical.saleRef ?? "").trim();
     if (!saleRef) errors.push({ field: "saleRef", message: "saleRef is required" });
-
-    const transactionDate = parseDate(canonical.transactionDate ?? "");
-    if (!transactionDate) errors.push({ field: "transactionDate", message: "transactionDate is missing or unparseable" });
-
-    const qtyRaw = (canonical.quantity ?? "").trim();
-    let quantity = 0;
-    if (!qtyRaw) {
-      errors.push({ field: "quantity", message: "quantity is required" });
-    } else if (!/^\d+$/.test(qtyRaw) || Number(qtyRaw) <= 0) {
-      errors.push({ field: "quantity", message: "quantity must be a positive integer" });
-    } else {
-      quantity = Number(qtyRaw);
-    }
-
-    const grossRes = parseNumeric(canonical.grossAmount ?? "");
-    let grossAmount = "";
-    if (grossRes.ok === "empty") {
-      errors.push({ field: "grossAmount", message: "grossAmount is required" });
-    } else if (grossRes.ok === false) {
-      errors.push({ field: "grossAmount", message: "grossAmount is not a valid number" });
-    } else {
-      grossAmount = grossRes.value;
-    }
-
-    const optionalNumeric = (field: keyof ParsedSalesRow, raw: string | undefined): string | null => {
-      const res = parseNumeric(raw ?? "");
-      if (res.ok === "empty") return null;
-      if (res.ok === false) {
-        errors.push({ field, message: `${field} is not a valid number` });
-        return null;
-      }
-      return res.value;
-    };
-
-    const netAmount = optionalNumeric("netAmount", canonical.netAmount);
-    const discountAmount = optionalNumeric("discountAmount", canonical.discountAmount);
-    const bookingFee = optionalNumeric("bookingFee", canonical.bookingFee);
-    const saleCommission = optionalNumeric("saleCommission", canonical.saleCommission);
-
-    const transactionTime = parseTime(canonical.transactionTime ?? "");
-    // transactionTime is optional — only flag if non-empty but unparseable
-    if (canonical.transactionTime && canonical.transactionTime.trim() && !transactionTime) {
-      errors.push({ field: "transactionTime", message: "transactionTime is not a valid HH:MM[:SS]" });
-    }
-
+    const refNo = (canonical.refNo ?? "").trim();
+    if (!refNo) errors.push({ field: "refNo", message: "refNo is required" });
     const outletCode = (canonical.outletCode ?? "").trim();
     if (!outletCode) errors.push({ field: "outletCode", message: "outletCode is required" });
     const productName = (canonical.productName ?? "").trim();
     if (!productName) errors.push({ field: "productName", message: "productName is required" });
 
-    const providerName = (canonical.providerName ?? "").trim() || null;
-    const refNo = (canonical.refNo ?? "").trim() || null;
-    const discountCode = (canonical.discountCode ?? "").trim() || null;
-    const customerCode = (canonical.customerCode ?? "").trim() || null;
-    const customerName = (canonical.customerName ?? "").trim() || null;
+    // netsuiteCode with fallback
+    let netsuiteCode = (canonical.netsuiteCode ?? "").trim();
+    if (isAbsent(netsuiteCode)) {
+      const fallback = opts.feeCodeFallbacks.get(productName);
+      if (fallback) netsuiteCode = fallback;
+      else errors.push({ field: "netsuiteCode", message: `Code is required and no fallback configured for Product Name '${productName}'` });
+    }
+
+    const isBookingFee = productName === "Booking Fee";
+
+    const transactionDate = parseDate(canonical.transactionDate ?? "");
+    if (!transactionDate) errors.push({ field: "transactionDate", message: "transactionDate (Date column) is missing or unparseable" });
+
+    const rawTime = canonical.transactionTime ?? "";
+    const transactionTime = parseTime(rawTime);
+    if (!isAbsent(rawTime) && !transactionTime) {
+      errors.push({ field: "transactionTime", message: "transactionTime is not a valid HH:MM[:SS]" });
+    }
+
+    // Required signed decimals
+    const netRes = parseSignedDecimal(canonical.netAmount ?? "");
+    let netAmount = "";
+    if (netRes.ok === "empty") errors.push({ field: "netAmount", message: "netAmount is required" });
+    else if (netRes.ok === false) errors.push({ field: "netAmount", message: "netAmount is not a valid number" });
+    else netAmount = netRes.value;
+
+    const vatRes = parseSignedDecimal(canonical.vatAmount ?? "");
+    let vatAmount = "";
+    if (vatRes.ok === "empty") errors.push({ field: "vatAmount", message: "vatAmount is required" });
+    else if (vatRes.ok === false) errors.push({ field: "vatAmount", message: "vatAmount is not a valid number" });
+    else vatAmount = vatRes.value;
+
+    // Optional signed decimal
+    const vatRateRes = parseSignedDecimal(canonical.vatRate ?? "");
+    const vatRate = vatRateRes.ok === true ? vatRateRes.value : null;
+    if (vatRateRes.ok === false) errors.push({ field: "vatRate", message: "vatRate is not a valid number" });
+
     const currency = ((canonical.currency ?? "").trim() || "GBP").toUpperCase();
 
-    const row: ParseResult["rows"][number] = {
-      rowNumber: i + 1,
-      raw,
-      parsed: null,
-      errors,
-    };
+    const row: ParseResult["rows"][number] = { rowNumber: i + 1, raw, parsed: null, errors };
 
     if (errors.length === 0 && transactionDate) {
       row.parsed = {
         saleRef,
         refNo,
+        netsuiteCode,
+        productName,
+        categoryCode: optText(canonical.categoryCode),
+        categoryName: optText(canonical.categoryName),
+        agent: optText(canonical.agent),
+        outletCode,
+        outletName: optText(canonical.outletName),
         transactionDate,
         transactionTime,
-        outletCode,
-        productName,
-        providerName,
-        quantity,
-        grossAmount,
+        customerCode: optText(canonical.customerCode),
+        customerName: optText(canonical.customerName),
+        providerName: optText(canonical.providerName),
+        apiProductName: optText(canonical.apiProductName),
+        city: optText(canonical.city),
+        country: optText(canonical.country),
+        businessDivision: optText(canonical.businessDivision),
+        vatRate,
         netAmount,
-        discountCode,
-        discountAmount,
-        bookingFee,
-        saleCommission,
+        vatAmount,
         currency,
-        customerCode,
-        customerName,
+        isBookingFee,
       };
       validCount++;
       if (minDate === null || transactionDate < minDate) minDate = transactionDate;
@@ -228,14 +237,7 @@ export function parseSalesCsv(text: string): ParseResult {
     rows.push(row);
   }
 
-  return {
-    rows,
-    dateRangeStart: minDate,
-    dateRangeEnd: maxDate,
-    totalRows: rows.length,
-    validCount,
-    invalidCount,
-  };
+  return { rows, dateRangeStart: minDate, dateRangeEnd: maxDate, totalRows: rows.length, validCount, invalidCount };
 }
 
 export function computeSourceHash(bytes: Uint8Array): string {
