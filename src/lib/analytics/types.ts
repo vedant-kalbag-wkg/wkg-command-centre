@@ -350,7 +350,6 @@ export type HighPerformerPatterns = {
   greenCount: number;
   totalCount: number;
   insights: string[];
-  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
   regionDistribution: { name: string; count: number; percentage: number }[];
   avgKioskCount: number | null;
   avgRoomCount: number | null;
@@ -364,7 +363,6 @@ export type LowPerformerPatterns = {
   redCount: number;
   totalCount: number;
   insights: string[];
-  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
   regionDistribution: { name: string; count: number; percentage: number }[];
   avgKioskCount: number | null;
   avgRoomCount: number | null;

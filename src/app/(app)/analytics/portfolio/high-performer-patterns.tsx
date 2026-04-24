@@ -59,36 +59,7 @@ export function HighPerformerPatterns({
       </div>
 
       {/* Distribution tables */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        {/* Hotel group distribution */}
-        <div>
-          <h4 className="mb-2 text-sm font-medium">Hotel Group Distribution</h4>
-          {data.hotelGroupDistribution.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Group</TableHead>
-                  <TableHead className="text-right">Count</TableHead>
-                  <TableHead className="text-right">%</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.hotelGroupDistribution.map((row) => (
-                  <TableRow key={row.name}>
-                    <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="text-right">{row.count}</TableCell>
-                    <TableCell className="text-right">
-                      {row.percentage.toFixed(1)}%
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="text-sm text-muted-foreground">No hotel group data</p>
-          )}
-        </div>
-
+      <div className="grid grid-cols-1 gap-6">
         {/* Region distribution */}
         <div>
           <h4 className="mb-2 text-sm font-medium">Region Distribution</h4>
