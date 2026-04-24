@@ -127,6 +127,13 @@
       "when": 1776490091135,
       "tag": "0017_commission_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1777005374407,
+      "tag": "0018_restructure_salesrecords_region_scoped",
+      "breakpoints": true
     }
   ]
 }

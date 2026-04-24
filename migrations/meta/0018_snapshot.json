@@ -1,6 +1,6 @@
 {
-  "id": "a2fd2b97-d6dc-40fe-b248-43e59e305f66",
-  "prevId": "14053ed0-2f52-4961-aabb-afaa5fcef9bd",
+  "id": "373cbe8d-904e-4ca0-b7dd-905c30971d3b",
+  "prevId": "a2fd2b97-d6dc-40fe-b248-43e59e305f66",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -97,6 +97,153 @@
           "tableTo": "user",
           "columnsFrom": [
             "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.action_items": {
+      "name": "action_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action_type": {
+          "name": "action_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "due_date": {
+          "name": "due_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "outcome_notes": {
+          "name": "outcome_notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "action_items_location_id_locations_id_fk": {
+          "name": "action_items_location_id_locations_id_fk",
+          "tableFrom": "action_items",
+          "tableTo": "locations",
+          "columnsFrom": [
+            "location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "action_items_owner_id_user_id_fk": {
+          "name": "action_items_owner_id_user_id_fk",
+          "tableFrom": "action_items",
+          "tableTo": "user",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "action_items_created_by_user_id_fk": {
+          "name": "action_items_created_by_user_id_fk",
+          "tableFrom": "action_items",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
           ],
           "columnsTo": [
             "id"
@@ -599,7 +746,44 @@
           "default": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "cl_sales_record_idx": {
+          "name": "cl_sales_record_idx",
+          "columns": [
+            {
+              "expression": "sales_record_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "cl_location_product_idx": {
+          "name": "cl_location_product_idx",
+          "columns": [
+            {
+              "expression": "location_product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "is_reversal",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "commission_ledger_sales_record_id_sales_records_id_fk": {
           "name": "commission_ledger_sales_record_id_sales_records_id_fk",
@@ -885,6 +1069,97 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.experiment_cohorts": {
+      "name": "experiment_cohorts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_ids": {
+          "name": "location_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "control_type": {
+          "name": "control_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'rest_of_portfolio'"
+        },
+        "control_location_ids": {
+          "name": "control_location_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "intervention_date": {
+          "name": "intervention_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "experiment_cohorts_created_by_user_id_fk": {
+          "name": "experiment_cohorts_created_by_user_id_fk",
+          "tableFrom": "experiment_cohorts",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -1569,6 +1844,121 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.location_flags": {
+      "name": "location_flags",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "flag_type": {
+          "name": "flag_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_name": {
+          "name": "actor_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolution_note": {
+          "name": "resolution_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "location_flags_location_id_locations_id_fk": {
+          "name": "location_flags_location_id_locations_id_fk",
+          "tableFrom": "location_flags",
+          "tableTo": "locations",
+          "columnsFrom": [
+            "location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "location_flags_actor_id_user_id_fk": {
+          "name": "location_flags_actor_id_user_id_fk",
+          "tableFrom": "location_flags",
+          "tableTo": "user",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "location_flags_resolved_by_user_id_fk": {
+          "name": "location_flags_resolved_by_user_id_fk",
+          "tableFrom": "location_flags",
+          "tableTo": "user",
+          "columnsFrom": [
+            "resolved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.location_group_memberships": {
       "name": "location_group_memberships",
       "schema": "",
@@ -2053,11 +2443,23 @@
           "name": "outlet_code",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
+        },
+        "primary_region_id": {
+          "name": "primary_region_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         },
         "hotel_group": {
           "name": "hotel_group",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "operating_group_id": {
+          "name": "operating_group_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -2123,12 +2525,6 @@
         },
         "notes": {
           "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "region": {
-          "name": "region",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2222,6 +2618,32 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "locations_primary_region_id_regions_id_fk": {
+          "name": "locations_primary_region_id_regions_id_fk",
+          "tableFrom": "locations",
+          "tableTo": "regions",
+          "columnsFrom": [
+            "primary_region_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "locations_operating_group_id_hotel_groups_id_fk": {
+          "name": "locations_operating_group_id_hotel_groups_id_fk",
+          "tableFrom": "locations",
+          "tableTo": "hotel_groups",
+          "columnsFrom": [
+            "operating_group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "locations_internal_poc_id_user_id_fk": {
           "name": "locations_internal_poc_id_user_id_fk",
           "tableFrom": "locations",
@@ -2238,11 +2660,79 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "locations_outlet_code_unique": {
-          "name": "locations_outlet_code_unique",
+        "locations_region_outlet_unique": {
+          "name": "locations_region_outlet_unique",
           "nullsNotDistinct": false,
           "columns": [
+            "primary_region_id",
             "outlet_code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.markets": {
+      "name": "markets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "markets_created_by_user_id_fk": {
+          "name": "markets_created_by_user_id_fk",
+          "tableFrom": "markets",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "markets_name_unique": {
+          "name": "markets_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
           ]
         }
       },
@@ -2487,6 +2977,60 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.product_code_fallbacks": {
+      "name": "product_code_fallbacks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "product_name": {
+          "name": "product_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "netsuite_code": {
+          "name": "netsuite_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "product_code_fallbacks_product_name_unique": {
+          "name": "product_code_fallbacks_product_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "product_name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.products": {
       "name": "products",
       "schema": "",
@@ -2503,6 +3047,24 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "netsuite_code": {
+          "name": "netsuite_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category_code": {
+          "name": "category_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category_name": {
+          "name": "category_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -2528,6 +3090,13 @@
           "nullsNotDistinct": false,
           "columns": [
             "name"
+          ]
+        },
+        "products_netsuite_code_unique": {
+          "name": "products_netsuite_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "netsuite_code"
           ]
         }
       },
@@ -2604,6 +3173,18 @@
           "name": "code",
           "type": "text",
           "primaryKey": false,
+          "notNull": true
+        },
+        "azure_code": {
+          "name": "azure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_id": {
+          "name": "market_id",
+          "type": "uuid",
+          "primaryKey": false,
           "notNull": false
         },
         "created_at": {
@@ -2622,6 +3203,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "regions_market_id_markets_id_fk": {
+          "name": "regions_market_id_markets_id_fk",
+          "tableFrom": "regions",
+          "tableTo": "markets",
+          "columnsFrom": [
+            "market_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "regions_created_by_user_id_fk": {
           "name": "regions_created_by_user_id_fk",
           "tableFrom": "regions",
@@ -2643,6 +3237,147 @@
           "nullsNotDistinct": false,
           "columns": [
             "name"
+          ]
+        },
+        "regions_code_unique": {
+          "name": "regions_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        },
+        "regions_azure_code_unique": {
+          "name": "regions_azure_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "azure_code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sales_blob_ingestions": {
+      "name": "sales_blob_ingestions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "region_id": {
+          "name": "region_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blob_path": {
+          "name": "blob_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blob_date": {
+          "name": "blob_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "etag": {
+          "name": "etag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "import_id": {
+          "name": "import_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "sales_blob_ingestions_region_date_idx": {
+          "name": "sales_blob_ingestions_region_date_idx",
+          "columns": [
+            {
+              "expression": "region_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "blob_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sales_blob_ingestions_region_id_regions_id_fk": {
+          "name": "sales_blob_ingestions_region_id_regions_id_fk",
+          "tableFrom": "sales_blob_ingestions",
+          "tableTo": "regions",
+          "columnsFrom": [
+            "region_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "sales_blob_ingestions_import_id_sales_imports_id_fk": {
+          "name": "sales_blob_ingestions_import_id_sales_imports_id_fk",
+          "tableFrom": "sales_blob_ingestions",
+          "tableTo": "sales_imports",
+          "columnsFrom": [
+            "import_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "sales_blob_ingestions_region_blob_unique": {
+          "name": "sales_blob_ingestions_region_blob_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "region_id",
+            "blob_path"
           ]
         }
       },
@@ -2766,6 +3501,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "region_id": {
+          "name": "region_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "sale_ref": {
           "name": "sale_ref",
           "type": "text",
@@ -2776,7 +3517,7 @@
           "name": "ref_no",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "transaction_date": {
           "name": "transaction_date",
@@ -2808,46 +3549,21 @@
           "primaryKey": false,
           "notNull": false
         },
-        "quantity": {
-          "name": "quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "gross_amount": {
-          "name": "gross_amount",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "net_amount": {
           "name": "net_amount",
           "type": "numeric(12, 2)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "discount_code": {
-          "name": "discount_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "discount_amount": {
-          "name": "discount_amount",
+        "vat_amount": {
+          "name": "vat_amount",
           "type": "numeric(12, 2)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "booking_fee": {
-          "name": "booking_fee",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sale_commission": {
-          "name": "sale_commission",
-          "type": "numeric(12, 2)",
+        "vat_rate": {
+          "name": "vat_rate",
+          "type": "numeric(5, 2)",
           "primaryKey": false,
           "notNull": false
         },
@@ -2857,6 +3573,61 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'GBP'"
+        },
+        "is_booking_fee": {
+          "name": "is_booking_fee",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "netsuite_code": {
+          "name": "netsuite_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent": {
+          "name": "agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "business_division": {
+          "name": "business_division",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category_code": {
+          "name": "category_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category_name": {
+          "name": "category_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "api_product_name": {
+          "name": "api_product_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "customer_code": {
           "name": "customer_code",
@@ -2879,9 +3650,57 @@
         }
       },
       "indexes": {
-        "sales_sale_ref_idx": {
-          "name": "sales_sale_ref_idx",
+        "sales_region_date_idx": {
+          "name": "sales_region_date_idx",
           "columns": [
+            {
+              "expression": "region_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "transaction_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sales_region_refno_idx": {
+          "name": "sales_region_refno_idx",
+          "columns": [
+            {
+              "expression": "region_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ref_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sales_region_saleref_idx": {
+          "name": "sales_region_saleref_idx",
+          "columns": [
+            {
+              "expression": "region_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "sale_ref",
               "isExpression": false,
@@ -2987,6 +3806,19 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
+        "sales_records_region_id_regions_id_fk": {
+          "name": "sales_records_region_id_regions_id_fk",
+          "tableFrom": "sales_records",
+          "tableTo": "regions",
+          "columnsFrom": [
+            "region_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "sales_records_location_id_locations_id_fk": {
           "name": "sales_records_location_id_locations_id_fk",
           "tableFrom": "sales_records",
@@ -3028,16 +3860,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "sales_records_sale_ref_transaction_date_unique": {
-          "name": "sales_records_sale_ref_transaction_date_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "sale_ref",
-            "transaction_date"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
