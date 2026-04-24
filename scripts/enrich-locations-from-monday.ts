@@ -331,11 +331,17 @@ async function enrichLocations(hotels: HotelItem[]) {
     allLocs.map((l) => l.outletCode).filter((c): c is string => c !== null),
   );
   let createdStubs = 0;
+  let skippedStubNoRegion = 0;
   for (const [outletCode, hotel] of outletToHotel) {
     if (existingOutletCodes.has(outletCode)) continue;
+    const regionId = hotel.region ? regMap.get(hotel.region) : undefined;
+    if (!regionId) {
+      skippedStubNoRegion++;
+      continue;
+    }
     const [row] = await db
       .insert(locations)
-      .values({ name: hotel.name, outletCode })
+      .values({ name: hotel.name, outletCode, primaryRegionId: regionId })
       .returning({
         id: locations.id,
         name: locations.name,
@@ -350,6 +356,9 @@ async function enrichLocations(hotels: HotelItem[]) {
   }
   if (createdStubs > 0) {
     log("ENRICH", `Created ${createdStubs} new location stubs from Monday`);
+  }
+  if (skippedStubNoRegion > 0) {
+    log("ENRICH", `Skipped ${skippedStubNoRegion} Monday hotels lacking a resolvable region (cannot stub — primary_region_id is NOT NULL)`);
   }
 
   let updated = 0;
@@ -501,9 +510,13 @@ async function enrichLocations(hotels: HotelItem[]) {
     if (hotel.region) {
       let regId = regMap.get(hotel.region);
       if (!regId) {
+        // Fallback code derivation for regions the migration seed doesn't cover:
+        // upper-case first 2 chars of the name, trimmed. Collisions hit the
+        // onConflictDoNothing path on regions.code unique.
+        const derivedCode = hotel.region.replace(/\s+/g, "").slice(0, 2).toUpperCase();
         const [row] = await db
           .insert(regions)
-          .values({ name: hotel.region })
+          .values({ name: hotel.region, code: derivedCode })
           .onConflictDoNothing({ target: regions.name })
           .returning({ id: regions.id });
         if (row) {
