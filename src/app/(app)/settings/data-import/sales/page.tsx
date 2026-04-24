@@ -14,6 +14,16 @@ import { db } from "@/db";
 import { regions, salesBlobIngestions, salesImports } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 
+function formatDateTime(date: Date): string {
+  return new Date(date).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default async function SalesImportPage() {
   try {
     await requireRole("admin");
@@ -76,7 +86,7 @@ export default async function SalesImportPage() {
                     <TableCell className="font-mono text-xs">{row.blobPath}</TableCell>
                     <TableCell>{row.blobDate}</TableCell>
                     <TableCell className="text-xs">
-                      {row.processedAt.toISOString()}
+                      {formatDateTime(row.processedAt)}
                     </TableCell>
                     <TableCell>
                       {row.status === "success" ? (

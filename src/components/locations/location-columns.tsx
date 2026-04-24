@@ -294,7 +294,6 @@ export const locationGroupableColumns = [
   { id: "starRating", label: "Star Rating" },
   { id: "sourcedBy", label: "Sourced By" },
   { id: "status", label: "Status" },
-  { id: "region", label: "Region" },
   { id: "locationGroup", label: "Location Group" },
 ];
 
@@ -303,5 +302,4 @@ export const locationFilterableColumns = [
   { id: "name", label: "Name" },
   { id: "hotelGroup", label: "Hotel Group" },
   { id: "status", label: "Status" },
-  { id: "region", label: "Region" },
 ];

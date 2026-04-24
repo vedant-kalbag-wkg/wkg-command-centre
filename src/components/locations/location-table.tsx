@@ -225,7 +225,6 @@ export function LocationTable({ data }: LocationTableProps) {
     { key: "status", label: "Status" },
     { key: "maintenanceFee", label: "Maintenance Fee" },
     { key: "customerCode", label: "Customer Code" },
-    { key: "region", label: "Region" },
     { key: "locationGroup", label: "Location Group" },
   ];
 
