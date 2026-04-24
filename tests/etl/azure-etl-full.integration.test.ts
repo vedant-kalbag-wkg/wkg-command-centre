@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { eq, sql } from "drizzle-orm";
+import Papa from "papaparse";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
 import {
   locations,
@@ -15,6 +16,9 @@ import {
   user,
 } from "@/db/schema";
 import { runAzureEtl } from "@/lib/sales/etl/azure-etl";
+
+const CSV_PATH = join(process.cwd(), "WKG_NETSUITE_VK.csv");
+const CSV_PRESENT = existsSync(CSV_PATH);
 
 /**
  * End-to-end integration test against the real 37-column NetSuite export
@@ -34,6 +38,9 @@ import { runAzureEtl } from "@/lib/sales/etl/azure-etl";
 
 type Blob = { bytes: Buffer; etag: string };
 
+// NOTE: duplicated from ./azure-etl.integration.test.ts — consolidate into a
+// shared helper (e.g. tests/helpers/blob-stub.ts) if a third ETL integration
+// test is added.
 function buildStubClient(blobs: Map<string, Blob>) {
   return {
     getContainerClient: (_name: string) => ({
@@ -64,29 +71,31 @@ function buildStubClient(blobs: Map<string, Blob>) {
 }
 
 const BLOB_PATH = "GB/2026/01/01/sales.csv";
-const CSV_PATH = path.join(process.cwd(), "WKG_NETSUITE_VK.csv");
 const ETL_ACTOR_ID = "00000000-0000-0000-0000-000000000001";
 
 /**
- * Extract unique outlet codes from the NetSuite CSV. Outlet Code is column
- * index 9 (0-indexed) in the 37-column layout. The CSV has no quoted commas
- * inside the outlet-code column (verified), so a naive split is fine.
+ * Extract unique outlet codes from the NetSuite CSV using papaparse (the same
+ * parser the real pipeline uses), so this is resilient to quoted commas or
+ * column reordering.
  */
-function extractUniqueOutletCodes(bytes: Buffer): string[] {
-  const text = bytes.toString("utf8");
-  const lines = text.split(/\r?\n/);
-  const set = new Set<string>();
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-    const cols = line.split(",");
-    const code = cols[9]?.trim();
-    if (code && code.toUpperCase() !== "NULL") set.add(code);
+function extractUniqueOutletCodes(csvText: string): string[] {
+  const parsed = Papa.parse<Record<string, string>>(csvText, {
+    header: true,
+    skipEmptyLines: "greedy",
+    transformHeader: (h) => h.trim(),
+  });
+  const codes = new Set<string>();
+  for (const row of parsed.data) {
+    const code = (row["Outlet Code"] ?? "").trim();
+    if (code && code.toUpperCase() !== "NULL") codes.add(code);
   }
-  return Array.from(set);
+  return Array.from(codes);
 }
 
-describe("runAzureEtl (full CSV fixture)", () => {
+// Opt-in end-to-end test against the real NetSuite export. Auto-skips when
+// `WKG_NETSUITE_VK.csv` is absent (intentionally untracked — user-supplied
+// fixture).
+describe.skipIf(!CSV_PRESENT)("runAzureEtl (full CSV fixture)", () => {
   let ctx: TestDbContext;
   let ukRegionId: string;
   let csvBytes: Buffer;
@@ -94,7 +103,7 @@ describe("runAzureEtl (full CSV fixture)", () => {
 
   beforeAll(async () => {
     csvBytes = readFileSync(CSV_PATH);
-    outletCodes = extractUniqueOutletCodes(csvBytes);
+    outletCodes = extractUniqueOutletCodes(csvBytes.toString("utf8"));
     ctx = await setupTestDb();
     const [etlUser] = await ctx.db
       .select({ id: user.id })
@@ -137,6 +146,11 @@ describe("runAzureEtl (full CSV fixture)", () => {
       { productName: "Booking Fee", netsuiteCode: "9991" },
       { productName: "Cash Handling Fee", netsuiteCode: "9992" },
     ]);
+
+    // Sanity: the fixture currently has 178 unique outlet codes. If this ever
+    // trips, the fixture was regenerated — update the expected count here and
+    // re-verify the other magic numbers below.
+    expect(outletCodes).toHaveLength(178);
   });
 
   it("processes the full real NetSuite export end-to-end and is idempotent", async () => {
@@ -149,6 +163,9 @@ describe("runAzureEtl (full CSV fixture)", () => {
     const result = await runAzureEtl(ctx.db, { client });
     if (result.status !== "ok") {
       throw new Error(`unexpected: ${JSON.stringify(result)}`);
+    }
+    if (result.failed.length > 0) {
+      throw new Error(`unexpected ETL failures: ${JSON.stringify(result.failed, null, 2)}`);
     }
     expect(result.failed).toHaveLength(0);
     expect(result.processed).toHaveLength(1);
