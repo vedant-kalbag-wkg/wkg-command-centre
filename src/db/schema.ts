@@ -441,10 +441,11 @@ export const userScopes = pgTable(
 // userScopes.dimensionType='hotel_group' sees only locations belonging to that
 // hotel_group via the membership join tables below.
 //
-// NOTE: free-text columns `locations.region`, `locations.hotel_group`,
-// `locations.location_group` coexist with these dimension tables — the tables
-// are used for scoped joins while the free-text columns remain for legacy
-// input / unnormalised data.
+// NOTE: free-text columns `locations.hotel_group` and `locations.location_group`
+// coexist with these dimension tables — the tables are used for scoped joins
+// while the free-text columns remain for legacy input / unnormalised data.
+// The previously free-text region column on `locations` was dropped in
+// migration 0018 in favour of joining via the region dimension tables below.
 // =============================================================================
 
 // Markets — top-level geographic grouping (e.g. UK & Ireland, Continental Europe).

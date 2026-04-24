@@ -91,7 +91,6 @@ export type LocationListItem = {
   maintenanceFee: string | null;
   customerCode: string | null;
   keyContactName: string | null;
-  region: string | null;
   locationGroup: string | null;
   internalPocId: string | null;
   internalPocName: string | null;
@@ -310,7 +309,6 @@ export async function listLocations(): Promise<LocationListItem[]> {
         maintenanceFee: locations.maintenanceFee,
         customerCode: locations.customerCode,
         keyContacts: locations.keyContacts,
-        region: locations.region,
         locationGroup: locations.locationGroup,
         internalPocId: locations.internalPocId,
         internalPocName: pocUser.name,

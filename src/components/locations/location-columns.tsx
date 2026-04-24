@@ -226,24 +226,7 @@ export const locationColumns: ColumnDef<LocationListItem>[] = [
       return val ?? <span className="text-muted-foreground">—</span>;
     },
   },
-  // 13. Region — editable, groupable
-  {
-    accessorKey: "region",
-    size: 90,
-    header: "Region",
-    enableSorting: true,
-    enableGrouping: true,
-    cell: ({ row, table }) => (
-      <EditableCell
-        value={row.original.region}
-        rowId={row.original.id}
-        columnId="region"
-        table={table}
-        placeholder="—"
-      />
-    ),
-  },
-  // 14. Location Group — editable, groupable
+  // 13. Location Group — editable, groupable
   {
     accessorKey: "locationGroup",
     size: 120,
