@@ -128,4 +128,44 @@ describe("parseSalesCsv (NetSuite format)", () => {
     expect(fields).toContain("outletCode");
     expect(fields).toContain("transactionDate");
   });
+
+  it("treats literal 'NULL' in required fields as missing", () => {
+    const text = csv([[
+      "NULL","NULL","4603","NULL","TRNSCAR","UBER",
+      "Digital Sale","NULL","Staycity Greenwich","1-Jan-26","","2580",
+      "Staycity Greenwich","Uber API","UberX","London","GB",
+      "UberSSM","20","12.48","2.5","GBP",
+    ]]);
+    const res = parseSalesCsv(text, { feeCodeFallbacks: fallbacks });
+    const fields = res.rows[0].errors.map((e) => e.field);
+    expect(fields).toContain("saleRef");
+    expect(fields).toContain("refNo");
+    expect(fields).toContain("outletCode");
+    expect(fields).toContain("productName");
+    expect(res.validCount).toBe(0);
+  });
+
+  it("rejects impossible calendar dates", () => {
+    const text = csv([[
+      "5578141","Q5A4558585","4603","Uber API","TRNSCAR","UBER",
+      "Digital Sale","Q5","Staycity Greenwich","2026-02-31","","2580",
+      "Staycity Greenwich","Uber API","UberX","London","GB",
+      "UberSSM","20","12.48","2.5","GBP",
+    ]]);
+    const res = parseSalesCsv(text, { feeCodeFallbacks: fallbacks });
+    expect(res.validCount).toBe(0);
+    expect(res.rows[0].errors.some((e) => e.field === "transactionDate")).toBe(true);
+  });
+
+  it("treats Currency='NULL' as absent and defaults to GBP", () => {
+    const text = csv([[
+      "5578141","Q5A4558585","4603","Uber API","TRNSCAR","UBER",
+      "Digital Sale","Q5","Staycity Greenwich","1-Jan-26","","2580",
+      "Staycity Greenwich","Uber API","UberX","London","GB",
+      "UberSSM","20","12.48","2.5","NULL",
+    ]]);
+    const res = parseSalesCsv(text, { feeCodeFallbacks: fallbacks });
+    expect(res.validCount).toBe(1);
+    expect(res.rows[0].parsed?.currency).toBe("GBP");
+  });
 });

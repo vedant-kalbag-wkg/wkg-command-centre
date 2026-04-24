@@ -86,20 +86,28 @@ function isAbsent(s: string | undefined): boolean {
   return t === "" || t.toUpperCase() === "NULL";
 }
 
+function isRealDate(y: number, m: number, d: number): boolean {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 function parseDate(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed || trimmed.toUpperCase() === "NULL") return null;
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
   if (iso) {
     const [, y, m, d] = iso;
-    if (+m >= 1 && +m <= 12 && +d >= 1 && +d <= 31) return `${y}-${m}-${d}`;
+    if (!isRealDate(+y, +m, +d)) return null;
+    return `${y}-${m}-${d}`;
   }
   const ddMonYy = /^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/.exec(trimmed);
   if (ddMonYy) {
     const [, d, monRaw, yy] = ddMonYy;
     const mm = MONTH_ABBR[monRaw.toLowerCase()];
     if (!mm) return null;
-    return `${2000 + Number(yy)}-${mm}-${d.padStart(2, "0")}`;
+    const year = 2000 + Number(yy);
+    if (!isRealDate(year, Number(mm), Number(d))) return null;
+    return `${year}-${mm}-${d.padStart(2, "0")}`;
   }
   return null;
 }
@@ -151,13 +159,13 @@ export function parseSalesCsv(text: string, opts: ParseOptions): ParseResult {
     }
 
     // Required strings
-    const saleRef = (canonical.saleRef ?? "").trim();
+    const saleRef = isAbsent(canonical.saleRef) ? "" : canonical.saleRef!.trim();
     if (!saleRef) errors.push({ field: "saleRef", message: "saleRef is required" });
-    const refNo = (canonical.refNo ?? "").trim();
+    const refNo = isAbsent(canonical.refNo) ? "" : canonical.refNo!.trim();
     if (!refNo) errors.push({ field: "refNo", message: "refNo is required" });
-    const outletCode = (canonical.outletCode ?? "").trim();
+    const outletCode = isAbsent(canonical.outletCode) ? "" : canonical.outletCode!.trim();
     if (!outletCode) errors.push({ field: "outletCode", message: "outletCode is required" });
-    const productName = (canonical.productName ?? "").trim();
+    const productName = isAbsent(canonical.productName) ? "" : canonical.productName!.trim();
     if (!productName) errors.push({ field: "productName", message: "productName is required" });
 
     // netsuiteCode with fallback
@@ -197,7 +205,8 @@ export function parseSalesCsv(text: string, opts: ParseOptions): ParseResult {
     const vatRate = vatRateRes.ok === true ? vatRateRes.value : null;
     if (vatRateRes.ok === false) errors.push({ field: "vatRate", message: "vatRate is not a valid number" });
 
-    const currency = ((canonical.currency ?? "").trim() || "GBP").toUpperCase();
+    const rawCcy = (canonical.currency ?? "").trim();
+    const currency = isAbsent(rawCcy) ? "GBP" : rawCcy.toUpperCase();
 
     const row: ParseResult["rows"][number] = { rowNumber: i + 1, raw, parsed: null, errors };
 
