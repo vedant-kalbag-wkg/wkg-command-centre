@@ -18,6 +18,7 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
+  buildMetricModeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -48,12 +49,14 @@ async function buildRegionWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
+    metricModeCondition,
     ...dimensionConditions,
   ]);
 }

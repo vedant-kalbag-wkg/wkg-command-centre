@@ -7,6 +7,7 @@ import {
   formatChangeIndicator,
 } from "@/lib/analytics/formatters";
 import { calculatePeriodChange } from "@/lib/analytics/metrics";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { RegionDetail } from "@/lib/analytics/types";
 
 interface RegionMetricsProps {
@@ -15,6 +16,7 @@ interface RegionMetricsProps {
 }
 
 export function RegionMetrics({ detail, loading = false }: RegionMetricsProps) {
+  const metricLabel = useMetricLabel();
   const { metrics, previousMetrics } = detail;
 
   const revenueChange = previousMetrics
@@ -27,7 +29,7 @@ export function RegionMetrics({ detail, loading = false }: RegionMetricsProps) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <KpiCard
-        title="Revenue"
+        title={metricLabel}
         value={formatCurrency(metrics.revenue)}
         change={revenueChange}
         loading={loading}

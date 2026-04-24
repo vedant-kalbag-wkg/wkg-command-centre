@@ -14,6 +14,7 @@ import {
   formatNumber,
   formatNullValue,
 } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { HotelInGroup } from "@/lib/analytics/types";
 
 interface HotelListProps {
@@ -21,6 +22,7 @@ interface HotelListProps {
 }
 
 export function HotelList({ hotels }: HotelListProps) {
+  const metricLabel = useMetricLabel();
   if (hotels.length === 0) {
     return <EmptyState message="No hotels in this group" />;
   }
@@ -31,12 +33,12 @@ export function HotelList({ hotels }: HotelListProps) {
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[180px]">Hotel</TableHead>
-            <TableHead className="text-right">Revenue</TableHead>
+            <TableHead className="text-right">{metricLabel}</TableHead>
             <TableHead className="text-right">Transactions</TableHead>
             <TableHead className="text-right">Quantity</TableHead>
             <TableHead className="text-right">Rooms</TableHead>
             <TableHead className="text-right">Stars</TableHead>
-            <TableHead className="text-right">Rev / Room</TableHead>
+            <TableHead className="text-right">{metricLabel === "Revenue" ? "Rev" : "Sales"} / Room</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

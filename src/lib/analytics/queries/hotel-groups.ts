@@ -14,6 +14,7 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
+  buildMetricModeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
@@ -44,12 +45,14 @@ async function buildHotelGroupWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     exclusionCondition,
     maturityCondition,
+    metricModeCondition,
     ...dimensionConditions,
   ]);
 }

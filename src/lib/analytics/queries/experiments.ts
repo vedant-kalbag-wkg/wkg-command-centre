@@ -7,6 +7,7 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
+  buildMetricModeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -42,6 +43,7 @@ export async function getCohortMetrics(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   const locationCondition = inArray(salesRecords.locationId, locationIds);
 
@@ -50,6 +52,7 @@ export async function getCohortMetrics(
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
+    metricModeCondition,
     locationCondition,
     ...dimensionConditions,
   ]);
@@ -89,12 +92,14 @@ export async function getRestOfPortfolioMetrics(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   const conditions: (SQL | undefined)[] = [
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
+    metricModeCondition,
     ...dimensionConditions,
   ];
 

@@ -12,6 +12,7 @@ import {
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
 import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { DailyTrendRow } from "@/lib/analytics/types";
 
 interface TemporalChartsProps {
@@ -20,6 +21,7 @@ interface TemporalChartsProps {
 }
 
 export function TemporalCharts({ data, loading = false }: TemporalChartsProps) {
+  const metricLabel = useMetricLabel();
   if (!loading && data.length === 0) {
     return <EmptyState message="No trend data for selected group" />;
   }
@@ -53,7 +55,7 @@ export function TemporalCharts({ data, loading = false }: TemporalChartsProps) {
             name === "revenue"
               ? formatCurrency(Number(value))
               : formatNumber(Number(value)),
-            name === "revenue" ? "Revenue" : "Transactions",
+            name === "revenue" ? metricLabel : "Transactions",
           ]}
           labelFormatter={(label) => {
             const d = new Date(String(label));
@@ -68,7 +70,7 @@ export function TemporalCharts({ data, loading = false }: TemporalChartsProps) {
           stroke="#00A6D3"
           strokeWidth={2}
           dot={false}
-          name="Revenue"
+          name={metricLabel}
         />
         <Line
           yAxisId="transactions"

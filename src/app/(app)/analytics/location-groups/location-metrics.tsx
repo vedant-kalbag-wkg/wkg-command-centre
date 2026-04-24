@@ -8,6 +8,7 @@ import {
   formatChangeIndicator,
 } from "@/lib/analytics/formatters";
 import { calculatePeriodChange } from "@/lib/analytics/metrics";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { LocationGroupDetail } from "@/lib/analytics/types";
 
 interface LocationMetricsProps {
@@ -16,6 +17,7 @@ interface LocationMetricsProps {
 }
 
 export function LocationMetrics({ detail, loading = false }: LocationMetricsProps) {
+  const metricLabel = useMetricLabel();
   const { metrics, previousMetrics } = detail;
 
   const revenueChange = previousMetrics
@@ -28,7 +30,7 @@ export function LocationMetrics({ detail, loading = false }: LocationMetricsProp
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <KpiCard
-        title="Revenue"
+        title={metricLabel}
         value={formatCurrency(metrics.revenue)}
         change={revenueChange}
         loading={loading}
