@@ -613,6 +613,7 @@ export const salesRecords = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     importId: uuid("import_id").references(() => salesImports.id, { onDelete: "set null" }),
+    // no onDelete — regions are never deleted while sales exist; block the delete rather than cascading.
     regionId: uuid("region_id")
       .notNull()
       .references(() => regions.id),
@@ -661,6 +662,7 @@ export const salesBlobIngestions = pgTable(
   "sales_blob_ingestions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // no onDelete — regions are never deleted while sales exist; block the delete rather than cascading.
     regionId: uuid("region_id")
       .notNull()
       .references(() => regions.id),

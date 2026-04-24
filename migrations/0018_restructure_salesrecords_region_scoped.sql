@@ -19,9 +19,10 @@
 --   6. Seeds the fee-code fallback table + the etl-system user + the
 --      sales_blob_ingestions status CHECK constraint.
 --
--- NOTE: _loc_region_map is a TEMP table — it lives for this transaction only,
--- so the post-schema UPDATE below runs in the same txn as the pre-schema
--- safety gate. Do not attempt to run this migration outside a single txn.
+-- NOTE: _loc_region_map is a TEMP table created ON COMMIT DROP, so it is
+-- dropped automatically when the migration transaction commits. The post-
+-- schema UPDATE below runs in the same txn as the pre-schema safety gate.
+-- Do not attempt to run this migration outside a single txn.
 -- ============================================================================
 
 -- ============================================================================
@@ -41,6 +42,33 @@ VALUES
 ON CONFLICT (name) DO NOTHING;
 --> statement-breakpoint
 
+-- Backfill canonical codes for any pre-existing regions created while
+-- regions.code was nullable. Match on name (source-of-truth) to avoid
+-- clobbering admin edits on regions we don't canonically know about.
+UPDATE regions SET code = 'UK' WHERE name = 'United Kingdom' AND code IS NULL;--> statement-breakpoint
+UPDATE regions SET code = 'IE' WHERE name = 'Ireland'        AND code IS NULL;--> statement-breakpoint
+UPDATE regions SET code = 'DE' WHERE name = 'Germany'        AND code IS NULL;--> statement-breakpoint
+UPDATE regions SET code = 'ES' WHERE name = 'Spain'          AND code IS NULL;--> statement-breakpoint
+UPDATE regions SET code = 'CZ' WHERE name = 'Czech Republic' AND code IS NULL;--> statement-breakpoint
+
+-- Safety gate: any region without a code after backfill aborts the
+-- migration. Better to fail loudly than let SET NOT NULL below do it
+-- mid-DDL after the sales-data truncate has already run.
+DO $$
+DECLARE
+  missing_code int;
+BEGIN
+  SELECT COUNT(*) INTO missing_code FROM regions WHERE code IS NULL;
+  IF missing_code > 0 THEN
+    RAISE EXCEPTION
+      'Migration blocked: % regions have NULL code after backfill. '
+      'Either add the region to the canonical seed in this migration, '
+      'or assign a code manually before re-running.',
+      missing_code;
+  END IF;
+END$$;
+--> statement-breakpoint
+
 -- 2. Safety gate: refuse to apply if any location can't be mapped to a region.
 --    Resolution precedence:
 --      (a) explicit location_region_memberships (most accurate)
@@ -48,11 +76,13 @@ ON CONFLICT (name) DO NOTHING;
 --    If neither yields a hit we STOP the migration; a human must fix the
 --    Monday.com import or add the membership explicitly before retry.
 --
---    Temp table is kept ON COMMIT DROP by default in this transaction, so
---    the post-schema UPDATE below can read it; it vanishes at COMMIT time.
-CREATE TEMP TABLE _loc_region_map AS
+--    Temp table uses ON COMMIT DROP so it is cleaned up when the migration
+--    transaction commits, even if run manually via psql outside drizzle-kit.
+--    The post-schema UPDATE below runs in the same txn and can still read it.
+CREATE TEMP TABLE _loc_region_map ON COMMIT DROP AS
 SELECT
   l.id AS location_id,
+  l.archived_at IS NOT NULL AS is_archived,
   COALESCE(
     (SELECT r.id FROM location_region_memberships lrm
        JOIN regions r ON r.id = lrm.region_id
@@ -61,11 +91,18 @@ SELECT
        JOIN kiosks k ON k.id = ka.kiosk_id
        JOIN regions r ON r.code = CASE k.region_group
            WHEN 'UK'      THEN 'UK'
+           WHEN 'Ireland' THEN 'IE'
            WHEN 'Prague'  THEN 'CZ'
            WHEN 'Spain'   THEN 'ES'
            WHEN 'Germany' THEN 'DE'
            ELSE NULL END
-      WHERE ka.location_id = l.id LIMIT 1)
+      WHERE ka.location_id = l.id LIMIT 1),
+    -- Sentinel for archived rows we can't otherwise resolve. Archived
+    -- locations will never host new sales, so the region assignment is
+    -- cosmetic; UK is the dominant cohort so it's the least-surprise default.
+    CASE WHEN l.archived_at IS NOT NULL
+         THEN (SELECT id FROM regions WHERE code = 'UK')
+         ELSE NULL END
   ) AS region_id
 FROM locations l;
 --> statement-breakpoint
@@ -73,10 +110,14 @@ FROM locations l;
 DO $$
 DECLARE unresolved int;
 BEGIN
-  SELECT COUNT(*) INTO unresolved FROM _loc_region_map WHERE region_id IS NULL;
+  SELECT COUNT(*) INTO unresolved
+  FROM _loc_region_map
+  WHERE region_id IS NULL AND NOT is_archived;
   IF unresolved > 0 THEN
     RAISE EXCEPTION
-      'Migration blocked: % locations cannot be mapped to a region. Resolve via location_region_memberships or kiosk.region_group before re-running.',
+      'Migration blocked: % active locations cannot be mapped to a region. '
+      'Resolve by either (a) adding a location_region_memberships row, or '
+      '(b) assigning a kiosk with a recognised region_group, before re-running.',
       unresolved;
   END IF;
 END$$;
