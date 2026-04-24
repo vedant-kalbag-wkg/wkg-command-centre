@@ -56,7 +56,7 @@ export async function getCohortMetrics(
 
   const rows = await db
     .select({
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.grossAmount}::numeric), 0)`,
+      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric), 0)`,
       transactions: sql<number>`COUNT(*)::int`,
     })
     .from(salesRecords)
@@ -111,7 +111,7 @@ export async function getRestOfPortfolioMetrics(
 
   const rows = await db
     .select({
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.grossAmount}::numeric), 0)`,
+      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric), 0)`,
       transactions: sql<number>`COUNT(*)::int`,
     })
     .from(salesRecords)
@@ -156,7 +156,7 @@ export async function findSimilarLocations(
 
   const cohortRevRows = await db
     .select({
-      avgRevPerLocation: sql<string>`COALESCE(SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0)`,
+      avgRevPerLocation: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0)`,
     })
     .from(salesRecords)
     .where(
@@ -184,7 +184,7 @@ export async function findSimilarLocations(
   const matchRows = await db
     .select({
       locationId: locations.id,
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.grossAmount}::numeric), 0)`,
+      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric), 0)`,
     })
     .from(locations)
     .leftJoin(
@@ -206,7 +206,7 @@ export async function findSimilarLocations(
     )
     .groupBy(locations.id)
     .having(
-      sql`COALESCE(SUM(${salesRecords.grossAmount}::numeric), 0) >= ${revLow} AND COALESCE(SUM(${salesRecords.grossAmount}::numeric), 0) <= ${revHigh}`,
+      sql`COALESCE(SUM(${salesRecords.netAmount}::numeric), 0) >= ${revLow} AND COALESCE(SUM(${salesRecords.netAmount}::numeric), 0) <= ${revHigh}`,
     )
     .limit(10);
 

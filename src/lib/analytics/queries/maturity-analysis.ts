@@ -89,8 +89,8 @@ export async function getRevenueByMaturityBucket(
         ELSE '90+d'
       END AS bucket,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
-      COALESCE(SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_revenue,
-      COALESCE(SUM(${salesRecords.grossAmount}::numeric), 0) AS total_revenue
+      COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_revenue,
+      COALESCE(SUM(${salesRecords.netAmount}::numeric), 0) AS total_revenue
     FROM ${baseFrom()}
     WHERE ${fullWhere}
     GROUP BY bucket
@@ -145,7 +145,7 @@ export async function getRevenueRampCurve(
         FLOOR(EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400)),
         6
       )::int AS months_since,
-      COALESCE(SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_revenue,
+      COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_revenue,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count
     FROM ${baseFrom()}
     WHERE ${fullWhere}
@@ -196,7 +196,7 @@ export async function getInstallCohorts(
     SELECT
       TO_CHAR(${kioskLiveDateSubquery}, 'YYYY-MM') AS install_month,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
-      COALESCE(SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_monthly_revenue
+      COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_monthly_revenue
     FROM ${baseFrom()}
     WHERE ${fullWhere}
     GROUP BY install_month

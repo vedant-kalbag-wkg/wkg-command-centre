@@ -100,9 +100,9 @@ export async function getPortfolioSummary(
     unique_outlets: string;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS total_revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS total_revenue,
       COUNT(*)::text AS total_transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS total_quantity,
+      COUNT(*)::text AS total_quantity,
       COUNT(DISTINCT ${salesRecords.productId})::text AS unique_products,
       COUNT(DISTINCT ${salesRecords.locationId})::text AS unique_outlets
     FROM ${baseFrom()}
@@ -140,10 +140,10 @@ export async function getCategoryPerformance(
   }>(sql`
     SELECT
       ${products.name} AS category_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity,
-      COALESCE(AVG(${salesRecords.grossAmount}), 0) AS avg_value
+      COUNT(*)::text AS quantity,
+      COALESCE(AVG(${salesRecords.netAmount}), 0) AS avg_value
     FROM ${baseFromWithProducts()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${products.name}
@@ -176,9 +176,9 @@ export async function getTopProducts(
   }>(sql`
     SELECT
       ${products.name} AS product_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity
+      COUNT(*)::text AS quantity
     FROM ${baseFromWithProducts()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${products.name}
@@ -211,7 +211,7 @@ export async function getDailyTrends(
   }>(sql`
     SELECT
       ${salesRecords.transactionDate}::text AS date,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -243,7 +243,7 @@ export async function getHourlyDistribution(
   }>(sql`
     SELECT
       EXTRACT(HOUR FROM ${salesRecords.transactionTime})::int::text AS hour,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -279,7 +279,7 @@ export async function getOutletTiers(
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
       ${kioskLiveDateSubquery}::text AS live_date,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}

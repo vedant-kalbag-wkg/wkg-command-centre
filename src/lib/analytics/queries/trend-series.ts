@@ -77,13 +77,17 @@ function buildSeriesDimensionFilters(filters: SeriesFilters): SQL[] {
 function metricExpression(metric: TrendMetric): SQL {
   switch (metric) {
     case "revenue":
-      return sql`SUM(${salesRecords.grossAmount}::numeric)`;
+      return sql`SUM(${salesRecords.netAmount}::numeric)`;
     case "transactions":
       return sql`COUNT(*)::numeric`;
     case "avg_basket_value":
-      return sql`SUM(${salesRecords.grossAmount}::numeric) / NULLIF(COUNT(*), 0)`;
+      return sql`SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(*), 0)`;
     case "booking_fee":
-      return sql`SUM(${salesRecords.bookingFee}::numeric)`;
+      // NetSuite ETL (2026-04-24): booking fees are their own rows now
+      // (isBookingFee = true) rather than a denormalised column on the
+      // principal row. Conditional SUM keeps a single aggregate while
+      // isolating fee revenue from the same result set.
+      return sql`SUM(CASE WHEN ${salesRecords.isBookingFee} THEN ${salesRecords.netAmount}::numeric ELSE 0 END)`;
   }
 }
 

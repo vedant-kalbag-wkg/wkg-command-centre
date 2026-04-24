@@ -201,7 +201,7 @@ async function computePerformerPatterns(
       executeRows<{ name: string; revenue: string }>(sql`
         SELECT
           ${products.name} AS name,
-          COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue
+          COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue
         FROM ${salesRecords}
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}

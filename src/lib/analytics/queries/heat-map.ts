@@ -123,9 +123,9 @@ export async function getHeatMapData(
       ${locations.name} AS hotel_name,
       ${locations.numRooms}::text AS num_rooms,
       ${kioskLiveDateSubquery}::text AS live_date,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity
+      COUNT(*)::text AS quantity
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}

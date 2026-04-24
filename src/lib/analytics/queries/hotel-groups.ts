@@ -112,7 +112,7 @@ export async function getHotelGroupsList(
     WITH loc_agg AS (
       SELECT
         ${salesRecords.locationId} AS location_id,
-        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
         COUNT(*) AS transactions
       FROM ${baseFromLocationsOnly()}
       ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -146,7 +146,7 @@ export async function getHotelGroupsList(
     WITH loc_agg AS (
       SELECT
         ${salesRecords.locationId} AS location_id,
-        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
         COUNT(*) AS transactions
       FROM ${baseFromLocationsOnly()}
       ${prevWhereClause ? sql`WHERE ${prevWhereClause}` : sql``}
@@ -201,7 +201,7 @@ export async function getHotelGroupDetail(
     hotel_count: string;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId})::text AS hotel_count
     FROM ${baseFromWithHotelGroups()}
@@ -229,9 +229,9 @@ export async function getHotelGroupDetail(
       ${salesRecords.locationId} AS location_id,
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity,
+      COUNT(*)::text AS quantity,
       ${locations.numRooms}::text AS rooms,
       NULL::text AS kiosks,
       ${locations.starRating}::text AS star_rating
@@ -266,7 +266,7 @@ export async function getHotelGroupDetail(
   }>(sql`
     SELECT
       ${salesRecords.transactionDate}::text AS date,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFromWithHotelGroups()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
@@ -293,7 +293,7 @@ export async function getHotelGroupDetail(
       transactions: string;
     }>(sql`
       SELECT
-        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
         COUNT(*)::text AS transactions
       FROM ${baseFromWithHotelGroups()}
       ${prevFullWhere ? sql`WHERE ${prevFullWhere}` : sql``}
