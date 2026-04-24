@@ -4,8 +4,10 @@ import { toLocalISODate } from "@/lib/analytics/formatters";
 import type {
   DatePreset,
   AnalyticsFilters,
+  LocationType,
   MetricMode,
 } from "@/lib/analytics/types";
+import { LOCATION_TYPES } from "@/lib/analytics/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,7 +17,8 @@ type FilterDimensionKey =
   | "productFilter"
   | "hotelGroupFilter"
   | "locationGroupFilter"
-  | "maturityFilter";
+  | "maturityFilter"
+  | "locationTypeFilter";
 
 type FilterDateRange = {
   from: Date;
@@ -100,6 +103,7 @@ type FilterState = {
   hotelGroupFilter: string[];
   locationGroupFilter: string[];
   maturityFilter: string[];
+  locationTypeFilter: string[];
   metricMode: MetricMode;
 
   setDateRange: (range: FilterDateRange) => void;
@@ -121,6 +125,7 @@ function createFullFilterStore() {
     hotelGroupFilter: [],
     locationGroupFilter: [],
     maturityFilter: [],
+    locationTypeFilter: [],
     metricMode: "sales",
 
     setDateRange: (range) => set({ dateRange: range }),
@@ -135,6 +140,7 @@ function createFullFilterStore() {
         hotelGroupFilter: [],
         locationGroupFilter: [],
         maturityFilter: [],
+        locationTypeFilter: [],
       }),
     clearAllFilters: () =>
       set({
@@ -145,6 +151,7 @@ function createFullFilterStore() {
         hotelGroupFilter: [],
         locationGroupFilter: [],
         maturityFilter: [],
+        locationTypeFilter: [],
         metricMode: "sales",
       }),
   }));
@@ -168,17 +175,18 @@ export function filtersToSearchParams(state: FilterState): URLSearchParams {
   if (state.hotelGroupFilter.length > 0) params.set("hgroups", state.hotelGroupFilter.join(","));
   if (state.locationGroupFilter.length > 0) params.set("lgroups", state.locationGroupFilter.join(","));
   if (state.maturityFilter.length > 0) params.set("maturity", state.maturityFilter.join(","));
+  if (state.locationTypeFilter.length > 0) params.set("types", state.locationTypeFilter.join(","));
   // Only serialize when non-default so URLs stay clean for the common case.
   if (state.metricMode === "revenue") params.set("mode", "revenue");
 
   return params;
 }
 
-export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<FilterState, "dateRange" | "hotelFilter" | "regionFilter" | "productFilter" | "hotelGroupFilter" | "locationGroupFilter" | "maturityFilter" | "metricMode">> | null {
+export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<FilterState, "dateRange" | "hotelFilter" | "regionFilter" | "productFilter" | "hotelGroupFilter" | "locationGroupFilter" | "maturityFilter" | "locationTypeFilter" | "metricMode">> | null {
   const hasFilterParams =
     params.has("from") || params.has("hotels") || params.has("regions") ||
     params.has("products") || params.has("hgroups") || params.has("lgroups") ||
-    params.has("maturity") || params.has("mode");
+    params.has("maturity") || params.has("types") || params.has("mode");
   if (!hasFilterParams) return null;
 
   const result: Record<string, unknown> = {};
@@ -207,6 +215,12 @@ export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<Fil
   const maturity = params.get("maturity");
   if (maturity) result.maturityFilter = maturity.split(",");
 
+  const types = params.get("types");
+  if (types) {
+    const valid = new Set<string>(LOCATION_TYPES);
+    result.locationTypeFilter = types.split(",").filter((t) => valid.has(t));
+  }
+
   const mode = params.get("mode");
   if (mode === "revenue" || mode === "sales") {
     result.metricMode = mode as MetricMode;
@@ -225,6 +239,10 @@ export function storeStateToAnalyticsFilters(state: FilterState): AnalyticsFilte
     hotelGroupIds: state.hotelGroupFilter.length > 0 ? state.hotelGroupFilter : undefined,
     locationGroupIds: state.locationGroupFilter.length > 0 ? state.locationGroupFilter : undefined,
     maturityBuckets: state.maturityFilter.length > 0 ? state.maturityFilter : undefined,
+    locationTypes:
+      state.locationTypeFilter.length > 0
+        ? (state.locationTypeFilter as LocationType[])
+        : undefined,
     metricMode: state.metricMode,
   };
 }

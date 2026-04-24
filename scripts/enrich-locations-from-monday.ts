@@ -341,7 +341,12 @@ async function enrichLocations(hotels: HotelItem[]) {
     }
     const [row] = await db
       .insert(locations)
-      .values({ name: hotel.name, outletCode, primaryRegionId: regionId })
+      .values({
+        name: hotel.name,
+        outletCode,
+        primaryRegionId: regionId,
+        locationType: "hotel",
+      })
       .returning({
         id: locations.id,
         name: locations.name,
@@ -423,6 +428,7 @@ async function enrichLocations(hotels: HotelItem[]) {
     if (hotel.sourcedBy) updateValues.sourcedBy = hotel.sourcedBy;
     if (hotel.notes) updateValues.notes = hotel.notes;
     if (hotel.status) updateValues.status = hotel.status;
+    updateValues.locationType = "hotel";
 
     await db
       .update(locations)

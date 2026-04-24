@@ -73,6 +73,7 @@ describe('canonicaliseFilters', () => {
       hotelGroupIds: ['hg1'],
       locationGroupIds: ['lg1'],
       maturityBuckets: ['mature'],
+      locationTypes: [],
       metricMode: 'sales',
     });
   });

@@ -93,6 +93,17 @@ export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
       )`,
     );
   }
+  if (filters.locationTypes?.length) {
+    // Subquery predicate (rather than JOIN) keeps this composable with the
+    // existing buildPortfolioWhere/buildHeatMapWhere call sites that already
+    // filter off sales_records only.
+    conditions.push(
+      sql`${salesRecords.locationId} IN (
+        SELECT ${locations.id} FROM ${locations}
+        WHERE ${inArray(locations.locationType, filters.locationTypes)}
+      )`,
+    );
+  }
 
   return conditions;
 }

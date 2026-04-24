@@ -38,6 +38,7 @@ function denormaliseCanonical(f: CanonicalFilters): AnalyticsFilters {
     hotelGroupIds: orUndefined(f.hotelGroupIds),
     locationGroupIds: orUndefined(f.locationGroupIds),
     maturityBuckets: orUndefined(f.maturityBuckets),
+    locationTypes: f.locationTypes.length > 0 ? f.locationTypes : undefined,
     metricMode: f.metricMode,
   };
 }

@@ -1,4 +1,4 @@
-import type { AnalyticsFilters, MetricMode } from '@/lib/analytics/types';
+import type { AnalyticsFilters, LocationType, MetricMode } from '@/lib/analytics/types';
 
 export interface CanonicalFilters {
   dateFrom: string | null;
@@ -9,11 +9,16 @@ export interface CanonicalFilters {
   hotelGroupIds: string[];
   locationGroupIds: string[];
   maturityBuckets: string[];
+  locationTypes: LocationType[];
   metricMode: MetricMode;
 }
 
 function sortedUnique(xs: string[] | undefined): string[] {
   return [...new Set(xs ?? [])].sort();
+}
+
+function sortedUniqueTypes(xs: LocationType[] | undefined): LocationType[] {
+  return [...new Set(xs ?? [])].sort() as LocationType[];
 }
 
 // AnalyticsFilters from types.ts requires dateFrom/dateTo. Input relaxes
@@ -32,6 +37,7 @@ export function canonicaliseFilters(f: CanonicaliseInput): CanonicalFilters {
     hotelGroupIds:    sortedUnique(f.hotelGroupIds),
     locationGroupIds: sortedUnique(f.locationGroupIds),
     maturityBuckets:  sortedUnique(f.maturityBuckets),
+    locationTypes:    sortedUniqueTypes(f.locationTypes),
     // metricMode participates in the cache key so Sales and Revenue don't
     // alias the same cache entry. Default to 'sales' when absent (matches
     // the UI + URL parse defaults).

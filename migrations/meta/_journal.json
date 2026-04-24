@@ -169,6 +169,13 @@
       "when": 1777016694346,
       "tag": "0023_sales_imports_region_id",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1777336801002,
+      "tag": "0024_location_type",
+      "breakpoints": true
     }
   ]
 }

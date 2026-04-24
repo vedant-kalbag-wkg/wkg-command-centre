@@ -10,6 +10,33 @@ export type FilterDimension =
 
 export type MetricMode = "sales" | "revenue"
 
+// Matches the locations.location_type enum — mirrored here so the client
+// store + URL parser agree with what the DB accepts. 'null' is valid on
+// the column ("not yet mapped") but isn't a filter value.
+export type LocationType =
+  | "hotel"
+  | "retail_desk"
+  | "online"
+  | "airport"
+  | "hex_kiosk"
+
+export const LOCATION_TYPES: readonly LocationType[] = [
+  "hotel",
+  "retail_desk",
+  "online",
+  "airport",
+  "hex_kiosk",
+] as const
+
+// UI-facing labels; keep in sync with LocationType above.
+export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
+  hotel: "Hotel",
+  retail_desk: "Retail Desk",
+  online: "Online",
+  airport: "Airport",
+  hex_kiosk: "HEX Kiosk",
+}
+
 export type AnalyticsFilters = {
   dateFrom: string       // YYYY-MM-DD
   dateTo: string         // YYYY-MM-DD
@@ -19,6 +46,7 @@ export type AnalyticsFilters = {
   hotelGroupIds?: string[]
   locationGroupIds?: string[]
   maturityBuckets?: string[]
+  locationTypes?: LocationType[]
   // "sales"   — every row (gross transaction volume, default)
   // "revenue" — only booking-fee + cash-handling-fee rows (WKG's take).
   //             Identified by salesRecords.isBookingFee = true; by construction

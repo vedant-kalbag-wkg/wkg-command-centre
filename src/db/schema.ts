@@ -187,6 +187,12 @@ export const locations = pgTable(
     locationGroup: text("location_group"),
     internalPocId: text("internal_poc_id").references(() => user.id),
     status: text("status"),
+    // Location type — drives the Location Type analytics filter + the
+    // unmapped-outlets admin page. NULL means "not yet categorised"; the
+    // admin page surfaces those for manual assignment (default: airport).
+    // Values: 'hotel' | 'retail_desk' | 'online' | 'airport' | 'hex_kiosk'.
+    // Enforced via CHECK constraint in migration 0024.
+    locationType: text("location_type"),
     // Kiosk config group lives on the location: each hotel belongs to one
     // group (imported from Monday column 1466686598). Nullable FK + ON DELETE
     // SET NULL so removing a group does not cascade-delete locations.

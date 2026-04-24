@@ -13,6 +13,7 @@ import { MultiSelectFilter } from "./multi-select-filter";
 import { DateRangePicker } from "./date-range-picker";
 import { Button } from "@/components/ui/button";
 import type { DimensionOptions } from "@/lib/analytics/types";
+import { LOCATION_TYPES, LOCATION_TYPE_LABELS } from "@/lib/analytics/types";
 import { MATURITY_BUCKETS } from "@/lib/analytics/maturity";
 
 export function AnalyticsFilterBar({
@@ -73,6 +74,7 @@ export function AnalyticsFilterBar({
     region: store.regionFilter,
     locationGroup: store.locationGroupFilter,
     maturity: store.maturityFilter,
+    locationType: store.locationTypeFilter,
     mode: store.metricMode,
   });
 
@@ -169,6 +171,17 @@ export function AnalyticsFilterBar({
           selected={store.hotelFilter}
           onChange={(values) => store.setFilter("hotelFilter", values)}
           placeholder="Search locations..."
+        />
+
+        <MultiSelectFilter
+          label="Location Type"
+          options={LOCATION_TYPES.map((t) => ({
+            value: t,
+            label: LOCATION_TYPE_LABELS[t],
+          }))}
+          selected={store.locationTypeFilter}
+          onChange={(values) => store.setFilter("locationTypeFilter", values)}
+          placeholder="Filter by type..."
         />
 
         <MultiSelectFilter

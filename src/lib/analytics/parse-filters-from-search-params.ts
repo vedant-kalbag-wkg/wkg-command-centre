@@ -1,4 +1,5 @@
-import type { AnalyticsFilters, MetricMode } from '@/lib/analytics/types';
+import type { AnalyticsFilters, LocationType, MetricMode } from '@/lib/analytics/types';
+import { LOCATION_TYPES } from '@/lib/analytics/types';
 
 export type NextSearchParams =
   | URLSearchParams
@@ -50,6 +51,10 @@ export function parseAnalyticsFiltersFromSearchParams(
   const metricMode: MetricMode =
     rawMode === 'revenue' ? 'revenue' : 'sales';
 
+  const rawTypes = getIds(sp, 'types');
+  const validTypes = new Set<string>(LOCATION_TYPES);
+  const locationTypes = rawTypes?.filter((t): t is LocationType => validTypes.has(t));
+
   return {
     dateFrom: from ?? defaultFrom,
     dateTo: to ?? defaultTo,
@@ -59,6 +64,7 @@ export function parseAnalyticsFiltersFromSearchParams(
     hotelGroupIds: getIds(sp, 'hgroups'),
     locationGroupIds: getIds(sp, 'lgroups'),
     maturityBuckets: getIds(sp, 'maturity'),
+    locationTypes: locationTypes?.length ? locationTypes : undefined,
     metricMode,
   };
 }
