@@ -15,7 +15,8 @@
     "db:migrate:supabase": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/migrate-from-supabase.ts",
     "db:import:monday": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-from-monday.ts",
     "db:enrich:locations": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/enrich-locations-from-monday.ts",
-    "db:import:location-products": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-location-products-from-monday.ts"
+    "db:import:location-products": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-location-products-from-monday.ts",
+    "etl:azure": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/run-azure-etl.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1012.0",
