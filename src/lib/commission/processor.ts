@@ -74,17 +74,35 @@ export async function calculateCommissionsForRecords(
 
   // 1. Fetch the sales records (netAmount + isBookingFee — grossAmount and
   //    bookingFee columns were dropped in the NetSuite ETL rewrite).
-  const records = await db
-    .select({
-      id: salesRecords.id,
-      locationId: salesRecords.locationId,
-      productId: salesRecords.productId,
-      transactionDate: salesRecords.transactionDate,
-      netAmount: salesRecords.netAmount,
-      isBookingFee: salesRecords.isBookingFee,
-    })
-    .from(salesRecords)
-    .where(inArray(salesRecords.id, salesRecordIds));
+  //
+  // Chunked because Postgres's bind-parameter ceiling is 65,535 — a full-month
+  // import (~95k rows) would blow it as one IN-list. 10k per chunk leaves
+  // headroom for the column expressions in the SELECT.
+  const ID_CHUNK = 10_000;
+  type SalesRow = {
+    id: string;
+    locationId: string;
+    productId: string;
+    transactionDate: string;
+    netAmount: string;
+    isBookingFee: boolean;
+  };
+  const records: SalesRow[] = [];
+  for (let i = 0; i < salesRecordIds.length; i += ID_CHUNK) {
+    const slice = salesRecordIds.slice(i, i + ID_CHUNK);
+    const batch = await db
+      .select({
+        id: salesRecords.id,
+        locationId: salesRecords.locationId,
+        productId: salesRecords.productId,
+        transactionDate: salesRecords.transactionDate,
+        netAmount: salesRecords.netAmount,
+        isBookingFee: salesRecords.isBookingFee,
+      })
+      .from(salesRecords)
+      .where(inArray(salesRecords.id, slice));
+    records.push(...batch);
+  }
 
   // Split booking-fee rows (commission-bearing) from principal rows (skipped).
   const feeRecords = records.filter((r) => r.isBookingFee);

@@ -26,6 +26,7 @@ export function TopProducts({ data }: TopProductsProps) {
           <TableHead className="w-12">#</TableHead>
           <TableHead>Product</TableHead>
           <TableHead className="text-right">{metricLabel}</TableHead>
+          <TableHead className="text-right">Avg {metricLabel} / Txn</TableHead>
           <TableHead className="text-right">Transactions</TableHead>
           <TableHead className="text-right">Quantity</TableHead>
         </TableRow>
@@ -37,6 +38,11 @@ export function TopProducts({ data }: TopProductsProps) {
             <TableCell className="font-medium">{row.productName}</TableCell>
             <TableCell className="text-right">
               {formatCurrency(row.revenue)}
+            </TableCell>
+            <TableCell className="text-right">
+              {row.transactions > 0
+                ? formatCurrency(row.revenue / row.transactions)
+                : "—"}
             </TableCell>
             <TableCell className="text-right">
               {formatNumber(row.transactions)}
