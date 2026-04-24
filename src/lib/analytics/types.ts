@@ -102,8 +102,25 @@ export type OutletTierRow = {
   revenue: number
   transactions: number
   percentile: number
+  // Retained for backwards-compat with any hidden consumers; the UI drops
+  // the share column in Task 4.5 once all tier-consuming views carry the
+  // new property-level fields below.
   sharePercentage: number
   tier: OutletTier
+  // Phase 4 — property-level operational enrichment. Canonical hotel-group
+  // name resolved from locations.operating_group_id with a deterministic
+  // MIN(hotel_group_id) fallback on location_hotel_group_memberships (see
+  // canonicalHotelGroupNameFragment). Null for unaffiliated locations.
+  hotelGroupName: string | null
+  // Count of currently-active kiosk assignments on this property
+  // (kiosk_assignments.unassigned_at IS NULL).
+  kioskCount: number
+  // Pulled from locations.num_rooms; null if not recorded.
+  numRooms: number | null
+  // revenue / kioskCount; null when kioskCount === 0 (avoid div-by-zero).
+  revenuePerKiosk: number | null
+  // revenue / numRooms; null when numRooms is null or 0.
+  revenuePerRoom: number | null
 }
 
 export type OutletTier = "Premium" | "Standard" | "Developing" | "Emerging"

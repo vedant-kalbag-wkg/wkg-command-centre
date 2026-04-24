@@ -4,6 +4,7 @@ import {
   locations,
   salesRecords,
   kioskAssignments,
+  hotelGroups,
   locationHotelGroupMemberships,
   locationRegionMemberships,
   locationGroupMemberships,
@@ -160,4 +161,54 @@ export function combineConditions(conditions: (SQL | undefined)[]): SQL | undefi
   if (valid.length === 0) return undefined;
   if (valid.length === 1) return valid[0];
   return sql.join(valid, sql` AND `);
+}
+
+/**
+ * Returns a SQL fragment resolving each location's canonical hotel-group name.
+ *
+ * A location can belong to multiple hotel groups via
+ * `location_hotel_group_memberships`; to keep tier tables from double-counting
+ * a hotel across groups we collapse to exactly one group per location.
+ *
+ * Rule (first non-null wins):
+ *   1. `hotel_groups.name` via `locations.operating_group_id` (the operator's
+ *      own canonical group, if set on the location row).
+ *   2. `MIN(hotel_group_id)` from `location_hotel_group_memberships` — joined
+ *      back to `hotel_groups.name`. Lexicographic MIN by UUID is arbitrary but
+ *      deterministic, so the same location always resolves to the same group.
+ *   3. NULL — the location has no operating group and no membership rows
+ *      (unaffiliated).
+ *
+ * Emitted as a correlated subquery so the enclosing query can use it in
+ * SELECT without adding a LEFT JOIN / GROUP BY churn. Callers must ensure
+ * `locations` is in scope (either the table itself or a `locations`-aliased
+ * source).
+ */
+export function canonicalHotelGroupNameFragment(): SQL {
+  return sql`COALESCE(
+    (SELECT ${hotelGroups.name}
+       FROM ${hotelGroups}
+       WHERE ${hotelGroups.id} = ${locations.operatingGroupId}),
+    (SELECT ${hotelGroups.name}
+       FROM ${locationHotelGroupMemberships}
+       INNER JOIN ${hotelGroups}
+         ON ${hotelGroups.id} = ${locationHotelGroupMemberships.hotelGroupId}
+       WHERE ${locationHotelGroupMemberships.locationId} = ${locations.id}
+       ORDER BY ${locationHotelGroupMemberships.hotelGroupId}
+       LIMIT 1)
+  )`;
+}
+
+/**
+ * Correlated subquery returning the count of currently-active kiosk
+ * assignments on each location (`unassigned_at IS NULL`). Mirrors the
+ * pattern in high-performer-analysis.ts. Requires `locations` to be in scope.
+ */
+export function activeKioskCountFragment(): SQL {
+  return sql`(
+    SELECT COUNT(*)::int
+    FROM ${kioskAssignments}
+    WHERE ${kioskAssignments.locationId} = ${locations.id}
+      AND ${kioskAssignments.unassignedAt} IS NULL
+  )`;
 }
