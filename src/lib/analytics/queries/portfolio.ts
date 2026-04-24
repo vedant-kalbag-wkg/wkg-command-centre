@@ -5,9 +5,14 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  activeKioskCountFragment,
   buildDateCondition,
   buildDimensionFilters,
+  buildIsFeeCondition,
   buildMaturityCondition,
+  buildMetricModeCondition,
+  buildNonFeeCondition,
+  canonicalHotelGroupNameFragment,
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
@@ -51,12 +56,14 @@ async function buildPortfolioWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
+    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -100,9 +107,9 @@ export async function getPortfolioSummary(
     unique_outlets: string;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS total_revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS total_revenue,
       COUNT(*)::text AS total_transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS total_quantity,
+      COUNT(*)::text AS total_quantity,
       COUNT(DISTINCT ${salesRecords.productId})::text AS unique_products,
       COUNT(DISTINCT ${salesRecords.locationId})::text AS unique_outlets
     FROM ${baseFrom()}
@@ -140,10 +147,10 @@ export async function getCategoryPerformance(
   }>(sql`
     SELECT
       ${products.name} AS category_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity,
-      COALESCE(AVG(${salesRecords.grossAmount}), 0) AS avg_value
+      COUNT(*)::text AS quantity,
+      COALESCE(AVG(${salesRecords.netAmount}), 0) AS avg_value
     FROM ${baseFromWithProducts()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${products.name}
@@ -166,7 +173,72 @@ export async function getTopProducts(
   userCtx: UserCtx,
   limit = 20,
 ): Promise<TopProductRow[]> {
-  const whereClause = await buildPortfolioWhere(filters, userCtx);
+  // Two shapes here, driven by metricMode:
+  //
+  //  Sales mode  — rank products by their principal sales (NOT fees). Fee
+  //                rows ("Booking Fee" / "Cash Handling Fee") are not
+  //                products and dominate by transaction count, so they're
+  //                excluded unconditionally. Use buildPortfolioWhere with
+  //                metricMode forced to "sales" + the non-fee predicate.
+  //
+  //  Revenue mode — rank products by the fee revenue *they drove*. NetSuite
+  //                emits fee rows with ref_no='<parentRef>-b' and a generic
+  //                product name ("Booking Fee" / "Cash Handling Fee"). To
+  //                attribute a fee to the thing the customer actually bought
+  //                we self-join: strip the '-b' suffix, find the parent sale
+  //                row in the SAME region (any one — a sale/reversal pair
+  //                both carry the same product), and group by the parent's
+  //                product name. Region-scoping the join is essential:
+  //                outlet codes repeat across regions, but ref_no is
+  //                region-unique.
+  if (filters.metricMode === "revenue") {
+    const filtersForFees: AnalyticsFilters = { ...filters, metricMode: "sales" };
+    const baseWhere = await buildPortfolioWhere(filtersForFees, userCtx);
+    const whereClause = combineConditions([baseWhere, buildIsFeeCondition()]);
+
+    // Leave the outer sales_records unaliased so the shared WHERE helpers
+    // (which emit "sales_records"."..." refs) resolve cleanly. The LATERAL
+    // subquery uses its own explicit alias for the parent-side self-join.
+    const rows = await executeRows<{
+      product_name: string;
+      revenue: string;
+      transactions: string;
+      quantity: string;
+    }>(sql`
+      SELECT
+        p.name AS product_name,
+        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
+        COUNT(*)::text AS transactions,
+        COUNT(*)::text AS quantity
+      FROM ${salesRecords}
+      CROSS JOIN LATERAL (
+        SELECT parent.product_id
+        FROM ${salesRecords} AS parent
+        WHERE parent.region_id = ${salesRecords.regionId}
+          AND parent.ref_no = REGEXP_REPLACE(${salesRecords.refNo}, '-b$', '')
+          AND NOT (parent.is_booking_fee = true OR parent.netsuite_code IN ('9991', '9992'))
+        LIMIT 1
+      ) AS parent_one
+      INNER JOIN ${products} AS p ON p.id = parent_one.product_id
+      ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      GROUP BY p.name
+      ORDER BY revenue DESC
+      LIMIT ${limit}
+    `);
+
+    return rows.map((row, idx) => ({
+      rank: idx + 1,
+      productName: row.product_name,
+      categoryName: row.product_name,
+      revenue: Number(row.revenue),
+      transactions: Number(row.transactions),
+      quantity: Number(row.quantity),
+    }));
+  }
+
+  const filtersForProducts: AnalyticsFilters = { ...filters, metricMode: "sales" };
+  const baseWhere = await buildPortfolioWhere(filtersForProducts, userCtx);
+  const whereClause = combineConditions([baseWhere, buildNonFeeCondition()]);
 
   const rows = await executeRows<{
     product_name: string;
@@ -176,9 +248,9 @@ export async function getTopProducts(
   }>(sql`
     SELECT
       ${products.name} AS product_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity
+      COUNT(*)::text AS quantity
     FROM ${baseFromWithProducts()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${products.name}
@@ -211,7 +283,7 @@ export async function getDailyTrends(
   }>(sql`
     SELECT
       ${salesRecords.transactionDate}::text AS date,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -243,7 +315,7 @@ export async function getHourlyDistribution(
   }>(sql`
     SELECT
       EXTRACT(HOUR FROM ${salesRecords.transactionTime})::int::text AS hour,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -266,11 +338,24 @@ export async function getOutletTiers(
 ): Promise<OutletTierRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
 
+  // Property-level enrichment (Phase 4.2):
+  //   hotel_group_name — canonical group, tie-broken to exactly one. Uses
+  //     locations.operating_group_id when set, else MIN(hotel_group_id) from
+  //     location_hotel_group_memberships, else NULL. Single correlated
+  //     subquery fragment — see canonicalHotelGroupNameFragment.
+  //   kiosk_count — active kiosks on the property (unassigned_at IS NULL).
+  //   num_rooms — locations.num_rooms (nullable).
+  // num_rooms must also appear in GROUP BY because it's in SELECT without an
+  // aggregate. The correlated subqueries don't need to — they're scalar per
+  // row.
   const rawRows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
     live_date: string | null;
+    hotel_group_name: string | null;
+    kiosk_count: number;
+    num_rooms: number | null;
     revenue: string;
     transactions: string;
   }>(sql`
@@ -279,23 +364,36 @@ export async function getOutletTiers(
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
       ${kioskLiveDateSubquery}::text AS live_date,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      ${canonicalHotelGroupNameFragment()} AS hotel_group_name,
+      ${activeKioskCountFragment()} AS kiosk_count,
+      ${locations.numRooms} AS num_rooms,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}
+    GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
     ORDER BY revenue DESC
     LIMIT 200
   `);
 
-  const parsed = rawRows.map((row) => ({
-    locationId: row.location_id,
-    outletCode: row.outlet_code,
-    hotelName: row.hotel_name,
-    liveDate: row.live_date,
-    revenue: Number(row.revenue),
-    transactions: Number(row.transactions),
-  }));
+  const parsed = rawRows.map((row) => {
+    // Postgres returns integers as JS number already, but coerce defensively
+    // in case the driver ever flips to strings — undefined would silently
+    // pass the `numRooms > 0` check and produce NaN.
+    const kioskCount = Number(row.kiosk_count);
+    const numRooms = row.num_rooms === null ? null : Number(row.num_rooms);
+    return {
+      locationId: row.location_id,
+      outletCode: row.outlet_code,
+      hotelName: row.hotel_name,
+      liveDate: row.live_date,
+      hotelGroupName: row.hotel_group_name,
+      kioskCount,
+      numRooms,
+      revenue: Number(row.revenue),
+      transactions: Number(row.transactions),
+    };
+  });
 
   const totalRevenue = parsed.reduce((sum, r) => sum + r.revenue, 0);
   const sortedRevenues = parsed.map((r) => r.revenue).sort((a, b) => a - b);
@@ -303,6 +401,11 @@ export async function getOutletTiers(
   return parsed.map((row) => {
     const rank = binarySearchRank(row.revenue, sortedRevenues);
     const percentile = sortedRevenues.length > 0 ? (rank / sortedRevenues.length) * 100 : 0;
+    // Null out per-unit ratios when the denominator is missing or zero; the UI
+    // renders those as "—" rather than crunching Infinity/NaN.
+    const revenuePerKiosk = row.kioskCount > 0 ? row.revenue / row.kioskCount : null;
+    const revenuePerRoom =
+      row.numRooms !== null && row.numRooms > 0 ? row.revenue / row.numRooms : null;
     return {
       locationId: row.locationId,
       outletCode: row.outletCode,
@@ -313,6 +416,11 @@ export async function getOutletTiers(
       percentile,
       sharePercentage: totalRevenue > 0 ? (row.revenue / totalRevenue) * 100 : 0,
       tier: classifyOutletTier(percentile),
+      hotelGroupName: row.hotelGroupName,
+      kioskCount: row.kioskCount,
+      numRooms: row.numRooms,
+      revenuePerKiosk,
+      revenuePerRoom,
     };
   });
 }

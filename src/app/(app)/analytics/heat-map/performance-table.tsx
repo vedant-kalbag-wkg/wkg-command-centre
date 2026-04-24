@@ -14,6 +14,7 @@ import {
   formatNumber,
   formatNullValue,
 } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { cn } from "@/lib/utils";
 import type { HeatMapHotel, LocationFlag } from "@/lib/analytics/types";
 import {
@@ -48,7 +49,10 @@ const trafficLightLabel: Record<string, string> = {
   green: "High",
 };
 
+const EM_DASH = "—";
+
 export function PerformanceTable({ data, title, thresholdConfig, flags = [], onFlagCreated }: PerformanceTableProps) {
+  const metricLabel = useMetricLabel();
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
     const existing = flagsByLocation.get(f.locationId) ?? [];
@@ -72,10 +76,14 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
               <TableHead className="sticky left-12 z-10 bg-background min-w-[180px]">
                 Hotel
               </TableHead>
+              <TableHead>Hotel Group</TableHead>
               <TableHead>Maturity</TableHead>
-              <TableHead className="text-right">Revenue</TableHead>
+              <TableHead className="text-right">Kiosks</TableHead>
+              <TableHead className="text-right">Rooms</TableHead>
+              <TableHead className="text-right">Total {metricLabel}</TableHead>
               <TableHead className="text-right">Transactions</TableHead>
-              <TableHead className="text-right">Rev / Room</TableHead>
+              <TableHead className="text-right">{metricLabel} / Kiosk</TableHead>
+              <TableHead className="text-right">{metricLabel} / Room</TableHead>
               <TableHead className="text-right">Txn / Kiosk</TableHead>
               <TableHead className="text-right">Avg Basket</TableHead>
               <TableHead className="text-right w-20">Score</TableHead>
@@ -101,6 +109,7 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                     )}
                   </div>
                 </TableCell>
+                <TableCell>{row.hotelGroupName ?? EM_DASH}</TableCell>
                 <TableCell>
                   {(() => {
                     const bucket = calculateMaturityBucket(
@@ -111,9 +120,15 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                         {maturityBucketLabel(bucket)}
                       </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">{"\u2014"}</span>
+                      <span className="text-xs text-muted-foreground">{EM_DASH}</span>
                     );
                   })()}
+                </TableCell>
+                <TableCell className="text-right">
+                  {formatNumber(row.kioskCount)}
+                </TableCell>
+                <TableCell className="text-right">
+                  {row.numRooms != null ? formatNumber(row.numRooms) : EM_DASH}
                 </TableCell>
                 <TableCell className="text-right">
                   {formatCurrency(row.revenue)}
@@ -122,7 +137,14 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                   {formatNumber(row.transactions)}
                 </TableCell>
                 <TableCell className="text-right">
-                  {formatNullValue(row.revenuePerRoom, formatCurrency)}
+                  {row.revenuePerKiosk != null
+                    ? formatCurrency(row.revenuePerKiosk)
+                    : EM_DASH}
+                </TableCell>
+                <TableCell className="text-right">
+                  {row.revenuePerRoom != null
+                    ? formatCurrency(row.revenuePerRoom)
+                    : EM_DASH}
                 </TableCell>
                 <TableCell className="text-right">
                   {formatNullValue(row.txnPerKiosk, (v) => formatNumber(v, 1))}

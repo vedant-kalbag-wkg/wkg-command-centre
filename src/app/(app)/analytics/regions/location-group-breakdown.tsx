@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber, formatNullValue } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { RegionDetail } from "@/lib/analytics/types";
 
 interface LocationGroupBreakdownProps {
@@ -17,6 +18,7 @@ interface LocationGroupBreakdownProps {
 }
 
 export function LocationGroupBreakdown({ data }: LocationGroupBreakdownProps) {
+  const metricLabel = useMetricLabel();
   if (data.length === 0) {
     return <EmptyState message="No location groups in this region" />;
   }
@@ -27,7 +29,7 @@ export function LocationGroupBreakdown({ data }: LocationGroupBreakdownProps) {
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[180px]">Location Group</TableHead>
-            <TableHead className="text-right">Revenue</TableHead>
+            <TableHead className="text-right">{metricLabel}</TableHead>
             <TableHead className="text-right">Transactions</TableHead>
             <TableHead className="text-right">Outlets</TableHead>
             <TableHead className="text-right">Total Rooms</TableHead>

@@ -84,7 +84,7 @@ export const getLocationRevenuesForRequest = cache(
       SELECT
         ${salesRecords.locationId} AS location_id,
         ${locations.name} AS location_name,
-        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
         ${locations.numRooms}::text AS num_rooms
       FROM ${salesRecords}
         INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}

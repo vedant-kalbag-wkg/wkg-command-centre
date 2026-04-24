@@ -18,10 +18,12 @@
 
 import { db } from "@/db";
 import {
+  auditLogs,
   locations,
   products,
   providers,
   locationProducts,
+  regions,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
@@ -39,6 +41,27 @@ const BOARD_NAMES: Record<number, string> = {
   5026387784: "Removed",
   5092887865: "Australia DCM",
 };
+
+// Default region for placeholder locations, keyed by board. Monday hotels
+// without a mirror9 outlet code get a placeholder `locations` row so their
+// commission tiers import; since we don't know the real region, we seed UK
+// (prod has no AU region — Australia hotels will need operator reassignment
+// via the admin UI once they go live in prod). Ready-to-Launch / Removed
+// boards don't produce placeholders (see PLACEHOLDER_IMPORT_BOARDS).
+const BOARD_REGION: Record<number, string> = {
+  1356570756: "UK", // Live Estate — default; operator reassigns per-hotel if wrong
+  1743012104: "UK", // Ready to Launch — not imported (see PLACEHOLDER_IMPORT_BOARDS)
+  5026387784: "UK", // Removed — not imported
+  5092887865: "UK", // Australia DCM — default; no AU region on prod yet
+};
+
+// Boards whose no-outlet-code hotels get promoted from silent-skip to
+// placeholder-import. Removed + Ready-to-Launch deliberately omitted — those
+// hotels aren't live yet and shouldn't land in analytics surfaces.
+const PLACEHOLDER_IMPORT_BOARDS = new Set<number>([
+  1356570756, // Live Estate
+  5092887865, // Australia DCM
+]);
 
 function log(phase: string, msg: string) {
   console.log(`[${phase}] ${msg}`);
@@ -99,6 +122,11 @@ interface HotelWithProducts {
   hotelName: string;
   outletCodes: string[];
   subitems: SubitemData[];
+  // Board + item provenance — required for the flag-not-skip path so we know
+  // which board a no-outlet-code hotel came from (→ placeholder or skip) and
+  // can stamp `MONDAY-<mondayItemId>` onto the placeholder outletCode.
+  mondayItemId: string;
+  boardId: number;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -194,6 +222,8 @@ async function fetchAllHotelsWithProducts(): Promise<HotelWithProducts[]> {
             hotelName: item.name,
             outletCodes,
             subitems,
+            mondayItemId: item.id,
+            boardId,
           });
         }
       }
@@ -226,6 +256,89 @@ async function importLocationProducts(hotels: HotelWithProducts[]) {
     locRows.filter((l) => l.outletCode).map((l) => [l.outletCode!, l.id])
   );
   log("IMPORT", `Loaded ${locMap.size} locations with outlet codes`);
+
+  // Region code → id lookup for placeholder creation. We fetch once up front
+  // so the main loop stays pure (no DB reads in the hot path).
+  const regionRows = await db
+    .select({ id: regions.id, code: regions.code })
+    .from(regions);
+  const regionByCode = new Map(regionRows.map((r) => [r.code, r.id]));
+  log("IMPORT", `Loaded ${regionByCode.size} regions (${regionRows.map((r) => r.code).join(", ")})`);
+
+  // Track hotel names we had to placeholder so the summary line can list them.
+  const placeholderHotelNames: string[] = [];
+
+  /**
+   * Create (or find, if it already exists from a prior run) a placeholder
+   * location for a Monday hotel with no mirror9 outlet code. The outletCode
+   * is `MONDAY-<mondayItemId>` — the MONDAY- prefix is also the signal the
+   * /settings/outlet-types admin UI uses to badge the row as
+   * "Imported from Monday" (see pipeline.ts::reviewReason).
+   */
+  async function createPlaceholderLocation(
+    hotel: HotelWithProducts,
+  ): Promise<string> {
+    const outletCode = `MONDAY-${hotel.mondayItemId}`;
+    const regionCode = BOARD_REGION[hotel.boardId];
+    const primaryRegionId = regionByCode.get(regionCode);
+    if (!primaryRegionId) {
+      throw new Error(
+        `No region row for code '${regionCode}' (board=${BOARD_NAMES[hotel.boardId]}). ` +
+          `Seed regions before running placeholder import.`,
+      );
+    }
+
+    const notes =
+      `Imported from Monday (mondayItemId=${hotel.mondayItemId}) on ` +
+      `${new Date().toISOString().slice(0, 10)} — no outlet code on mirror9, ` +
+      `needs manual review (verify region + set type). Board=${BOARD_NAMES[hotel.boardId]}.`;
+
+    // onConflictDoNothing on (primaryRegionId, outletCode) — the existing
+    // unique constraint. Returning can be empty if the row already exists
+    // from a prior run, in which case we SELECT to get the id.
+    const [inserted] = await db
+      .insert(locations)
+      .values({
+        name: hotel.hotelName,
+        outletCode,
+        primaryRegionId,
+        locationType: null,
+        notes,
+      })
+      .onConflictDoNothing({
+        target: [locations.primaryRegionId, locations.outletCode],
+      })
+      .returning({ id: locations.id });
+
+    if (inserted) {
+      placeholderHotelNames.push(hotel.hotelName);
+      await db.insert(auditLogs).values({
+        actorId: "script:import-location-products-from-monday",
+        actorName: "System (Monday import)",
+        entityType: "location",
+        entityId: inserted.id,
+        entityName: hotel.hotelName,
+        action: "imported_from_monday_placeholder",
+        metadata: {
+          mondayItemId: hotel.mondayItemId,
+          board: BOARD_NAMES[hotel.boardId],
+        },
+      });
+      return inserted.id;
+    }
+
+    // Already exists — look it up.
+    const [existing] = await db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(
+        and(
+          eq(locations.primaryRegionId, primaryRegionId),
+          eq(locations.outletCode, outletCode),
+        ),
+      );
+    return existing.id;
+  }
 
   // Product and provider caches
   const productMap = new Map<string, string>();
@@ -292,16 +405,35 @@ async function importLocationProducts(hotels: HotelWithProducts[]) {
   // Collect ALL rows in memory first
   const allRows: Array<typeof locationProducts.$inferInsert> = [];
   let skippedNoLoc = 0;
+  let placeholdersCreated = 0;
 
   for (const hotel of hotels) {
-    if (hotel.outletCodes.length === 0) { skippedNoLoc++; continue; }
-
     const locationIds: string[] = [];
-    for (const code of hotel.outletCodes) {
-      const locId = locMap.get(code);
-      if (locId) locationIds.push(locId);
+
+    if (hotel.outletCodes.length === 0) {
+      // Case 1: hotel has no mirror9 outlet code. On active boards
+      // (Live Estate / Australia DCM) create a placeholder so commission
+      // tiers still import; elsewhere keep the old skip behaviour.
+      if (PLACEHOLDER_IMPORT_BOARDS.has(hotel.boardId)) {
+        const locId = await createPlaceholderLocation(hotel);
+        locationIds.push(locId);
+        placeholdersCreated++;
+      } else {
+        skippedNoLoc++;
+        continue;
+      }
+    } else {
+      // Case 2: hotel has outlet codes on mirror9 — resolve each to an
+      // existing location. If NONE resolve, skip (unchanged behaviour).
+      for (const code of hotel.outletCodes) {
+        const locId = locMap.get(code);
+        if (locId) locationIds.push(locId);
+      }
+      if (locationIds.length === 0) {
+        skippedNoLoc++;
+        continue;
+      }
     }
-    if (locationIds.length === 0) { skippedNoLoc++; continue; }
 
     for (const sub of hotel.subitems) {
       const productId = productMap.get(sub.productName.toLowerCase())!;
@@ -319,7 +451,11 @@ async function importLocationProducts(hotels: HotelWithProducts[]) {
     }
   }
 
-  log("IMPORT", `Collected ${allRows.length} rows to insert (${skippedNoLoc} hotels skipped)`);
+  log(
+    "IMPORT",
+    `Collected ${allRows.length} rows to insert ` +
+      `(${placeholdersCreated} placeholder locations created, ${skippedNoLoc} hotels skipped)`,
+  );
 
   // Clear existing locationProducts, then bulk insert in batches
   log("IMPORT", "Clearing existing location_products...");
@@ -348,7 +484,17 @@ async function importLocationProducts(hotels: HotelWithProducts[]) {
     }
   }
 
-  log("IMPORT", `Done: ${inserted} rows inserted, ${skippedNoLoc} hotels skipped (no matching location)`);
+  log(
+    "IMPORT",
+    `Done: ${inserted} rows inserted, ${skippedNoLoc} hotels skipped (no matching location), ` +
+      `${placeholdersCreated} placeholder locations created`,
+  );
+  if (placeholderHotelNames.length > 0) {
+    log(
+      "IMPORT",
+      `Created ${placeholderHotelNames.length} placeholder locations for hotels missing outlet codes: ${placeholderHotelNames.join(", ")}`,
+    );
+  }
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -367,7 +513,20 @@ async function verify() {
   const provCount = await db.select({ c: sql<number>`count(*)::int` }).from(providers);
   log("VERIFY", `Total providers: ${provCount[0].c}`);
 
-  const byProduct = await db.execute(sql`
+  // The static type on `db` is PostgresJsDatabase (which returns an array-like
+  // RowList), but at runtime against a Neon connection `db.execute()` actually
+  // returns a neon-serverless `{ rows: [...] }` shape. If we iterate the bare
+  // result we crash with "X is not iterable" (this was the stale verify bug).
+  // Helper that handles both shapes — prefer `.rows` when present, fall back
+  // to the value itself for postgres-js-backed runs.
+  function rowsOf<T>(result: unknown): T[] {
+    if (result && typeof result === "object" && "rows" in result) {
+      return (result as { rows: T[] }).rows;
+    }
+    return result as T[];
+  }
+
+  const byProductResult = await db.execute(sql`
     SELECT p.name, count(*)::int AS locations
     FROM location_products lp
     JOIN products p ON p.id = lp.product_id
@@ -375,27 +534,29 @@ async function verify() {
     GROUP BY p.name
     ORDER BY count(*) DESC
     LIMIT 15
-  `) as unknown as Array<{ name: string; locations: number }>;
+  `);
+  const byProduct = rowsOf<{ name: string; locations: number }>(byProductResult);
   log("VERIFY", "Products by location count:");
   for (const row of byProduct) {
     log("VERIFY", `  ${row.name}: ${row.locations} locations`);
   }
 
-  const byProvider = await db.execute(sql`
+  const byProviderResult = await db.execute(sql`
     SELECT prov.name, count(*)::int AS assignments
     FROM location_products lp
     JOIN providers prov ON prov.id = lp.provider_id
     GROUP BY prov.name
     ORDER BY count(*) DESC
     LIMIT 10
-  `) as unknown as Array<{ name: string; assignments: number }>;
+  `);
+  const byProvider = rowsOf<{ name: string; assignments: number }>(byProviderResult);
   log("VERIFY", "Top providers:");
   for (const row of byProvider) {
     log("VERIFY", `  ${row.name}: ${row.assignments} assignments`);
   }
 
   // Sample: Sheraton Skyline
-  const sample = await db.execute(sql`
+  const sampleResult = await db.execute(sql`
     SELECT l.name AS hotel, p.name AS product, prov.name AS provider,
            lp.availability, lp.commission_tiers
     FROM location_products lp
@@ -404,7 +565,8 @@ async function verify() {
     LEFT JOIN providers prov ON prov.id = lp.provider_id
     WHERE l.name LIKE '%Sheraton Skyline%'
     ORDER BY p.name
-  `) as unknown as Array<Record<string, unknown>>;
+  `);
+  const sample = rowsOf<Record<string, unknown>>(sampleResult);
   if (sample.length > 0) {
     log("VERIFY", "Sheraton Skyline products:");
     for (const row of sample) {

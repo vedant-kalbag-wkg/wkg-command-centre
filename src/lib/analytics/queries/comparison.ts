@@ -15,6 +15,7 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
+  buildMetricModeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -43,12 +44,14 @@ async function buildComparisonWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
+    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -95,7 +98,7 @@ async function getLocationMetrics(
     SELECT
       ${locations.id} AS entity_id,
       ${locations.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
@@ -136,7 +139,7 @@ async function getHotelGroupMetrics(
     SELECT
       ${hotelGroups.id} AS entity_id,
       ${hotelGroups.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
@@ -179,7 +182,7 @@ async function getRegionMetrics(
     SELECT
       ${regions.id} AS entity_id,
       ${regions.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}

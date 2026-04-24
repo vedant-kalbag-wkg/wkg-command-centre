@@ -140,62 +140,86 @@ export const kiosks = pgTable("kiosks", {
 });
 
 // Locations
-export const locations = pgTable("locations", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  address: text("address"),
-  latitude: doublePrecision("latitude"),
-  longitude: doublePrecision("longitude"),
-  starRating: integer("star_rating"),
-  roomCount: integer("room_count"),
-  keyContacts: jsonb("key_contacts").$type<
-    Array<{ name: string; role: string; email: string; phone: string }>
-  >(),
-  customerCode: text("customer_code"),
-  // Phase 1 M4 — outlet code is the stable identifier for a hotel in the
-  // sales CSV. Data-dashboard's hotel_metadata_cache used it as the PK; we
-  // mirror that on locations so CSV rows can FK-resolve to locations.id.
-  outletCode: text("outlet_code").unique(),
-  hotelGroup: text("hotel_group"),
-  operatingGroupId: uuid("operating_group_id").references(() => hotelGroups.id, { onDelete: "set null" }),
-  sourcedBy: text("sourced_by"),
-  bankingDetails: jsonb("banking_details"),
-  contractValue: numeric("contract_value"),
-  contractStartDate: timestamp("contract_start_date"),
-  contractEndDate: timestamp("contract_end_date"),
-  contractTerms: text("contract_terms"),
-  contractDocuments: jsonb("contract_documents").$type<
-    Array<{ fileName: string; s3Key: string; uploadedAt: string }>
-  >(),
-  maintenanceFee: numeric("maintenance_fee"),
-  freeTrialEndDate: timestamp("free_trial_end_date"),
-  hardwareAssets: text("hardware_assets"),
-  notes: text("notes"),
-  // Phase 4.1 — new location fields (D-22)
-  region: text("region"),
-  locationGroup: text("location_group"),
-  internalPocId: text("internal_poc_id").references(() => user.id),
-  status: text("status"),
-  // Kiosk config group lives on the location: each hotel belongs to one
-  // group (imported from Monday column 1466686598). Nullable FK + ON DELETE
-  // SET NULL so removing a group does not cascade-delete locations.
-  kioskConfigGroupId: uuid("kiosk_config_group_id").references(
-    () => kioskConfigGroups.id,
-    { onDelete: "set null" },
-  ),
-  customFields: jsonb("custom_fields").$type<Record<string, string>>(),
-  // Phase 1 M1 Task 1.5 — hotel dimension fields (ported from data-dashboard analytics schema)
-  numRooms: integer("num_rooms"),
-  hotelAddress: text("hotel_address"),
-  liveDate: timestamp("live_date"),
-  launchPhase: text("launch_phase"),
-  keyContactName: text("key_contact_name"),
-  keyContactEmail: text("key_contact_email"),
-  financeContact: text("finance_contact"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  archivedAt: timestamp("archived_at", { withTimezone: true }),
-});
+export const locations = pgTable(
+  "locations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    address: text("address"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    starRating: integer("star_rating"),
+    roomCount: integer("room_count"),
+    keyContacts: jsonb("key_contacts").$type<
+      Array<{ name: string; role: string; email: string; phone: string }>
+    >(),
+    customerCode: text("customer_code"),
+    // Phase 1 M4 — outlet code is the stable identifier for a hotel in the
+    // sales CSV. Data-dashboard's hotel_metadata_cache used it as the PK; we
+    // mirror that on locations so CSV rows can FK-resolve to locations.id.
+    // No longer globally unique — collisions are legitimate across regions
+    // (e.g. outlet "Q5" in GB ≠ "Q5" in DE). Uniqueness enforced as
+    // (primaryRegionId, outletCode) below.
+    outletCode: text("outlet_code").notNull(),
+    // NetSuite ETL region scope (2026-04-24): each location belongs to exactly
+    // one canonical region. Populated from kiosk assignments / memberships
+    // during the 0022 migration; new rows must set this explicitly.
+    primaryRegionId: uuid("primary_region_id")
+      .notNull()
+      .references(() => regions.id),
+    hotelGroup: text("hotel_group"),
+    operatingGroupId: uuid("operating_group_id").references(() => hotelGroups.id, { onDelete: "set null" }),
+    sourcedBy: text("sourced_by"),
+    bankingDetails: jsonb("banking_details"),
+    contractValue: numeric("contract_value"),
+    contractStartDate: timestamp("contract_start_date"),
+    contractEndDate: timestamp("contract_end_date"),
+    contractTerms: text("contract_terms"),
+    contractDocuments: jsonb("contract_documents").$type<
+      Array<{ fileName: string; s3Key: string; uploadedAt: string }>
+    >(),
+    maintenanceFee: numeric("maintenance_fee"),
+    freeTrialEndDate: timestamp("free_trial_end_date"),
+    hardwareAssets: text("hardware_assets"),
+    notes: text("notes"),
+    // Phase 4.1 — new location fields (D-22)
+    // `region` (free-text) dropped in 0022 — use primaryRegionId + regions FK.
+    locationGroup: text("location_group"),
+    internalPocId: text("internal_poc_id").references(() => user.id),
+    status: text("status"),
+    // Location type — drives the Location Type analytics filter + the
+    // unmapped-outlets admin page. NULL means "not yet categorised"; the
+    // admin page surfaces those for manual assignment (default: airport).
+    // Values: 'hotel' | 'retail_desk' | 'online' | 'airport' | 'hex_kiosk'.
+    // Enforced via CHECK constraint in migration 0024.
+    locationType: text("location_type"),
+    // Kiosk config group lives on the location: each hotel belongs to one
+    // group (imported from Monday column 1466686598). Nullable FK + ON DELETE
+    // SET NULL so removing a group does not cascade-delete locations.
+    kioskConfigGroupId: uuid("kiosk_config_group_id").references(
+      () => kioskConfigGroups.id,
+      { onDelete: "set null" },
+    ),
+    customFields: jsonb("custom_fields").$type<Record<string, string>>(),
+    // Phase 1 M1 Task 1.5 — hotel dimension fields (ported from data-dashboard analytics schema)
+    numRooms: integer("num_rooms"),
+    hotelAddress: text("hotel_address"),
+    liveDate: timestamp("live_date"),
+    launchPhase: text("launch_phase"),
+    keyContactName: text("key_contact_name"),
+    keyContactEmail: text("key_contact_email"),
+    financeContact: text("finance_contact"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => ({
+    outletRegionUniq: unique("locations_region_outlet_unique").on(
+      t.primaryRegionId,
+      t.outletCode,
+    ),
+  }),
+);
 
 // Kiosk assignments — temporal join table for assignment history
 export const kioskAssignments = pgTable(
@@ -317,10 +341,16 @@ export const installationMembers = pgTable("installation_members", {
 // Phase 4 — Product/Provider tables
 // =============================================================================
 
-// Products — distinct product types (e.g. Transfers, Tours & Activities)
+// Products — distinct product types (e.g. Transfers, Tours & Activities).
+// NetSuite ETL (2026-04-24): dimension resolver prefers `netsuiteCode` match
+// over `name`; `categoryCode`/`categoryName` denormalised from NetSuite for
+// downstream reporting (populated on insert / updated when null).
 export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
+  netsuiteCode: text("netsuite_code").unique(),
+  categoryCode: text("category_code"),
+  categoryName: text("category_name"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -436,10 +466,11 @@ export const userScopes = pgTable(
 // userScopes.dimensionType='hotel_group' sees only locations belonging to that
 // hotel_group via the membership join tables below.
 //
-// NOTE: free-text columns `locations.region`, `locations.hotel_group`,
-// `locations.location_group` coexist with these dimension tables — the tables
-// are used for scoped joins while the free-text columns remain for legacy
-// input / unnormalised data.
+// NOTE: free-text columns `locations.hotel_group` and `locations.location_group`
+// coexist with these dimension tables — the tables are used for scoped joins
+// while the free-text columns remain for legacy input / unnormalised data.
+// The previously free-text region column on `locations` was dropped in
+// migration 0018 in favour of joining via the region dimension tables below.
 // =============================================================================
 
 // Markets — top-level geographic grouping (e.g. UK & Ireland, Continental Europe).
@@ -466,10 +497,14 @@ export const hotelGroups = pgTable("hotel_groups", {
 });
 
 // Regions — geographic grouping of locations (e.g. UK, EU, North America).
+// `code` is the canonical WKG region identifier (UK, IE, DE, ES, CZ). `azureCode`
+// is the (configurable) prefix used for Azure blob paths (e.g. UK→GB). See
+// docs/plans/2026-04-24-netsuite-etl-restructure-design.md §Data model.
 export const regions = pgTable("regions", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
-  code: text("code"),
+  code: text("code").notNull().unique(),
+  azureCode: text("azure_code").unique(),
   marketId: uuid("market_id").references(() => markets.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   createdBy: text("created_by").references(() => user.id),
@@ -571,6 +606,9 @@ export const salesImports = pgTable("sales_imports", {
     .notNull()
     .default("staging"),
   errors: jsonb("errors"),
+  // NetSuite ETL (2026-04-24): an import is always region-scoped. Set at stage
+  // time; downstream salesRecords.regionId is propagated from this value.
+  regionId: uuid("region_id").references(() => regions.id),
 });
 
 export const importStagings = pgTable(
@@ -593,39 +631,102 @@ export const importStagings = pgTable(
   }),
 );
 
+// NetSuite ETL (2026-04-24): sales_records rewritten around net/VAT measures.
+// Dropped fields: grossAmount, quantity, discountCode, discountAmount,
+// bookingFee, saleCommission, unique(saleRef, transactionDate). Row identity
+// is now guaranteed by blob-level idempotency (sales_blob_ingestions) + the
+// feed's "no overlap between days" guarantee; reversal pairs legitimately
+// share (saleRef, refNo, transactionDate) with opposite-signed amounts.
 export const salesRecords = pgTable(
   "sales_records",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     importId: uuid("import_id").references(() => salesImports.id, { onDelete: "set null" }),
+    // no onDelete — regions are never deleted while sales exist; block the delete rather than cascading.
+    regionId: uuid("region_id")
+      .notNull()
+      .references(() => regions.id),
     saleRef: text("sale_ref").notNull(),
-    refNo: text("ref_no"),
+    refNo: text("ref_no").notNull(),
     transactionDate: date("transaction_date").notNull(),
     transactionTime: time("transaction_time"),
     locationId: uuid("location_id").notNull().references(() => locations.id),
     productId: uuid("product_id").notNull().references(() => products.id),
     providerId: uuid("provider_id").references(() => providers.id),
-    quantity: integer("quantity").notNull().default(1),
-    grossAmount: numeric("gross_amount", { precision: 12, scale: 2 }).notNull(),
-    netAmount: numeric("net_amount", { precision: 12, scale: 2 }),
-    discountCode: text("discount_code"),
-    discountAmount: numeric("discount_amount", { precision: 12, scale: 2 }),
-    bookingFee: numeric("booking_fee", { precision: 12, scale: 2 }),
-    saleCommission: numeric("sale_commission", { precision: 12, scale: 2 }),
+    netAmount: numeric("net_amount", { precision: 12, scale: 2 }).notNull(),
+    vatAmount: numeric("vat_amount", { precision: 12, scale: 2 }).notNull(),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
     currency: text("currency").notNull().default("GBP"),
+    isBookingFee: boolean("is_booking_fee").notNull().default(false),
+    netsuiteCode: text("netsuite_code").notNull(),
+    agent: text("agent"),
+    businessDivision: text("business_division"),
+    categoryCode: text("category_code"),
+    categoryName: text("category_name"),
+    apiProductName: text("api_product_name"),
+    city: text("city"),
+    country: text("country"),
     customerCode: text("customer_code"),
     customerName: text("customer_name"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
-    saleRefIdx: index("sales_sale_ref_idx").on(t.saleRef),
+    regionDateIdx: index("sales_region_date_idx").on(t.regionId, t.transactionDate),
+    regionRefNoIdx: index("sales_region_refno_idx").on(t.regionId, t.refNo),
+    regionSaleRefIdx: index("sales_region_saleref_idx").on(t.regionId, t.saleRef),
     locDateIdx: index("sales_loc_date_idx").on(t.locationId, t.transactionDate),
     prodDateIdx: index("sales_prod_date_idx").on(t.productId, t.transactionDate),
     provDateIdx: index("sales_prov_date_idx").on(t.providerId, t.transactionDate),
     txnDateIdx: index("sales_txn_date_idx").on(t.transactionDate),
-    uniq: unique().on(t.saleRef, t.transactionDate),
+    // No natural unique — idempotency enforced at blob level.
   }),
 );
+
+// NetSuite ETL (2026-04-24): audit trail + idempotency for Azure blob ingestions.
+// One row per blob processed (success or failure). The (regionId, blobPath)
+// unique constraint is the idempotency key — the ETL runner skips any blob
+// already present with status='success'. Failures are re-processed on retry
+// via onConflictDoUpdate.
+export const salesBlobIngestions = pgTable(
+  "sales_blob_ingestions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // no onDelete — regions are never deleted while sales exist; block the delete rather than cascading.
+    regionId: uuid("region_id")
+      .notNull()
+      .references(() => regions.id),
+    blobPath: text("blob_path").notNull(),
+    blobDate: date("blob_date").notNull(),
+    etag: text("etag"),
+    processedAt: timestamp("processed_at").notNull().defaultNow(),
+    importId: uuid("import_id").references(() => salesImports.id, { onDelete: "set null" }),
+    status: text("status", { enum: ["success", "failed"] }).notNull(),
+    errorMessage: text("error_message"),
+  },
+  (t) => ({
+    regionBlobUniq: unique("sales_blob_ingestions_region_blob_unique").on(
+      t.regionId,
+      t.blobPath,
+    ),
+    byRegionDate: index("sales_blob_ingestions_region_date_idx").on(
+      t.regionId,
+      t.blobDate,
+    ),
+  }),
+);
+
+// NetSuite ETL (2026-04-24): admin-editable map from a NetSuite Product Name
+// to the NetSuite code used when the CSV `Code` column is NULL (happens for
+// Booking Fee / Cash Handling Fee rows today). Edits MUST go through
+// src/lib/sales/config/fee-fallbacks.ts#updateFeeCodeFallback so denormalised
+// codes on products + sales_records are backfilled in the same transaction.
+export const productCodeFallbacks = pgTable("product_code_fallbacks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productName: text("product_name").notNull().unique(),
+  netsuiteCode: text("netsuite_code").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 // =============================================================================
 // Phase 1 M1 Task 1.8 — Remaining analytics tables (ported from data-dashboard)

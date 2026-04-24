@@ -2,7 +2,7 @@
 
 import { z } from "zod/v4";
 import { db } from "@/db";
-import { locations, kioskAssignments, kiosks, user } from "@/db/schema";
+import { locations, kioskAssignments, kiosks, regions, user } from "@/db/schema";
 import {
   requireRole,
   redactSensitiveFields,
@@ -19,6 +19,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const createLocationSchema = z.object({
   name: z.string().min(1, "Name is required").max(200, "Name must be 200 characters or fewer"),
+  // outletCode + primaryRegionId became NOT NULL on locations in migration 0022
+  // (NetSuite ETL region scoping). Both are required at create time; uniqueness
+  // is enforced on (primaryRegionId, outletCode).
+  outletCode: z.string().min(1, "Outlet code is required").max(64, "Outlet code must be 64 characters or fewer"),
+  primaryRegionId: z.uuid("A region is required"),
   address: z.string().optional(),
   latitude: z.coerce.number().optional().nullable(),
   longitude: z.coerce.number().optional().nullable(),
@@ -90,7 +95,6 @@ export type LocationListItem = {
   maintenanceFee: string | null;
   customerCode: string | null;
   keyContactName: string | null;
-  region: string | null;
   locationGroup: string | null;
   internalPocId: string | null;
   internalPocName: string | null;
@@ -111,6 +115,8 @@ export async function createLocation(data: z.input<typeof createLocationSchema>)
       .insert(locations)
       .values({
         name: validated.name,
+        outletCode: validated.outletCode,
+        primaryRegionId: validated.primaryRegionId,
         address: validated.address || null,
         latitude: validated.latitude ?? null,
         longitude: validated.longitude ?? null,
@@ -368,7 +374,6 @@ export async function listLocations(): Promise<LocationListItem[]> {
         customerCode: locations.customerCode,
         keyContacts: locations.keyContacts,
         keyContactNameCol: locations.keyContactName,
-        region: locations.region,
         locationGroup: locations.locationGroup,
         internalPocId: locations.internalPocId,
         internalPocName: pocUser.name,
@@ -626,6 +631,24 @@ export async function updateBankingDetails(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update banking details";
     return { error: message };
+  }
+}
+
+/**
+ * Region options for the new-location form picker. Lightweight (id + name)
+ * — locations can only be created with a known region post-0022, so this is
+ * the source of truth for that dropdown.
+ */
+export async function listRegionOptions(): Promise<Array<{ id: string; name: string }>> {
+  try {
+    await requireRole("admin", "member", "viewer");
+    const rows = await db
+      .select({ id: regions.id, name: regions.name })
+      .from(regions)
+      .orderBy(regions.name);
+    return rows;
+  } catch {
+    return [];
   }
 }
 

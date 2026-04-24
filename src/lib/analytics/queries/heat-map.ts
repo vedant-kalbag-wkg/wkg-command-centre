@@ -5,9 +5,12 @@ import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  activeKioskCountFragment,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
+  buildMetricModeCondition,
+  canonicalHotelGroupNameFragment,
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
@@ -78,12 +81,14 @@ async function buildHeatMapWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
+    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -107,12 +112,23 @@ export async function getHeatMapData(
   const whereClause = await buildHeatMapWhere(filters, userCtx);
 
   // 1. Query sales grouped by location
+  //
+  // Property-level enrichment (Phase 4.3, mirrors portfolio.ts getOutletTiers):
+  //   hotel_group_name — canonical group via canonicalHotelGroupNameFragment
+  //     (operating_group_id if set, else MIN(hotel_group_id) from memberships).
+  //   kiosk_count — active kiosks on the property right now (unassigned_at
+  //     IS NULL), used for revenue/kiosk on the tier row. This is distinct
+  //     from the date-bounded kiosk count fetched below for txnPerKiosk in
+  //     the composite score — that one is scoped to [dateFrom, dateTo].
+  // Correlated subqueries don't need to appear in GROUP BY.
   const rows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
     num_rooms: string | null;
     live_date: string | null;
+    hotel_group_name: string | null;
+    kiosk_count: number;
     revenue: string;
     transactions: string;
     quantity: string;
@@ -123,9 +139,11 @@ export async function getHeatMapData(
       ${locations.name} AS hotel_name,
       ${locations.numRooms}::text AS num_rooms,
       ${kioskLiveDateSubquery}::text AS live_date,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      ${canonicalHotelGroupNameFragment()} AS hotel_group_name,
+      ${activeKioskCountFragment()} AS kiosk_count,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
-      COALESCE(SUM(${salesRecords.quantity}), 0)::text AS quantity
+      COUNT(*)::text AS quantity
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -171,15 +189,26 @@ export async function getHeatMapData(
     const transactions = Number(row.transactions);
     const numRooms = row.num_rooms ? Number(row.num_rooms) : null;
     const kiosks = kioskCountMap.get(row.location_id) ?? null;
+    // Defensive Number() — the pg driver returns ::int as a JS number already,
+    // but if it ever flipped to string, undefined would silently pass the
+    // `kioskCount > 0` check below and produce NaN on the divide.
+    const kioskCount = Number(row.kiosk_count);
+    // Null out revenue/kiosk when no kiosks are assigned — the UI renders
+    // those as "—" rather than Infinity.
+    const revenuePerKiosk = kioskCount > 0 ? revenue / kioskCount : null;
 
     return {
       locationId: row.location_id,
       outletCode: row.outlet_code,
       hotelName: row.hotel_name,
       liveDate: row.live_date,
+      hotelGroupName: row.hotel_group_name,
+      kioskCount,
+      numRooms,
       revenue,
       transactions,
       revenuePerRoom: calculateRevenuePerRoom(revenue, numRooms),
+      revenuePerKiosk,
       txnPerKiosk: calculateTxnPerKiosk(transactions, kiosks),
       avgBasketValue: calculateAvgBasketValue(revenue, transactions) ?? 0,
     };
@@ -238,6 +267,10 @@ export async function getHeatMapData(
       txnPerKiosk: hotel.txnPerKiosk,
       avgBasketValue: hotel.avgBasketValue,
       compositeScore: Math.round(compositeScore * 100) / 100,
+      hotelGroupName: hotel.hotelGroupName,
+      kioskCount: hotel.kioskCount,
+      numRooms: hotel.numRooms,
+      revenuePerKiosk: hotel.revenuePerKiosk,
     };
   });
 

@@ -1,15 +1,30 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
-import { locations, products, providers as providersTable } from "@/db/schema";
-import { resolveDimensions, type DimensionInput } from "@/lib/csv/dimension-resolver";
+import {
+  locations,
+  products,
+  providers as providersTable,
+  regions,
+} from "@/db/schema";
+import {
+  resolveDimensions,
+  type DimensionInput,
+} from "@/lib/csv/dimension-resolver";
 
+/**
+ * Phase 3 — region-scoped resolver.
+ *
+ * The resolver now:
+ *   1. Scopes outlet lookup by `regionId`.
+ *   2. Resolves products by `netsuiteCode` first, then falls back to `name`
+ *      (and back-fills the code on the matched product row).
+ *   3. Auto-creates products/providers when nothing matches.
+ */
 describe("resolveDimensions (integration)", () => {
   let ctx: TestDbContext;
-  let locationAId: string;
-  let locationBId: string;
-  let productXId: string;
-  let productYId: string;
-  let providerZId: string;
+  let ukRegionId: string;
+  let deRegionId: string;
 
   beforeAll(async () => {
     ctx = await setupTestDb();
@@ -20,153 +35,254 @@ describe("resolveDimensions (integration)", () => {
   });
 
   beforeEach(async () => {
+    // Clear per-test state. Order respects FK dependencies.
     await ctx.db.delete(providersTable);
     await ctx.db.delete(products);
     await ctx.db.delete(locations);
+    await ctx.db.delete(regions);
 
-    const [locA] = await ctx.db
-      .insert(locations)
-      .values({ name: "Hotel A", outletCode: "OUT-A" })
-      .returning({ id: locations.id });
-    locationAId = locA.id;
+    const [uk] = await ctx.db
+      .insert(regions)
+      .values({ name: "United Kingdom", code: "UK" })
+      .returning({ id: regions.id });
+    ukRegionId = uk.id;
 
-    const [locB] = await ctx.db
-      .insert(locations)
-      .values({ name: "Hotel B", outletCode: "OUT-B" })
-      .returning({ id: locations.id });
-    locationBId = locB.id;
-
-    const [prodX] = await ctx.db
-      .insert(products)
-      .values({ name: "London Eye" })
-      .returning({ id: products.id });
-    productXId = prodX.id;
-
-    const [prodY] = await ctx.db
-      .insert(products)
-      .values({ name: "Shard View" })
-      .returning({ id: products.id });
-    productYId = prodY.id;
-
-    const [provZ] = await ctx.db
-      .insert(providersTable)
-      .values({ name: "AttractionsCo" })
-      .returning({ id: providersTable.id });
-    providerZId = provZ.id;
+    const [de] = await ctx.db
+      .insert(regions)
+      .values({ name: "Germany", code: "DE" })
+      .returning({ id: regions.id });
+    deRegionId = de.id;
   });
 
-  const row = (over: Partial<DimensionInput>): DimensionInput => ({
+  const row = (over: Partial<DimensionInput> = {}): DimensionInput => ({
     rowNumber: 1,
-    outletCode: "OUT-A",
-    productName: "London Eye",
-    providerName: "AttractionsCo",
+    outletCode: "Q5",
+    productName: "Uber API",
+    netsuiteCode: "4603",
+    categoryCode: "TRNSCAR",
+    categoryName: "UBER",
+    apiProductName: "UberX",
+    providerName: "UberSSM",
     ...over,
   });
 
-  it("resolves all three dimensions for valid rows", async () => {
-    const result = await resolveDimensions(ctx.db, [
-      row({ rowNumber: 1 }),
-      row({ rowNumber: 2, outletCode: "OUT-B", productName: "Shard View" }),
-    ]);
+  it("scopes outlet resolution by regionId (same code, different regions)", async () => {
+    const [ukLoc] = await ctx.db
+      .insert(locations)
+      .values({ name: "Staycity Greenwich", outletCode: "Q5", primaryRegionId: ukRegionId })
+      .returning({ id: locations.id });
+    const [deLoc] = await ctx.db
+      .insert(locations)
+      .values({ name: "Berlin Hotel", outletCode: "Q5", primaryRegionId: deRegionId })
+      .returning({ id: locations.id });
 
-    expect(result).toHaveLength(2);
-    expect(result[0]).toMatchObject({
-      rowNumber: 1,
-      locationId: locationAId,
-      productId: productXId,
-      providerId: providerZId,
-    });
-    expect(result[1]).toMatchObject({
-      rowNumber: 2,
-      locationId: locationBId,
-      productId: productYId,
-      providerId: providerZId,
-    });
+    // Seed a product so the product pass doesn't error out while we test outlet.
+    await ctx.db
+      .insert(products)
+      .values({ name: "Uber API", netsuiteCode: "4603" });
+
+    const [ukResult] = await resolveDimensions(
+      ctx.db,
+      [row({ rowNumber: 1 })],
+      { regionId: ukRegionId },
+    );
+    expect(ukResult).toMatchObject({ rowNumber: 1, locationId: ukLoc.id });
+
+    const [deResult] = await resolveDimensions(
+      ctx.db,
+      [row({ rowNumber: 2 })],
+      { regionId: deRegionId },
+    );
+    expect(deResult).toMatchObject({ rowNumber: 2, locationId: deLoc.id });
   });
 
-  it("returns null providerId when providerName is null (valid)", async () => {
-    const result = await resolveDimensions(ctx.db, [row({ providerName: null })]);
-    expect(result[0]).toMatchObject({
-      rowNumber: 1,
-      locationId: locationAId,
-      productId: productXId,
-      providerId: null,
-    });
+  it("flags unknown outlet in the given region with an error mentioning both code and region", async () => {
+    // Seed a Q5 location only in UK. Resolving 'Z9' in UK must fail with the
+    // outlet code and region in the message.
+    await ctx.db
+      .insert(locations)
+      .values({ name: "Staycity Greenwich", outletCode: "Q5", primaryRegionId: ukRegionId });
+    await ctx.db.insert(products).values({ name: "Uber API", netsuiteCode: "4603" });
+
+    const [result] = await resolveDimensions(
+      ctx.db,
+      [row({ outletCode: "Z9" })],
+      { regionId: ukRegionId },
+    );
+
+    expect(result).toHaveProperty("errors");
+    if (!("errors" in result)) throw new Error("expected errors shape");
+    const outletErr = result.errors.find((e) => e.field === "outletCode");
+    expect(outletErr).toBeDefined();
+    expect(outletErr!.message).toContain("Z9");
+    // Either region id or region code is acceptable — spec says id is fine.
+    expect(outletErr!.message).toMatch(new RegExp(`${ukRegionId}|UK`));
   });
 
-  it("flags unknown outletCode as row-level error", async () => {
-    const result = await resolveDimensions(ctx.db, [row({ outletCode: "OUT-BOGUS" })]);
-    expect(result[0]).toEqual({
-      rowNumber: 1,
-      errors: [{ field: "outletCode", message: expect.stringContaining("OUT-BOGUS") }],
-    });
+  it("resolves products by netsuiteCode even when productName differs", async () => {
+    await ctx.db
+      .insert(locations)
+      .values({ name: "Staycity Greenwich", outletCode: "Q5", primaryRegionId: ukRegionId });
+
+    const [seeded] = await ctx.db
+      .insert(products)
+      .values({ name: "Uber API V1", netsuiteCode: "4603" })
+      .returning({ id: products.id });
+
+    const [result] = await resolveDimensions(
+      ctx.db,
+      [row({ productName: "Different Name", netsuiteCode: "4603" })],
+      { regionId: ukRegionId },
+    );
+
+    expect(result).toMatchObject({ productId: seeded.id });
   });
 
-  it("flags unknown productName as row-level error", async () => {
-    const result = await resolveDimensions(ctx.db, [row({ productName: "Ghost Attraction" })]);
-    expect(result[0]).toEqual({
-      rowNumber: 1,
-      errors: [{ field: "productName", message: expect.stringContaining("Ghost Attraction") }],
-    });
+  it("falls back to name match when netsuiteCode is unknown, and back-fills the code", async () => {
+    await ctx.db
+      .insert(locations)
+      .values({ name: "Staycity Greenwich", outletCode: "Q5", primaryRegionId: ukRegionId });
+
+    const [seeded] = await ctx.db
+      .insert(products)
+      .values({ name: "Uber API", netsuiteCode: null })
+      .returning({ id: products.id });
+
+    const [result] = await resolveDimensions(
+      ctx.db,
+      [row({ productName: "Uber API", netsuiteCode: "4603" })],
+      { regionId: ukRegionId },
+    );
+
+    expect(result).toMatchObject({ productId: seeded.id });
+
+    const [updated] = await ctx.db
+      .select({
+        id: products.id,
+        netsuiteCode: products.netsuiteCode,
+        categoryCode: products.categoryCode,
+        categoryName: products.categoryName,
+      })
+      .from(products)
+      .where(eq(products.id, seeded.id));
+
+    expect(updated.netsuiteCode).toBe("4603");
+    // null-fields should have been filled in from the input. (apiProductName
+    // is denormalised on salesRecords, not on products, so it's not part of
+    // the product back-fill.)
+    expect(updated.categoryCode).toBe("TRNSCAR");
+    expect(updated.categoryName).toBe("UBER");
   });
 
-  it("flags unknown providerName as row-level error (when non-null)", async () => {
-    const result = await resolveDimensions(ctx.db, [row({ providerName: "Phantom Inc" })]);
-    expect(result[0]).toEqual({
-      rowNumber: 1,
-      errors: [{ field: "providerName", message: expect.stringContaining("Phantom Inc") }],
-    });
-  });
+  it("auto-creates a product when neither netsuiteCode nor name match", async () => {
+    await ctx.db
+      .insert(locations)
+      .values({ name: "Staycity Greenwich", outletCode: "Q5", primaryRegionId: ukRegionId });
 
-  it("accumulates multiple errors on the same row", async () => {
-    const result = await resolveDimensions(ctx.db, [
-      row({ outletCode: "X", productName: "Y", providerName: "Z" }),
-    ]);
-    expect(result[0]).toHaveProperty("errors");
-    if ("errors" in result[0]) {
-      expect(result[0].errors).toHaveLength(3);
+    const [result] = await resolveDimensions(
+      ctx.db,
+      [
+        row({
+          productName: "Brand New Product",
+          netsuiteCode: "9876",
+          categoryCode: "NEWCAT",
+          categoryName: "New Category",
+          apiProductName: "NewAPI",
+        }),
+      ],
+      { regionId: ukRegionId },
+    );
+
+    expect(result).toHaveProperty("productId");
+
+    const rows = await ctx.db
+      .select({
+        id: products.id,
+        name: products.name,
+        netsuiteCode: products.netsuiteCode,
+        categoryCode: products.categoryCode,
+        categoryName: products.categoryName,
+      })
+      .from(products)
+      .where(eq(products.netsuiteCode, "9876"));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: "Brand New Product",
+      netsuiteCode: "9876",
+      categoryCode: "NEWCAT",
+      categoryName: "New Category",
+    });
+    if ("productId" in result) {
+      expect(result.productId).toBe(rows[0].id);
     }
   });
 
-  it("matches productName case-insensitively", async () => {
-    const result = await resolveDimensions(ctx.db, [row({ productName: "london eye" })]);
-    expect(result[0]).toMatchObject({ productId: productXId });
+  it("auto-creates a provider when the providerName doesn't exist", async () => {
+    await ctx.db
+      .insert(locations)
+      .values({ name: "Staycity Greenwich", outletCode: "Q5", primaryRegionId: ukRegionId });
+    await ctx.db.insert(products).values({ name: "Uber API", netsuiteCode: "4603" });
+
+    const [result] = await resolveDimensions(
+      ctx.db,
+      [row({ providerName: "BrandNewProvider" })],
+      { regionId: ukRegionId },
+    );
+
+    expect(result).toHaveProperty("providerId");
+
+    const rows = await ctx.db
+      .select({ id: providersTable.id, name: providersTable.name })
+      .from(providersTable)
+      .where(eq(providersTable.name, "BrandNewProvider"));
+
+    expect(rows).toHaveLength(1);
+    if ("providerId" in result) {
+      expect(result.providerId).toBe(rows[0].id);
+    }
   });
 
-  it("matches providerName case-insensitively", async () => {
-    const result = await resolveDimensions(ctx.db, [row({ providerName: "attractionsco" })]);
-    expect(result[0]).toMatchObject({ providerId: providerZId });
-  });
+  it("treats null providerName as valid (no provider on the row)", async () => {
+    await ctx.db
+      .insert(locations)
+      .values({ name: "Staycity Greenwich", outletCode: "Q5", primaryRegionId: ukRegionId });
+    await ctx.db.insert(products).values({ name: "Uber API", netsuiteCode: "4603" });
 
-  it("matches outletCode exactly (case-sensitive)", async () => {
-    const result = await resolveDimensions(ctx.db, [row({ outletCode: "out-a" })]);
-    expect(result[0]).toHaveProperty("errors");
+    const [result] = await resolveDimensions(
+      ctx.db,
+      [row({ providerName: null })],
+      { regionId: ukRegionId },
+    );
+
+    expect(result).toMatchObject({ providerId: null });
   });
 
   it("handles empty input", async () => {
-    const result = await resolveDimensions(ctx.db, []);
+    const result = await resolveDimensions(ctx.db, [], { regionId: ukRegionId });
     expect(result).toEqual([]);
   });
 
-  it("issues exactly 3 SELECT queries regardless of input size (batched)", async () => {
-    const queries: string[] = [];
-    // Intercept via pool
-    const originalQuery = ctx.pool.query.bind(ctx.pool);
-    (ctx.pool as unknown as { query: typeof originalQuery }).query = ((
-      text: unknown,
-      ...rest: unknown[]
-    ) => {
-      const sql = typeof text === "string" ? text : (text as { text: string }).text;
-      if (sql.toUpperCase().startsWith("SELECT")) queries.push(sql);
-      return originalQuery(text as Parameters<typeof originalQuery>[0], ...(rest as []));
-    }) as typeof originalQuery;
+  it("prevents cross-region outlet resolution even when only the other region has the code", async () => {
+    // Only DE has Q5 — resolving in UK must error, not quietly return DE's location.
+    const [deLoc] = await ctx.db
+      .insert(locations)
+      .values({ name: "Berlin Hotel", outletCode: "Q5", primaryRegionId: deRegionId })
+      .returning({ id: locations.id });
+    await ctx.db.insert(products).values({ name: "Uber API", netsuiteCode: "4603" });
 
-    try {
-      const rows: DimensionInput[] = Array.from({ length: 10 }, (_, i) => row({ rowNumber: i + 1 }));
-      await resolveDimensions(ctx.db, rows);
-      expect(queries.length).toBe(3);
-    } finally {
-      (ctx.pool as unknown as { query: typeof originalQuery }).query = originalQuery;
-    }
+    const [ukResult] = await resolveDimensions(
+      ctx.db,
+      [row()],
+      { regionId: ukRegionId },
+    );
+    expect(ukResult).toHaveProperty("errors");
+
+    const [deResult] = await resolveDimensions(
+      ctx.db,
+      [row()],
+      { regionId: deRegionId },
+    );
+    expect(deResult).toMatchObject({ locationId: deLoc.id });
   });
 });

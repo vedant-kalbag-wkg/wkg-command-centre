@@ -56,10 +56,13 @@ describe('parseAnalyticsFiltersFromSearchParams', () => {
 
   it('falls back to default date range when from/to absent', () => {
     const result = parseAnalyticsFiltersFromSearchParams({});
-    // default is last-year preset: Jan 1 to Dec 31 of previous calendar year
-    const lastYear = new Date().getFullYear() - 1;
-    expect(result.dateFrom).toBe(`${lastYear}-01-01`);
-    expect(result.dateTo).toBe(`${lastYear}-12-31`);
+    // default is ytd preset: Jan 1 of current year → today (local date)
+    const now = new Date();
+    const year = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    expect(result.dateFrom).toBe(`${year}-01-01`);
+    expect(result.dateTo).toBe(`${year}-${mm}-${dd}`);
   });
 
   it('accepts Next.js searchParams shape where values can be string | string[] | undefined', () => {

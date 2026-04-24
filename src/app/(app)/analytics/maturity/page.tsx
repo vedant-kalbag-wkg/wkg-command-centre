@@ -21,11 +21,13 @@ import { ChartWrapper } from "@/components/analytics/chart-wrapper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchMaturityAnalysis } from "./actions";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { DETAILED_MATURITY_BUCKETS } from "@/lib/analytics/maturity";
 import type { AnalyticsFilters, MaturityAnalysis } from "@/lib/analytics/types";
 
 function getPlateauInsight(
   bucketMetrics: MaturityAnalysis["bucketMetrics"],
+  metricLabel: string,
 ): { text: string; color: string } {
   const bucket3160 = bucketMetrics.find((b) => b.bucket === "31-60d");
   const bucket90 = bucketMetrics.find((b) => b.bucket === "90+d");
@@ -62,18 +64,20 @@ function getPlateauInsight(
   }
   if (pctChange < -10) {
     return {
-      text: `Revenue declines after maturity (${pctChange.toFixed(1)}%)`,
+      text: `${metricLabel} declines after maturity (${pctChange.toFixed(1)}%)`,
       color: "#991B1B",
     };
   }
   return {
-    text: "Revenue plateaus after 90 days",
+    text: `${metricLabel} plateaus after 90 days`,
     color: "#6B7280",
   };
 }
 
 export default function MaturityPage() {
   const filters = useAnalyticsFilters();
+  const metricLabel = useMetricLabel();
+  const metricLabelLower = metricLabel.toLowerCase();
   const [data, setData] = useState<MaturityAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,8 +133,8 @@ export default function MaturityPage() {
 
       {/* A. Revenue by Maturity Bucket */}
       <ChartCard
-        title="Revenue by Maturity Bucket"
-        description="Average revenue grouped by days-since-install"
+        title={`${metricLabel} by Maturity Bucket`}
+        description={`Average ${metricLabelLower} grouped by days-since-install`}
         loading={loading}
         empty={!loading && !hasBucketData && !data?.bucketMetrics.length}
         emptyMessage="No maturity data for selected filters"
@@ -165,7 +169,7 @@ export default function MaturityPage() {
                 <Tooltip
                   formatter={(value) => [
                     formatCurrency(Number(value)),
-                    "Avg Revenue",
+                    `Avg ${metricLabel}`,
                   ]}
                 />
                 <Bar
@@ -183,8 +187,8 @@ export default function MaturityPage() {
 
       {/* B. Revenue Ramp Curve */}
       <ChartCard
-        title="Revenue Ramp Curve"
-        description="Average revenue by months-since-install"
+        title={`${metricLabel} Ramp Curve`}
+        description={`Average ${metricLabelLower} by months-since-install`}
         loading={loading}
         empty={!loading && !hasRampData}
         emptyMessage="No ramp data available"
@@ -242,7 +246,7 @@ export default function MaturityPage() {
       {/* C. Install Month Cohorts */}
       <ChartCard
         title="Install Month Cohorts"
-        description="Average monthly revenue by install cohort"
+        description={`Average monthly ${metricLabelLower} by install cohort`}
         loading={loading}
         empty={!loading && !hasCohortData}
         emptyMessage="No install cohort data available"
@@ -260,7 +264,7 @@ export default function MaturityPage() {
                     # Locations
                   </th>
                   <th className="px-4 py-2 text-right font-medium">
-                    Avg Monthly Revenue
+                    Avg Monthly {metricLabel}
                   </th>
                 </tr>
               </thead>
@@ -300,7 +304,7 @@ export default function MaturityPage() {
           <Skeleton className="h-20 rounded-lg" />
         ) : data ? (
           (() => {
-            const insight = getPlateauInsight(data.bucketMetrics);
+            const insight = getPlateauInsight(data.bucketMetrics, metricLabel);
             return (
               <div
                 className="rounded-lg border px-4 py-3"

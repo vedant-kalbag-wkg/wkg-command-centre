@@ -276,24 +276,7 @@ export function makeLocationColumns(
       />
     ),
   },
-  // 13. Region — editable, groupable
-  {
-    accessorKey: "region",
-    size: 90,
-    header: "Region",
-    enableSorting: true,
-    enableGrouping: true,
-    cell: ({ row, table }) => (
-      <EditableCell
-        value={row.original.region}
-        rowId={row.original.id}
-        columnId="region"
-        table={table}
-        placeholder="—"
-      />
-    ),
-  },
-  // 14. Location Group — editable, groupable
+  // 13. Location Group — editable, groupable
   {
     accessorKey: "locationGroup",
     size: 120,
@@ -374,7 +357,6 @@ export const locationGroupableColumns = [
   { id: "starRating", label: "Star Rating" },
   { id: "sourcedBy", label: "Sourced By" },
   { id: "status", label: "Status" },
-  { id: "region", label: "Region" },
   { id: "locationGroup", label: "Location Group" },
   { id: "internalPocId", label: "Internal POC" },
 ];
@@ -384,5 +366,4 @@ export const locationFilterableColumns = [
   { id: "name", label: "Name" },
   { id: "hotelGroup", label: "Hotel Group" },
   { id: "status", label: "Status" },
-  { id: "region", label: "Region" },
 ];

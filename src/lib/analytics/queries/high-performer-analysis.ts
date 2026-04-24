@@ -5,9 +5,7 @@ import {
   locations,
   products,
   kioskAssignments,
-  locationHotelGroupMemberships,
   locationRegionMemberships,
-  hotelGroups,
   regions,
 } from "@/db/schema";
 import { sql, type SQL } from "drizzle-orm";
@@ -89,7 +87,6 @@ type CommonShape = {
   count: number;
   totalCount: number;
   insights: string[];
-  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
   regionDistribution: { name: string; count: number; percentage: number }[];
   avgKioskCount: number | null;
   avgRoomCount: number | null;
@@ -144,7 +141,6 @@ async function computePerformerPatterns(
         direction === "top"
           ? ["No locations currently qualify as top performers"]
           : ["No locations currently qualify as bottom performers"],
-      hotelGroupDistribution: [],
       regionDistribution: [],
       avgKioskCount: null,
       avgRoomCount: null,
@@ -154,21 +150,8 @@ async function computePerformerPatterns(
   }
 
   // 3. Aggregate for tier-member locations (parallel)
-  const [hotelGroupRows, regionRows, kioskRows, topProductRows] =
+  const [regionRows, kioskRows, topProductRows] =
     await Promise.all([
-      // Hotel group distribution
-      executeRows<{ name: string; count: string }>(sql`
-        SELECT
-          ${hotelGroups.name} AS name,
-          COUNT(DISTINCT ${locationHotelGroupMemberships.locationId})::text AS count
-        FROM ${locationHotelGroupMemberships}
-          INNER JOIN ${hotelGroups}
-            ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
-        WHERE ${locationHotelGroupMemberships.locationId} = ANY(${sql.param(tierIds)}::uuid[])
-        GROUP BY ${hotelGroups.name}
-        ORDER BY count DESC
-      `),
-
       // Region distribution
       executeRows<{ name: string; count: string }>(sql`
         SELECT
@@ -197,15 +180,18 @@ async function computePerformerPatterns(
         ) AS kc
       `),
 
-      // Top products by revenue for tier locations
+      // Top products by revenue for tier locations. Always exclude fee rows
+      // (Booking Fee / Cash Handling Fee) — they aren't products and swamp
+      // the ranking by transaction count.
       executeRows<{ name: string; revenue: string }>(sql`
         SELECT
           ${products.name} AS name,
-          COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue
+          COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue
         FROM ${salesRecords}
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
         WHERE ${salesRecords.locationId} = ANY(${sql.param(tierIds)}::uuid[])
+          AND ${salesRecords.isBookingFee} = false
           ${whereClause ? sql`AND ${whereClause}` : sql``}
         GROUP BY ${products.name}
         ORDER BY revenue DESC
@@ -214,12 +200,6 @@ async function computePerformerPatterns(
     ]);
 
   // 4. Build distributions
-  const hotelGroupDistribution = hotelGroupRows.map((r) => ({
-    name: r.name,
-    count: Number(r.count),
-    percentage: count > 0 ? (Number(r.count) / count) * 100 : 0,
-  }));
-
   const regionDistribution = regionRows.map((r) => ({
     name: r.name,
     count: Number(r.count),
@@ -284,13 +264,6 @@ async function computePerformerPatterns(
     insights.push(`Top ${topNames.length} products: ${topNames.join(", ")}`);
   }
 
-  if (hotelGroupDistribution.length > 0) {
-    const topGroup = hotelGroupDistribution[0];
-    insights.push(
-      `${topGroup.count} of ${count} ${noun.toLowerCase()} belong to ${topGroup.name}`,
-    );
-  }
-
   // silence unused warning (kept for parity with earlier impl)
   void tierRevenueById;
 
@@ -298,7 +271,6 @@ async function computePerformerPatterns(
     count,
     totalCount,
     insights,
-    hotelGroupDistribution,
     regionDistribution,
     avgKioskCount,
     avgRoomCount,
@@ -320,7 +292,6 @@ export async function getHighPerformerData(
     greenCount: base.count,
     totalCount: base.totalCount,
     insights: base.insights,
-    hotelGroupDistribution: base.hotelGroupDistribution,
     regionDistribution: base.regionDistribution,
     avgKioskCount: base.avgKioskCount,
     avgRoomCount: base.avgRoomCount,
@@ -342,7 +313,6 @@ export async function getLowPerformerData(
     redCount: base.count,
     totalCount: base.totalCount,
     insights: base.insights,
-    hotelGroupDistribution: base.hotelGroupDistribution,
     regionDistribution: base.regionDistribution,
     avgKioskCount: base.avgKioskCount,
     avgRoomCount: base.avgRoomCount,

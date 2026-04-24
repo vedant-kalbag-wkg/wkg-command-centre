@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/analytics/empty-state";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { RegionDetail } from "@/lib/analytics/types";
 
 interface HotelGroupBreakdownProps {
@@ -17,6 +18,7 @@ interface HotelGroupBreakdownProps {
 }
 
 export function HotelGroupBreakdown({ data }: HotelGroupBreakdownProps) {
+  const metricLabel = useMetricLabel();
   if (data.length === 0) {
     return <EmptyState message="No hotel groups in this region" />;
   }
@@ -27,10 +29,10 @@ export function HotelGroupBreakdown({ data }: HotelGroupBreakdownProps) {
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[180px]">Hotel Group</TableHead>
-            <TableHead className="text-right">Revenue</TableHead>
+            <TableHead className="text-right">{metricLabel}</TableHead>
             <TableHead className="text-right">Transactions</TableHead>
             <TableHead className="text-right">Hotels</TableHead>
-            <TableHead className="text-right">Avg Rev / Hotel</TableHead>
+            <TableHead className="text-right">Avg {metricLabel === "Revenue" ? "Rev" : "Sales"} / Hotel</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

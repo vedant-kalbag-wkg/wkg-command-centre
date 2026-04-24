@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
 import { formatCurrency } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { CategoryPerformanceRow } from "@/lib/analytics/types";
 
 interface CategoryPerformanceProps {
@@ -21,6 +22,7 @@ export function CategoryPerformance({
   data,
   loading = false,
 }: CategoryPerformanceProps) {
+  const metricLabel = useMetricLabel();
   return (
     <ChartWrapper loading={loading} minHeight={Math.max(300, data.length * 40)}>
       <BarChart
@@ -42,7 +44,7 @@ export function CategoryPerformance({
           tickLine={false}
         />
         <Tooltip
-          formatter={(value) => [formatCurrency(Number(value)), "Revenue"]}
+          formatter={(value) => [formatCurrency(Number(value)), metricLabel]}
           labelStyle={{ fontWeight: 600 }}
         />
         <Bar dataKey="revenue" fill="#00A6D3" radius={[0, 4, 4, 0]} />

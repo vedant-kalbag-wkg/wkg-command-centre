@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Flag } from "lucide-react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { ChartCard } from "@/components/ui/chart-card";
@@ -73,6 +74,8 @@ function toDelta(
 
 export default function PortfolioPage() {
   const filters = useAnalyticsFilters();
+  const metricLabel = useMetricLabel();
+  const metricLabelLower = metricLabel.toLowerCase();
   const [data, setData] = useState<PortfolioData | null>(null);
   const [thresholdConfig, setThresholdConfig] = useState<ThresholdConfig>({
     redMax: 500,
@@ -145,7 +148,7 @@ export default function PortfolioPage() {
     const p = data.previousSummary ?? undefined;
     return [
       {
-        label: "Revenue",
+        label: metricLabel,
         value: formatCurrency(s.totalRevenue),
         delta: toDelta(s.totalRevenue, p?.totalRevenue, comparisonLabel),
       },
@@ -182,7 +185,7 @@ export default function PortfolioPage() {
         ),
       },
     ];
-  }, [data, comparisonLabel]);
+  }, [data, comparisonLabel, metricLabel]);
 
   const portfolio = data;
   const activeFlagCount = flags.length;
@@ -303,7 +306,7 @@ export default function PortfolioPage() {
 
           <ChartCard
             title="Daily Trends"
-            description="Revenue and transactions over time"
+            description={`${metricLabel} and transactions over time`}
             className="gap-0 py-0 lg:col-span-12"
             loading={loading}
             empty={!loading && !hasDailyTrendsData}
@@ -321,7 +324,7 @@ export default function PortfolioPage() {
 
           <ChartCard
             title="Category Performance"
-            description="Revenue by product category"
+            description={`${metricLabel} by product category`}
             className="gap-0 py-0 lg:col-span-12"
             loading={loading}
             empty={!loading && !hasCategoryData}
@@ -335,7 +338,7 @@ export default function PortfolioPage() {
 
           <ChartCard
             title="Top Products"
-            description="Best-selling products by revenue"
+            description={`Best-selling products by ${metricLabelLower}`}
             className="gap-0 py-0 lg:col-span-12"
             loading={loading}
             empty={!loading && !hasTopProductsData}
@@ -347,7 +350,7 @@ export default function PortfolioPage() {
 
           <ChartCard
             title="Hourly Distribution"
-            description="Revenue by hour of day"
+            description={`${metricLabel} by hour of day`}
             className="gap-0 py-0 lg:col-span-12"
             loading={loading}
             empty={!loading && !hasHourlyData}

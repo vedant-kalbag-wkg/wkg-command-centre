@@ -12,6 +12,7 @@ import {
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
 import { EventAnnotations } from "@/app/(app)/analytics/trend-builder/event-annotations";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { DailyTrendRow, BusinessEventDisplay } from "@/lib/analytics/types";
 
 interface DailyTrendsProps {
@@ -27,6 +28,7 @@ export function DailyTrends({
   events = [],
   activeEventCategories = [],
 }: DailyTrendsProps) {
+  const metricLabel = useMetricLabel();
   return (
     <ChartWrapper loading={loading}>
       <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
@@ -56,7 +58,7 @@ export function DailyTrends({
             name === "revenue"
               ? formatCurrency(Number(value))
               : formatNumber(Number(value)),
-            name === "revenue" ? "Revenue" : "Transactions",
+            name === "revenue" ? metricLabel : "Transactions",
           ]}
           labelFormatter={(label) => {
             const d = new Date(String(label));
@@ -71,7 +73,7 @@ export function DailyTrends({
           stroke="#00A6D3"
           strokeWidth={2}
           dot={false}
-          name="Revenue"
+          name={metricLabel}
         />
         <Line
           yAxisId="transactions"

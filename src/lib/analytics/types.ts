@@ -8,6 +8,35 @@ export type FilterDimension =
   | "hotelIds" | "regionIds" | "productIds"
   | "hotelGroupIds" | "locationGroupIds"
 
+export type MetricMode = "sales" | "revenue"
+
+// Matches the locations.location_type enum — mirrored here so the client
+// store + URL parser agree with what the DB accepts. 'null' is valid on
+// the column ("not yet mapped") but isn't a filter value.
+export type LocationType =
+  | "hotel"
+  | "retail_desk"
+  | "online"
+  | "airport"
+  | "hex_kiosk"
+
+export const LOCATION_TYPES: readonly LocationType[] = [
+  "hotel",
+  "retail_desk",
+  "online",
+  "airport",
+  "hex_kiosk",
+] as const
+
+// UI-facing labels; keep in sync with LocationType above.
+export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
+  hotel: "Hotel",
+  retail_desk: "Retail Desk",
+  online: "Online",
+  airport: "Airport",
+  hex_kiosk: "HEX Kiosk",
+}
+
 export type AnalyticsFilters = {
   dateFrom: string       // YYYY-MM-DD
   dateTo: string         // YYYY-MM-DD
@@ -17,6 +46,12 @@ export type AnalyticsFilters = {
   hotelGroupIds?: string[]
   locationGroupIds?: string[]
   maturityBuckets?: string[]
+  locationTypes?: LocationType[]
+  // "sales"   — every row (gross transaction volume, default)
+  // "revenue" — only booking-fee + cash-handling-fee rows (WKG's take).
+  //             Identified by salesRecords.isBookingFee = true; by construction
+  //             this matches netsuite_code IN ('9991', '9992').
+  metricMode?: MetricMode
 }
 
 // ─── Portfolio Types ──────────────────────────────────────────────────────────
@@ -67,8 +102,25 @@ export type OutletTierRow = {
   revenue: number
   transactions: number
   percentile: number
+  // Retained for backwards-compat with any hidden consumers; the UI drops
+  // the share column in Task 4.5 once all tier-consuming views carry the
+  // new property-level fields below.
   sharePercentage: number
   tier: OutletTier
+  // Phase 4 — property-level operational enrichment. Canonical hotel-group
+  // name resolved from locations.operating_group_id with a deterministic
+  // MIN(hotel_group_id) fallback on location_hotel_group_memberships (see
+  // canonicalHotelGroupNameFragment). Null for unaffiliated locations.
+  hotelGroupName: string | null
+  // Count of currently-active kiosk assignments on this property
+  // (kiosk_assignments.unassigned_at IS NULL).
+  kioskCount: number
+  // Pulled from locations.num_rooms; null if not recorded.
+  numRooms: number | null
+  // revenue / kioskCount; null when kioskCount === 0 (avoid div-by-zero).
+  revenuePerKiosk: number | null
+  // revenue / numRooms; null when numRooms is null or 0.
+  revenuePerRoom: number | null
 }
 
 export type OutletTier = "Premium" | "Standard" | "Developing" | "Emerging"
@@ -100,6 +152,14 @@ export type HeatMapHotel = {
   txnPerKiosk: number | null
   avgBasketValue: number
   compositeScore: number
+  // Phase 4.3 — property-level enrichment, mirrors OutletTierRow:
+  // canonical hotel-group name (null for unaffiliated), active kiosk count
+  // (unassigned_at IS NULL), num_rooms (from locations, nullable), and
+  // revenue/kiosk (null when kioskCount === 0).
+  hotelGroupName: string | null
+  kioskCount: number
+  numRooms: number | null
+  revenuePerKiosk: number | null
 }
 
 export type HeatMapData = {
@@ -290,7 +350,6 @@ export type HighPerformerPatterns = {
   greenCount: number;
   totalCount: number;
   insights: string[];
-  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
   regionDistribution: { name: string; count: number; percentage: number }[];
   avgKioskCount: number | null;
   avgRoomCount: number | null;
@@ -304,7 +363,6 @@ export type LowPerformerPatterns = {
   redCount: number;
   totalCount: number;
   insights: string[];
-  hotelGroupDistribution: { name: string; count: number; percentage: number }[];
   regionDistribution: { name: string; count: number; percentage: number }[];
   avgKioskCount: number | null;
   avgRoomCount: number | null;

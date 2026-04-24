@@ -18,6 +18,7 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
+  buildMetricModeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -48,12 +49,14 @@ async function buildRegionWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
+    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -90,7 +93,7 @@ export async function getRegionsList(
         ${regions.name} AS region_name,
         ${markets.id} AS market_id,
         ${markets.name} AS market_name,
-        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
         COUNT(*)::text AS transactions
       FROM ${baseFromWithRegions()}
       ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -148,7 +151,7 @@ export async function getRegionDetail(
     transactions: string;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions
     FROM ${baseFromWithRegions()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
@@ -174,7 +177,7 @@ export async function getRegionDetail(
   }>(sql`
     SELECT
       ${hotelGroups.name} AS group_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId})::text AS hotel_count
     FROM ${salesRecords}
@@ -209,7 +212,7 @@ export async function getRegionDetail(
   }>(sql`
     SELECT
       ${locationGroups.name} AS group_name,
-      COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*)::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId})::text AS outlet_count,
       SUM(${locations.numRooms})::text AS total_rooms
@@ -244,7 +247,7 @@ export async function getRegionDetail(
       transactions: string;
     }>(sql`
       SELECT
-        COALESCE(SUM(${salesRecords.grossAmount}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
         COUNT(*)::text AS transactions
       FROM ${baseFromWithRegions()}
       ${prevFullWhere ? sql`WHERE ${prevFullWhere}` : sql``}

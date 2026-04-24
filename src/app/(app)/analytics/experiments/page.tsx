@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAnalyticsFilters } from "@/lib/stores/analytics-filter-store";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -106,6 +107,7 @@ function TemporalCard({
   period: PeriodMetrics;
   changeFrom?: PeriodMetrics;
 }) {
+  const metricLabel = useMetricLabel();
   const revChange = changeFrom ? pctChange(period.revenue, changeFrom.revenue) : null;
   const txnChange = changeFrom ? pctChange(period.transactions, changeFrom.transactions) : null;
 
@@ -121,7 +123,7 @@ function TemporalCard({
       </CardHeader>
       <CardContent className="space-y-1.5">
         <div className="flex items-baseline justify-between">
-          <span className="text-xs text-muted-foreground">Revenue</span>
+          <span className="text-xs text-muted-foreground">{metricLabel}</span>
           <div className="flex items-baseline gap-1.5">
             <span className="text-sm font-semibold">{formatCurrency(period.revenue)}</span>
             {revChange && (
@@ -157,6 +159,7 @@ function TemporalCard({
 
 export default function ExperimentsPage() {
   const filters = useAnalyticsFilters();
+  const metricLabel = useMetricLabel();
   const filtersJson = JSON.stringify(filters);
 
   const [cohorts, setCohorts] = useState<ExperimentCohort[]>([]);
@@ -398,7 +401,7 @@ export default function ExperimentsPage() {
               ) : comparison ? (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <MetricCard
-                    title="Revenue"
+                    title={metricLabel}
                     cohortValue={comparison.cohortMetrics.revenue}
                     controlValue={comparison.controlMetrics.revenue}
                     delta={comparison.delta.revenue}
@@ -412,7 +415,7 @@ export default function ExperimentsPage() {
                     format="number"
                   />
                   <MetricCard
-                    title="Avg Revenue / Txn"
+                    title={`Avg ${metricLabel} / Txn`}
                     cohortValue={comparison.cohortMetrics.avgRevenue}
                     controlValue={comparison.controlMetrics.avgRevenue}
                     delta={comparison.delta.avgRevenue}

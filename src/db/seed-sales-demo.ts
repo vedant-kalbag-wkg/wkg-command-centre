@@ -1,6 +1,8 @@
 import { db } from "@/db";
-import { locations, products, providers } from "@/db/schema";
+import { locations, products, providers, regions } from "@/db/schema";
 import { eq } from "drizzle-orm";
+
+const DEMO_REGION = { name: "Demo", code: "DEMO" };
 
 const DEMO_LOCATIONS = [
   { name: "The Grand Hotel", outletCode: "GRAND-001" },
@@ -26,6 +28,20 @@ const DEMO_PROVIDERS = [
 ];
 
 async function seedSalesDemo() {
+  // Regions became required on locations in migration 0022 (primaryRegionId
+  // NOT NULL). Ensure a demo region exists and attach all seeded locations.
+  let [demoRegion] = await db
+    .select({ id: regions.id })
+    .from(regions)
+    .where(eq(regions.code, DEMO_REGION.code))
+    .limit(1);
+  if (!demoRegion) {
+    [demoRegion] = await db
+      .insert(regions)
+      .values(DEMO_REGION)
+      .returning({ id: regions.id });
+  }
+
   let locCount = 0;
   for (const loc of DEMO_LOCATIONS) {
     const existing = await db
@@ -34,7 +50,7 @@ async function seedSalesDemo() {
       .where(eq(locations.outletCode, loc.outletCode))
       .limit(1);
     if (existing.length === 0) {
-      await db.insert(locations).values(loc);
+      await db.insert(locations).values({ ...loc, primaryRegionId: demoRegion.id });
       locCount++;
     }
   }

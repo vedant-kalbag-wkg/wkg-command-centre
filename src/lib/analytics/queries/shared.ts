@@ -4,6 +4,7 @@ import {
   locations,
   salesRecords,
   kioskAssignments,
+  hotelGroups,
   locationHotelGroupMemberships,
   locationRegionMemberships,
   locationGroupMemberships,
@@ -30,6 +31,31 @@ export async function buildExclusionCondition(): Promise<SQL | undefined> {
 
 export function buildDateCondition(filters: AnalyticsFilters): SQL {
   return sql`${salesRecords.transactionDate} >= ${filters.dateFrom} AND ${salesRecords.transactionDate} <= ${filters.dateTo}`;
+}
+
+// Netsuite codes of all WKG-collected fee rows. 9991=Booking Fee sets
+// is_booking_fee=true; 9992=Cash Handling Fee does NOT (the flag is named
+// after its original single purpose). Keep both here so "revenue" mode and
+// the non-fee exclusion agree on what a "fee row" is.
+export const FEE_NETSUITE_CODES = ["9991", "9992"] as const;
+
+// "A fee row" — either is_booking_fee=true (covers 9991) or netsuite_code=9992.
+// Using an explicit OR keeps us future-proof: a new fee code can be added to
+// FEE_NETSUITE_CODES without requiring a schema change.
+export function buildIsFeeCondition(): SQL {
+  return sql`(${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
+}
+
+// Metric-mode filter: 'revenue' restricts to fee rows (WKG's take);
+// 'sales' (default) adds no predicate so every row counts.
+export function buildMetricModeCondition(filters: AnalyticsFilters): SQL | undefined {
+  return filters.metricMode === "revenue" ? buildIsFeeCondition() : undefined;
+}
+
+// Top-Products excludes fee rows unconditionally (per product-reporting spec:
+// Booking Fee / Cash Handling Fee are not "products" and skew the ranking).
+export function buildNonFeeCondition(): SQL {
+  return sql`NOT (${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
 }
 
 export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
@@ -65,6 +91,17 @@ export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
         SELECT ${locationGroupMemberships.locationId}
         FROM ${locationGroupMemberships}
         WHERE ${inArray(locationGroupMemberships.locationGroupId, filters.locationGroupIds)}
+      )`,
+    );
+  }
+  if (filters.locationTypes?.length) {
+    // Subquery predicate (rather than JOIN) keeps this composable with the
+    // existing buildPortfolioWhere/buildHeatMapWhere call sites that already
+    // filter off sales_records only.
+    conditions.push(
+      sql`${salesRecords.locationId} IN (
+        SELECT ${locations.id} FROM ${locations}
+        WHERE ${inArray(locations.locationType, filters.locationTypes)}
       )`,
     );
   }
@@ -124,4 +161,54 @@ export function combineConditions(conditions: (SQL | undefined)[]): SQL | undefi
   if (valid.length === 0) return undefined;
   if (valid.length === 1) return valid[0];
   return sql.join(valid, sql` AND `);
+}
+
+/**
+ * Returns a SQL fragment resolving each location's canonical hotel-group name.
+ *
+ * A location can belong to multiple hotel groups via
+ * `location_hotel_group_memberships`; to keep tier tables from double-counting
+ * a hotel across groups we collapse to exactly one group per location.
+ *
+ * Rule (first non-null wins):
+ *   1. `hotel_groups.name` via `locations.operating_group_id` (the operator's
+ *      own canonical group, if set on the location row).
+ *   2. `MIN(hotel_group_id)` from `location_hotel_group_memberships` — joined
+ *      back to `hotel_groups.name`. Lexicographic MIN by UUID is arbitrary but
+ *      deterministic, so the same location always resolves to the same group.
+ *   3. NULL — the location has no operating group and no membership rows
+ *      (unaffiliated).
+ *
+ * Emitted as a correlated subquery so the enclosing query can use it in
+ * SELECT without adding a LEFT JOIN / GROUP BY churn. Callers must ensure
+ * `locations` is in scope (either the table itself or a `locations`-aliased
+ * source).
+ */
+export function canonicalHotelGroupNameFragment(): SQL {
+  return sql`COALESCE(
+    (SELECT ${hotelGroups.name}
+       FROM ${hotelGroups}
+       WHERE ${hotelGroups.id} = ${locations.operatingGroupId}),
+    (SELECT ${hotelGroups.name}
+       FROM ${locationHotelGroupMemberships}
+       INNER JOIN ${hotelGroups}
+         ON ${hotelGroups.id} = ${locationHotelGroupMemberships.hotelGroupId}
+       WHERE ${locationHotelGroupMemberships.locationId} = ${locations.id}
+       ORDER BY ${locationHotelGroupMemberships.hotelGroupId}
+       LIMIT 1)
+  )`;
+}
+
+/**
+ * Correlated subquery returning the count of currently-active kiosk
+ * assignments on each location (`unassigned_at IS NULL`). Mirrors the
+ * pattern in high-performer-analysis.ts. Requires `locations` to be in scope.
+ */
+export function activeKioskCountFragment(): SQL {
+  return sql`(
+    SELECT COUNT(*)::int
+    FROM ${kioskAssignments}
+    WHERE ${kioskAssignments.locationId} = ${locations.id}
+      AND ${kioskAssignments.unassignedAt} IS NULL
+  )`;
 }

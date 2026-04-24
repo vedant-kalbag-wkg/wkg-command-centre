@@ -1,0 +1,2 @@
+ALTER TABLE "sales_imports" ADD COLUMN "region_id" uuid;--> statement-breakpoint
+ALTER TABLE "sales_imports" ADD CONSTRAINT "sales_imports_region_id_regions_id_fk" FOREIGN KEY ("region_id") REFERENCES "public"."regions"("id") ON DELETE no action ON UPDATE no action;

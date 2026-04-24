@@ -1,4 +1,5 @@
-import type { AnalyticsFilters } from '@/lib/analytics/types';
+import type { AnalyticsFilters, LocationType, MetricMode } from '@/lib/analytics/types';
+import { LOCATION_TYPES } from '@/lib/analytics/types';
 
 export type NextSearchParams =
   | URLSearchParams
@@ -20,11 +21,14 @@ function getIds(sp: NextSearchParams, key: string): string[] | undefined {
   return raw.split(',').filter(Boolean);
 }
 
-function defaultLastYearRange(): { dateFrom: string; dateTo: string } {
-  const lastYear = new Date().getFullYear() - 1;
+function defaultYtdRange(): { dateFrom: string; dateTo: string } {
+  const now = new Date();
+  const year = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
   return {
-    dateFrom: `${lastYear}-01-01`,
-    dateTo: `${lastYear}-12-31`,
+    dateFrom: `${year}-01-01`,
+    dateTo: `${year}-${mm}-${dd}`,
   };
 }
 
@@ -33,15 +37,23 @@ function defaultLastYearRange(): { dateFrom: string; dateTo: string } {
  *
  * Single source of truth for RSC analytics pages: the filter bar writes URL
  * params (see `filtersToSearchParams` in the store), this helper reads them.
- * Defaults mirror the store's `last-year` preset so a fresh page load with
- * empty URL renders the same data the client store would.
+ * Defaults mirror the store's `ytd` preset so a fresh page load with an
+ * empty URL renders current-year data (not the previous calendar year,
+ * which hides live operational data for 12 months after rollover).
  */
 export function parseAnalyticsFiltersFromSearchParams(
   sp: NextSearchParams,
 ): AnalyticsFilters {
   const from = getScalar(sp, 'from');
   const to = getScalar(sp, 'to');
-  const { dateFrom: defaultFrom, dateTo: defaultTo } = defaultLastYearRange();
+  const { dateFrom: defaultFrom, dateTo: defaultTo } = defaultYtdRange();
+  const rawMode = getScalar(sp, 'mode');
+  const metricMode: MetricMode =
+    rawMode === 'revenue' ? 'revenue' : 'sales';
+
+  const rawTypes = getIds(sp, 'types');
+  const validTypes = new Set<string>(LOCATION_TYPES);
+  const locationTypes = rawTypes?.filter((t): t is LocationType => validTypes.has(t));
 
   return {
     dateFrom: from ?? defaultFrom,
@@ -52,5 +64,7 @@ export function parseAnalyticsFiltersFromSearchParams(
     hotelGroupIds: getIds(sp, 'hgroups'),
     locationGroupIds: getIds(sp, 'lgroups'),
     maturityBuckets: getIds(sp, 'maturity'),
+    locationTypes: locationTypes?.length ? locationTypes : undefined,
+    metricMode,
   };
 }

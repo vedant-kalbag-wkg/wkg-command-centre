@@ -246,7 +246,7 @@ describe("calculateCommission", () => {
     expect(result).toBeNull();
   });
 
-  it("uses grossAmount as commissionable amount", () => {
+  it("uses amount as commissionable amount", () => {
     const result = calculateCommission(
       5_000,
       200, // bookingFee — ignored for now

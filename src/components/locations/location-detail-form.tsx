@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useEffect, useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp, Archive, Lock } from "lucide-react";
@@ -30,6 +30,7 @@ import { LocationKiosksTab } from "@/components/locations/location-kiosks-tab";
 import { LocationProductsClient } from "@/app/(app)/locations/[id]/products/location-products-client";
 import {
   createLocation,
+  listRegionOptions,
   updateLocationField,
   archiveLocation,
   updateBankingDetails,
@@ -126,6 +127,8 @@ function NewLocationForm() {
   const [isPending, startTransition] = useTransition();
   const [fields, setFields] = useState({
     name: "",
+    outletCode: "",
+    primaryRegionId: "",
     address: "",
     latitude: "",
     longitude: "",
@@ -140,12 +143,22 @@ function NewLocationForm() {
     contractTerms: "",
   });
   const [error, setError] = useState<string | null>(null);
+  const [regionOptions, setRegionOptions] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    // Regions are required on locations since migration 0022. Loaded client-
+    // side so the picker stays in sync when admins create/rename regions
+    // without reloading the page.
+    listRegionOptions().then(setRegionOptions).catch(() => setRegionOptions([]));
+  }, []);
 
   const handleCreate = () => {
     startTransition(async () => {
       setError(null);
       const result = await createLocation({
         name: fields.name,
+        outletCode: fields.outletCode,
+        primaryRegionId: fields.primaryRegionId,
         address: fields.address || undefined,
         latitude: fields.latitude ? Number(fields.latitude) : undefined,
         longitude: fields.longitude ? Number(fields.longitude) : undefined,
@@ -188,6 +201,28 @@ function NewLocationForm() {
             placeholder="e.g. The Grand Hotel"
             className="h-8 text-sm"
           />
+        </FieldRow>
+        <FieldRow label="Outlet Code *">
+          <Input
+            value={fields.outletCode}
+            onChange={(e) => setFields((prev) => ({ ...prev, outletCode: e.target.value }))}
+            placeholder="e.g. GRAND-001"
+            className="h-8 text-sm"
+          />
+        </FieldRow>
+        <FieldRow label="Region *">
+          <select
+            value={fields.primaryRegionId}
+            onChange={(e) => setFields((prev) => ({ ...prev, primaryRegionId: e.target.value }))}
+            className="h-8 w-full rounded-lg border border-border px-2 text-sm"
+          >
+            <option value="">Select region</option>
+            {regionOptions.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
         </FieldRow>
         <FieldRow label="Address">{f("address")}</FieldRow>
         <FieldRow label="Latitude">{f("latitude", "number")}</FieldRow>
@@ -250,7 +285,12 @@ function NewLocationForm() {
       <div className="flex justify-end">
         <Button
           onClick={handleCreate}
-          disabled={isPending || !fields.name.trim()}
+          disabled={
+            isPending ||
+            !fields.name.trim() ||
+            !fields.outletCode.trim() ||
+            !fields.primaryRegionId
+          }
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
           {isPending ? "Creating…" : "Create location"}
