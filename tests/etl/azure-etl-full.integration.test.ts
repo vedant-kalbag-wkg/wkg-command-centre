@@ -147,10 +147,11 @@ describe.skipIf(!CSV_PRESENT)("runAzureEtl (full CSV fixture)", () => {
       { productName: "Cash Handling Fee", netsuiteCode: "9992" },
     ]);
 
-    // Sanity: the fixture currently has 178 unique outlet codes. If this ever
-    // trips, the fixture was regenerated — update the expected count here and
-    // re-verify the other magic numbers below.
-    expect(outletCodes).toHaveLength(178);
+    // Sanity: the fixture currently has 288 unique outlet codes (Jan 1-31
+    // 2026 export, 95k+ rows). If this ever trips, the fixture was
+    // regenerated — update the expected count here and re-verify the other
+    // magic numbers below.
+    expect(outletCodes).toHaveLength(288);
   });
 
   it("processes the full real NetSuite export end-to-end and is idempotent", async () => {
@@ -172,34 +173,34 @@ describe.skipIf(!CSV_PRESENT)("runAzureEtl (full CSV fixture)", () => {
     expect(result.processed[0]).toMatchObject({
       regionCode: "UK",
       blobPath: BLOB_PATH,
-      rows: 2664,
+      rows: 95103,
     });
 
     // Total row count persisted.
     const [{ count: total }] = await ctx.db
       .select({ count: sql<string>`count(*)` })
       .from(salesRecords);
-    expect(Number(total)).toBe(2664);
+    expect(Number(total)).toBe(95103);
 
-    // Booking Fee rows: 1273 by is_booking_fee flag AND 1273 by netsuite_code='9991'.
+    // Booking Fee rows: 45621 by is_booking_fee flag AND 45621 by netsuite_code='9991'.
     const bookingFees = await ctx.db
       .select({ id: salesRecords.id })
       .from(salesRecords)
       .where(eq(salesRecords.isBookingFee, true));
-    expect(bookingFees).toHaveLength(1273);
+    expect(bookingFees).toHaveLength(45621);
 
     const code9991 = await ctx.db
       .select({ id: salesRecords.id })
       .from(salesRecords)
       .where(eq(salesRecords.netsuiteCode, "9991"));
-    expect(code9991).toHaveLength(1273);
+    expect(code9991).toHaveLength(45621);
 
-    // Cash Handling Fee rows: 38 under fallback '9992'.
+    // Cash Handling Fee rows: 2040 under fallback '9992'.
     const code9992 = await ctx.db
       .select({ id: salesRecords.id })
       .from(salesRecords)
       .where(eq(salesRecords.netsuiteCode, "9992"));
-    expect(code9992).toHaveLength(38);
+    expect(code9992).toHaveLength(2040);
 
     // Reversal pair nets to zero.
     const [{ total: reversalSum }] = await ctx.db

@@ -7,7 +7,10 @@ import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
   buildDateCondition,
   buildDimensionFilters,
+  buildIsFeeCondition,
   buildMaturityCondition,
+  buildMetricModeCondition,
+  buildNonFeeCondition,
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
@@ -51,12 +54,14 @@ async function buildPortfolioWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
+  const metricModeCondition = buildMetricModeCondition(filters);
 
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
+    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -166,7 +171,72 @@ export async function getTopProducts(
   userCtx: UserCtx,
   limit = 20,
 ): Promise<TopProductRow[]> {
-  const whereClause = await buildPortfolioWhere(filters, userCtx);
+  // Two shapes here, driven by metricMode:
+  //
+  //  Sales mode  — rank products by their principal sales (NOT fees). Fee
+  //                rows ("Booking Fee" / "Cash Handling Fee") are not
+  //                products and dominate by transaction count, so they're
+  //                excluded unconditionally. Use buildPortfolioWhere with
+  //                metricMode forced to "sales" + the non-fee predicate.
+  //
+  //  Revenue mode — rank products by the fee revenue *they drove*. NetSuite
+  //                emits fee rows with ref_no='<parentRef>-b' and a generic
+  //                product name ("Booking Fee" / "Cash Handling Fee"). To
+  //                attribute a fee to the thing the customer actually bought
+  //                we self-join: strip the '-b' suffix, find the parent sale
+  //                row in the SAME region (any one — a sale/reversal pair
+  //                both carry the same product), and group by the parent's
+  //                product name. Region-scoping the join is essential:
+  //                outlet codes repeat across regions, but ref_no is
+  //                region-unique.
+  if (filters.metricMode === "revenue") {
+    const filtersForFees: AnalyticsFilters = { ...filters, metricMode: "sales" };
+    const baseWhere = await buildPortfolioWhere(filtersForFees, userCtx);
+    const whereClause = combineConditions([baseWhere, buildIsFeeCondition()]);
+
+    // Leave the outer sales_records unaliased so the shared WHERE helpers
+    // (which emit "sales_records"."..." refs) resolve cleanly. The LATERAL
+    // subquery uses its own explicit alias for the parent-side self-join.
+    const rows = await executeRows<{
+      product_name: string;
+      revenue: string;
+      transactions: string;
+      quantity: string;
+    }>(sql`
+      SELECT
+        p.name AS product_name,
+        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
+        COUNT(*)::text AS transactions,
+        COUNT(*)::text AS quantity
+      FROM ${salesRecords}
+      CROSS JOIN LATERAL (
+        SELECT parent.product_id
+        FROM ${salesRecords} AS parent
+        WHERE parent.region_id = ${salesRecords.regionId}
+          AND parent.ref_no = REGEXP_REPLACE(${salesRecords.refNo}, '-b$', '')
+          AND NOT (parent.is_booking_fee = true OR parent.netsuite_code IN ('9991', '9992'))
+        LIMIT 1
+      ) AS parent_one
+      INNER JOIN ${products} AS p ON p.id = parent_one.product_id
+      ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      GROUP BY p.name
+      ORDER BY revenue DESC
+      LIMIT ${limit}
+    `);
+
+    return rows.map((row, idx) => ({
+      rank: idx + 1,
+      productName: row.product_name,
+      categoryName: row.product_name,
+      revenue: Number(row.revenue),
+      transactions: Number(row.transactions),
+      quantity: Number(row.quantity),
+    }));
+  }
+
+  const filtersForProducts: AnalyticsFilters = { ...filters, metricMode: "sales" };
+  const baseWhere = await buildPortfolioWhere(filtersForProducts, userCtx);
+  const whereClause = combineConditions([baseWhere, buildNonFeeCondition()]);
 
   const rows = await executeRows<{
     product_name: string;

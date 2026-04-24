@@ -300,16 +300,17 @@ export async function _commitImportForActor(
         // don't go through scopedSalesCondition (admins bypass).
         await tx.insert(salesRecords).values(inserts);
       }
+      // Mark the valid-rows as committed. Filter by status='valid' instead
+      // of inArray(...validRowIds): inArray with tens of thousands of ids
+      // blows past Postgres's 65535-parameter limit. Equivalent semantics
+      // since invalid rows keep status='invalid' and are never touched here.
       await tx
         .update(importStagings)
         .set({ status: "committed" })
         .where(
           and(
             eq(importStagings.importId, importId),
-            inArray(
-              importStagings.id,
-              validRows.map((r) => r.id),
-            ),
+            eq(importStagings.status, "valid"),
           ),
         );
       await tx

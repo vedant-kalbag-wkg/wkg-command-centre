@@ -73,6 +73,7 @@ export function AnalyticsFilterBar({
     region: store.regionFilter,
     locationGroup: store.locationGroupFilter,
     maturity: store.maturityFilter,
+    mode: store.metricMode,
   });
 
   useEffect(() => {
@@ -122,6 +123,40 @@ export function AnalyticsFilterBar({
       className="sticky top-14 z-20 flex items-center gap-3 border-b bg-background/95 backdrop-blur-sm px-4 py-2.5"
     >
       <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
+        <div
+          data-testid="metric-mode-toggle"
+          role="group"
+          aria-label="Metric mode"
+          className="inline-flex items-center rounded-md border bg-background p-0.5 text-sm"
+        >
+          <button
+            type="button"
+            aria-pressed={store.metricMode === "sales"}
+            onClick={() => store.setMetricMode("sales")}
+            className={
+              "px-2.5 py-1 rounded-sm transition-colors " +
+              (store.metricMode === "sales"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground")
+            }
+          >
+            Sales
+          </button>
+          <button
+            type="button"
+            aria-pressed={store.metricMode === "revenue"}
+            onClick={() => store.setMetricMode("revenue")}
+            className={
+              "px-2.5 py-1 rounded-sm transition-colors " +
+              (store.metricMode === "revenue"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground")
+            }
+          >
+            Revenue
+          </button>
+        </div>
+
         <DateRangePicker
           from={store.dateRange.from}
           to={store.dateRange.to}

@@ -32,6 +32,31 @@ export function buildDateCondition(filters: AnalyticsFilters): SQL {
   return sql`${salesRecords.transactionDate} >= ${filters.dateFrom} AND ${salesRecords.transactionDate} <= ${filters.dateTo}`;
 }
 
+// Netsuite codes of all WKG-collected fee rows. 9991=Booking Fee sets
+// is_booking_fee=true; 9992=Cash Handling Fee does NOT (the flag is named
+// after its original single purpose). Keep both here so "revenue" mode and
+// the non-fee exclusion agree on what a "fee row" is.
+export const FEE_NETSUITE_CODES = ["9991", "9992"] as const;
+
+// "A fee row" — either is_booking_fee=true (covers 9991) or netsuite_code=9992.
+// Using an explicit OR keeps us future-proof: a new fee code can be added to
+// FEE_NETSUITE_CODES without requiring a schema change.
+export function buildIsFeeCondition(): SQL {
+  return sql`(${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
+}
+
+// Metric-mode filter: 'revenue' restricts to fee rows (WKG's take);
+// 'sales' (default) adds no predicate so every row counts.
+export function buildMetricModeCondition(filters: AnalyticsFilters): SQL | undefined {
+  return filters.metricMode === "revenue" ? buildIsFeeCondition() : undefined;
+}
+
+// Top-Products excludes fee rows unconditionally (per product-reporting spec:
+// Booking Fee / Cash Handling Fee are not "products" and skew the ranking).
+export function buildNonFeeCondition(): SQL {
+  return sql`NOT (${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
+}
+
 export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
   const conditions: SQL[] = [];
 

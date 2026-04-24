@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { toLocalISODate } from "@/lib/analytics/formatters";
-import type { DatePreset, AnalyticsFilters } from "@/lib/analytics/types";
+import type {
+  DatePreset,
+  AnalyticsFilters,
+  MetricMode,
+} from "@/lib/analytics/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,10 +100,12 @@ type FilterState = {
   hotelGroupFilter: string[];
   locationGroupFilter: string[];
   maturityFilter: string[];
+  metricMode: MetricMode;
 
   setDateRange: (range: FilterDateRange) => void;
   applyPreset: (preset: DatePreset) => void;
   setFilter: (dimension: FilterDimensionKey, values: string[]) => void;
+  setMetricMode: (mode: MetricMode) => void;
   resetDimensionFilters: () => void;
   clearAllFilters: () => void;
 };
@@ -108,17 +114,19 @@ type FilterState = {
 
 function createFullFilterStore() {
   return create<FilterState>((set) => ({
-    dateRange: getPresetRange("last-year"),
+    dateRange: getPresetRange("ytd"),
     hotelFilter: [],
     regionFilter: [],
     productFilter: [],
     hotelGroupFilter: [],
     locationGroupFilter: [],
     maturityFilter: [],
+    metricMode: "sales",
 
     setDateRange: (range) => set({ dateRange: range }),
     applyPreset: (preset) => set({ dateRange: getPresetRange(preset) }),
     setFilter: (dimension, values) => set({ [dimension]: values }),
+    setMetricMode: (mode) => set({ metricMode: mode }),
     resetDimensionFilters: () =>
       set({
         hotelFilter: [],
@@ -130,13 +138,14 @@ function createFullFilterStore() {
       }),
     clearAllFilters: () =>
       set({
-        dateRange: getPresetRange("last-year"),
+        dateRange: getPresetRange("ytd"),
         hotelFilter: [],
         regionFilter: [],
         productFilter: [],
         hotelGroupFilter: [],
         locationGroupFilter: [],
         maturityFilter: [],
+        metricMode: "sales",
       }),
   }));
 }
@@ -159,15 +168,17 @@ export function filtersToSearchParams(state: FilterState): URLSearchParams {
   if (state.hotelGroupFilter.length > 0) params.set("hgroups", state.hotelGroupFilter.join(","));
   if (state.locationGroupFilter.length > 0) params.set("lgroups", state.locationGroupFilter.join(","));
   if (state.maturityFilter.length > 0) params.set("maturity", state.maturityFilter.join(","));
+  // Only serialize when non-default so URLs stay clean for the common case.
+  if (state.metricMode === "revenue") params.set("mode", "revenue");
 
   return params;
 }
 
-export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<FilterState, "dateRange" | "hotelFilter" | "regionFilter" | "productFilter" | "hotelGroupFilter" | "locationGroupFilter" | "maturityFilter">> | null {
+export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<FilterState, "dateRange" | "hotelFilter" | "regionFilter" | "productFilter" | "hotelGroupFilter" | "locationGroupFilter" | "maturityFilter" | "metricMode">> | null {
   const hasFilterParams =
     params.has("from") || params.has("hotels") || params.has("regions") ||
     params.has("products") || params.has("hgroups") || params.has("lgroups") ||
-    params.has("maturity");
+    params.has("maturity") || params.has("mode");
   if (!hasFilterParams) return null;
 
   const result: Record<string, unknown> = {};
@@ -196,6 +207,11 @@ export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<Fil
   const maturity = params.get("maturity");
   if (maturity) result.maturityFilter = maturity.split(",");
 
+  const mode = params.get("mode");
+  if (mode === "revenue" || mode === "sales") {
+    result.metricMode = mode as MetricMode;
+  }
+
   return result as ReturnType<typeof searchParamsToFilters>;
 }
 
@@ -209,6 +225,7 @@ export function storeStateToAnalyticsFilters(state: FilterState): AnalyticsFilte
     hotelGroupIds: state.hotelGroupFilter.length > 0 ? state.hotelGroupFilter : undefined,
     locationGroupIds: state.locationGroupFilter.length > 0 ? state.locationGroupFilter : undefined,
     maturityBuckets: state.maturityFilter.length > 0 ? state.maturityFilter : undefined,
+    metricMode: state.metricMode,
   };
 }
 

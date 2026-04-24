@@ -1,4 +1,4 @@
-import type { AnalyticsFilters } from '@/lib/analytics/types';
+import type { AnalyticsFilters, MetricMode } from '@/lib/analytics/types';
 
 export interface CanonicalFilters {
   dateFrom: string | null;
@@ -9,6 +9,7 @@ export interface CanonicalFilters {
   hotelGroupIds: string[];
   locationGroupIds: string[];
   maturityBuckets: string[];
+  metricMode: MetricMode;
 }
 
 function sortedUnique(xs: string[] | undefined): string[] {
@@ -31,5 +32,9 @@ export function canonicaliseFilters(f: CanonicaliseInput): CanonicalFilters {
     hotelGroupIds:    sortedUnique(f.hotelGroupIds),
     locationGroupIds: sortedUnique(f.locationGroupIds),
     maturityBuckets:  sortedUnique(f.maturityBuckets),
+    // metricMode participates in the cache key so Sales and Revenue don't
+    // alias the same cache entry. Default to 'sales' when absent (matches
+    // the UI + URL parse defaults).
+    metricMode:       f.metricMode ?? 'sales',
   };
 }

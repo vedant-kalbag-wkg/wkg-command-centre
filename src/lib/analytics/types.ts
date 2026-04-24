@@ -8,6 +8,8 @@ export type FilterDimension =
   | "hotelIds" | "regionIds" | "productIds"
   | "hotelGroupIds" | "locationGroupIds"
 
+export type MetricMode = "sales" | "revenue"
+
 export type AnalyticsFilters = {
   dateFrom: string       // YYYY-MM-DD
   dateTo: string         // YYYY-MM-DD
@@ -17,6 +19,11 @@ export type AnalyticsFilters = {
   hotelGroupIds?: string[]
   locationGroupIds?: string[]
   maturityBuckets?: string[]
+  // "sales"   — every row (gross transaction volume, default)
+  // "revenue" — only booking-fee + cash-handling-fee rows (WKG's take).
+  //             Identified by salesRecords.isBookingFee = true; by construction
+  //             this matches netsuite_code IN ('9991', '9992').
+  metricMode?: MetricMode
 }
 
 // ─── Portfolio Types ──────────────────────────────────────────────────────────

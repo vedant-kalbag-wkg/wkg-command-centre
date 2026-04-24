@@ -197,7 +197,9 @@ async function computePerformerPatterns(
         ) AS kc
       `),
 
-      // Top products by revenue for tier locations
+      // Top products by revenue for tier locations. Always exclude fee rows
+      // (Booking Fee / Cash Handling Fee) — they aren't products and swamp
+      // the ranking by transaction count.
       executeRows<{ name: string; revenue: string }>(sql`
         SELECT
           ${products.name} AS name,
@@ -206,6 +208,7 @@ async function computePerformerPatterns(
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
         WHERE ${salesRecords.locationId} = ANY(${sql.param(tierIds)}::uuid[])
+          AND ${salesRecords.isBookingFee} = false
           ${whereClause ? sql`AND ${whereClause}` : sql``}
         GROUP BY ${products.name}
         ORDER BY revenue DESC
