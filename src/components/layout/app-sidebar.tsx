@@ -23,6 +23,7 @@ import {
   Filter,
   Ban,
   Gauge,
+  Tag,
 } from "lucide-react";
 import {
   Sidebar,
@@ -79,6 +80,7 @@ const configure: NavItem[] = [
   { label: "Business Events", href: "/settings/business-events", icon: CalendarRange },
   { label: "Analytics Presets", href: "/settings/analytics-presets", icon: Filter },
   { label: "Outlet Exclusions", href: "/settings/outlet-exclusions", icon: Ban },
+  { label: "Outlet Types", href: "/settings/outlet-types", icon: Tag },
   { label: "Thresholds", href: "/settings/thresholds", icon: Gauge },
 ];
 
