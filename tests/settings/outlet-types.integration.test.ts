@@ -98,10 +98,51 @@ describe("outlet-types server actions (pipeline)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe(unclassified.id);
     expect(rows[0].outletCode).toBe("UNC");
+    expect(rows[0].reviewReason).toBe("missing_type");
+    expect(rows[0].notes).toBeNull();
     // Sanity: classified + archived are NOT in the list.
     const returnedIds = rows.map((r) => r.id);
     expect(returnedIds).not.toContain(classified.id);
     expect(returnedIds).not.toContain(archived.id);
+  });
+
+  test("MONDAY-* placeholder locations surface with reviewReason='imported_from_monday' + notes populated", async () => {
+    // Seed a placeholder location like the Monday import script would create.
+    const [placeholder] = await ctx.db
+      .insert(locations)
+      .values({
+        name: "Example Hotel (no mirror9 code)",
+        outletCode: "MONDAY-xyz123",
+        primaryRegionId: regionId,
+        notes:
+          "Imported from Monday (mondayItemId=xyz123) — no outlet code on mirror9, needs manual review",
+      })
+      .returning({ id: locations.id });
+
+    const rows = await _listUnclassifiedOutletsForActor(ctx.db);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(placeholder.id);
+    expect(rows[0].outletCode).toBe("MONDAY-xyz123");
+    expect(rows[0].reviewReason).toBe("imported_from_monday");
+    expect(rows[0].notes).toContain("Imported from Monday");
+    expect(rows[0].notes).toContain("xyz123");
+  });
+
+  test("classified MONDAY-* row is excluded — classification takes precedence over review reason", async () => {
+    // A MONDAY-* row that's already been classified by an operator MUST NOT
+    // reappear in the needs-review list. The exclusion key is still
+    // `locationType IS NULL`; the MONDAY-* prefix is only a display signal.
+    await ctx.db.insert(locations).values({
+      name: "Already Classified Monday Hotel",
+      outletCode: "MONDAY-abc789",
+      primaryRegionId: regionId,
+      locationType: "hotel",
+      notes: "Imported from Monday (mondayItemId=abc789)",
+    });
+
+    const rows = await _listUnclassifiedOutletsForActor(ctx.db);
+    expect(rows).toHaveLength(0);
   });
 
   test("attaches last-30d revenue + transaction count, excludes older rows", async () => {

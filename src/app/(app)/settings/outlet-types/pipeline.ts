@@ -30,6 +30,17 @@ type AnyDb = any;
 
 export type OutletTypeActor = { id: string; name: string };
 
+/**
+ * Review-reason flag. `missing_type` is the default — a new outlet surfaced by
+ * the ETL that still needs human classification. `imported_from_monday` marks
+ * the placeholder rows produced by `scripts/import-location-products-from-monday.ts`
+ * when a Monday hotel had no mirror9 outlet code (outletCode gets a
+ * `MONDAY-<mondayItemId>` placeholder and the region defaults to UK, so the
+ * operator needs to both classify AND verify the region before these rows are
+ * analytics-safe).
+ */
+export type ReviewReason = "missing_type" | "imported_from_monday";
+
 export type UnclassifiedOutletRow = {
   id: string;
   outletCode: string;
@@ -37,6 +48,8 @@ export type UnclassifiedOutletRow = {
   last30dRevenue: number;
   last30dTransactions: number;
   suggestedType: LocationType | null;
+  notes: string | null;
+  reviewReason: ReviewReason;
 };
 
 /**
@@ -63,6 +76,7 @@ export async function _listUnclassifiedOutletsForActor(
       hotelGroup: locations.hotelGroup,
       numRooms: locations.numRooms,
       starRating: locations.starRating,
+      notes: locations.notes,
       revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}), 0)`,
       transactions: sql<string>`COALESCE(COUNT(${salesRecords.id}), 0)`,
     })
@@ -86,6 +100,7 @@ export async function _listUnclassifiedOutletsForActor(
       hotelGroup: string | null;
       numRooms: number | null;
       starRating: number | null;
+      notes: string | null;
       revenue: string;
       transactions: string;
     }) => ({
@@ -101,6 +116,15 @@ export async function _listUnclassifiedOutletsForActor(
         numRooms: r.numRooms,
         starRating: r.starRating,
       }),
+      notes: r.notes,
+      // The Monday placeholder script stamps outletCode=`MONDAY-<mondayItemId>`
+      // (see scripts/import-location-products-from-monday.ts). That prefix is
+      // how we distinguish a placeholder from a genuine new outlet surfaced by
+      // the ETL; we don't add a separate `review_reason` column because the
+      // prefix already encodes the signal 1:1 with `notes`.
+      reviewReason: r.outletCode.startsWith("MONDAY-")
+        ? ("imported_from_monday" as const)
+        : ("missing_type" as const),
     }),
   );
 }

@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CheckCircle2, Loader2, Save } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -22,6 +23,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
 import {
   LOCATION_TYPES,
@@ -164,6 +171,7 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
   };
 
   return (
+    <TooltipProvider>
     <div className="space-y-4">
       {selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/30 px-4 py-3">
@@ -225,6 +233,7 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
               </TableHead>
               <TableHead>Outlet code</TableHead>
               <TableHead>Name</TableHead>
+              <TableHead>Review reason</TableHead>
               <TableHead className="text-right">Last 30d revenue</TableHead>
               <TableHead className="text-right">Last 30d txns</TableHead>
               <TableHead>Suggested</TableHead>
@@ -251,6 +260,46 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
                     {row.outletCode}
                   </TableCell>
                   <TableCell className="font-medium">{row.name}</TableCell>
+                  <TableCell>
+                    {row.reviewReason === "imported_from_monday" ? (
+                      // Amber/warning styling — this row was auto-created by
+                      // the Monday import script with a MONDAY-<itemId>
+                      // placeholder outletCode. Operators need to verify the
+                      // region (default=UK) AND set a real location_type.
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/40 bg-amber-500/10 text-amber-700 cursor-help dark:text-amber-400"
+                            />
+                          }
+                        >
+                          Imported from Monday
+                        </TooltipTrigger>
+                        {row.notes ? (
+                          <TooltipContent className="max-w-sm whitespace-normal">
+                            {row.notes}
+                          </TooltipContent>
+                        ) : null}
+                      </Tooltip>
+                    ) : row.notes ? (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Badge variant="subtle-muted" className="cursor-help" />
+                          }
+                        >
+                          Missing type
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-sm whitespace-normal">
+                          {row.notes}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Badge variant="subtle-muted">Missing type</Badge>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatCurrency(row.last30dRevenue)}
                   </TableCell>
@@ -307,5 +356,6 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
         </Table>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
