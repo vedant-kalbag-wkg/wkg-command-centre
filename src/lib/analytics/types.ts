@@ -152,6 +152,14 @@ export type HeatMapHotel = {
   txnPerKiosk: number | null
   avgBasketValue: number
   compositeScore: number
+  // Phase 4.3 — property-level enrichment, mirrors OutletTierRow:
+  // canonical hotel-group name (null for unaffiliated), active kiosk count
+  // (unassigned_at IS NULL), num_rooms (from locations, nullable), and
+  // revenue/kiosk (null when kioskCount === 0).
+  hotelGroupName: string | null
+  kioskCount: number
+  numRooms: number | null
+  revenuePerKiosk: number | null
 }
 
 export type HeatMapData = {

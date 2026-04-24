@@ -61,6 +61,8 @@ const salesRows = [
     hotel_name: "Hotel Alpha",
     num_rooms: "100",
     live_date: "2025-01-15T00:00:00.000Z",
+    hotel_group_name: "Alpha Group",
+    kiosk_count: 5,
     revenue: "50000",
     transactions: "200",
     quantity: "400",
@@ -71,6 +73,8 @@ const salesRows = [
     hotel_name: "Hotel Beta",
     num_rooms: "80",
     live_date: null,
+    hotel_group_name: "Beta Group",
+    kiosk_count: 2,
     revenue: "30000",
     transactions: "400",
     quantity: "600",
@@ -168,5 +172,68 @@ describe("getHeatMapData – kiosk enrichment", () => {
     expect(alpha.txnPerKiosk).toBeCloseTo(66.67, 1);
     // Beta: no kiosk data → null
     expect(beta.txnPerKiosk).toBeNull();
+  });
+});
+
+describe("getHeatMapData – property-level enrichment (Phase 4.3)", () => {
+  beforeEach(() => {
+    mockExecute.mockReset();
+  });
+
+  it("surfaces hotelGroupName, kioskCount, numRooms, and revenuePerKiosk on each row", async () => {
+    mockExecute
+      .mockResolvedValueOnce(salesRows)
+      .mockResolvedValueOnce(kioskRows);
+
+    const result = await getHeatMapData(filters, userCtx);
+
+    const alpha = result.allPerformers.find((h) => h.locationId === "loc-1")!;
+    const beta = result.allPerformers.find((h) => h.locationId === "loc-2")!;
+
+    expect(alpha.hotelGroupName).toBe("Alpha Group");
+    expect(alpha.kioskCount).toBe(5);
+    expect(alpha.numRooms).toBe(100);
+    // 50000 revenue / 5 active kiosks = 10000
+    expect(alpha.revenuePerKiosk).toBe(10000);
+
+    expect(beta.hotelGroupName).toBe("Beta Group");
+    expect(beta.kioskCount).toBe(2);
+    expect(beta.numRooms).toBe(80);
+    // 30000 / 2 = 15000
+    expect(beta.revenuePerKiosk).toBe(15000);
+  });
+
+  it("returns null revenuePerKiosk (not Infinity) when kiosk_count is 0", async () => {
+    mockExecute
+      .mockResolvedValueOnce([
+        {
+          ...salesRows[0],
+          kiosk_count: 0,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const result = await getHeatMapData(filters, userCtx);
+
+    expect(result.allPerformers).toHaveLength(1);
+    const hotel = result.allPerformers[0];
+    expect(hotel.kioskCount).toBe(0);
+    expect(hotel.revenuePerKiosk).toBeNull();
+  });
+
+  it("carries hotelGroupName=null through for unaffiliated locations", async () => {
+    mockExecute
+      .mockResolvedValueOnce([
+        {
+          ...salesRows[0],
+          hotel_group_name: null,
+        },
+      ])
+      .mockResolvedValueOnce([{ location_id: "loc-1", kiosk_count: "5" }]);
+
+    const result = await getHeatMapData(filters, userCtx);
+
+    expect(result.allPerformers).toHaveLength(1);
+    expect(result.allPerformers[0].hotelGroupName).toBeNull();
   });
 });
