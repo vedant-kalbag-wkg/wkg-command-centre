@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
 import {
   locations,
@@ -284,8 +284,5 @@ describe("resolveDimensions (integration)", () => {
       { regionId: deRegionId },
     );
     expect(deResult).toMatchObject({ locationId: deLoc.id });
-
-    // Sanity: silence unused
-    void and;
   });
 });

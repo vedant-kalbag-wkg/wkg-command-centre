@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { locations, products, providers as providersTable } from "@/db/schema";
 import type { RowValidationError } from "./sales-csv";
 
@@ -16,6 +16,8 @@ export type DimensionInput = {
   netsuiteCode: string;
   categoryCode: string | null;
   categoryName: string | null;
+  // Denormalised onto salesRecords by the caller; the resolver does not
+  // read this field and does not write it to the products dimension.
   apiProductName: string | null;
   providerName: string | null;
 };
@@ -50,6 +52,12 @@ export type ResolvedRow =
  *   - Providers are resolved by name; unknown names are auto-created.
  *   - Unknown outlet codes for the region produce a row-level validation
  *     error whose message names both the code and the region id.
+ *
+ * Concurrency precondition: the caller must serialise invocation (the ETL
+ * entrypoint holds a Postgres advisory lock; see design doc §"concurrency").
+ * Without that, two parallel runs can race on the Pass 2 back-fill / Pass 3
+ * auto-create and surface `duplicate key` errors on `products.netsuite_code`
+ * / `products.name`. The resolver does not attempt its own locking.
  */
 export async function resolveDimensions(
   db: AnyDb,
@@ -147,18 +155,23 @@ export async function resolveDimensions(
     if (prodByName.has(row.productName)) continue;
     if (!toCreate.has(row.netsuiteCode)) toCreate.set(row.netsuiteCode, row);
   }
-  for (const input of toCreate.values()) {
-    // `apiProductName` is denormalised on salesRecords, not on products.
-    const [created] = await db
+  // `apiProductName` is denormalised on salesRecords, not on products.
+  const toCreateArr = Array.from(toCreate.values());
+  if (toCreateArr.length) {
+    const created = await db
       .insert(products)
-      .values({
-        name: input.productName,
-        netsuiteCode: input.netsuiteCode,
-        categoryCode: input.categoryCode,
-        categoryName: input.categoryName,
-      })
-      .returning({ id: products.id });
-    prodByCode.set(input.netsuiteCode, created.id);
+      .values(
+        toCreateArr.map((i) => ({
+          name: i.productName,
+          netsuiteCode: i.netsuiteCode,
+          categoryCode: i.categoryCode,
+          categoryName: i.categoryName,
+        })),
+      )
+      .returning({ id: products.id, netsuiteCode: products.netsuiteCode });
+    for (const c of created as Array<{ id: string; netsuiteCode: string | null }>) {
+      if (c.netsuiteCode) prodByCode.set(c.netsuiteCode, c.id);
+    }
   }
 
   // ---- Provider resolution ---------------------------------------------------
@@ -180,12 +193,14 @@ export async function resolveDimensions(
     }
     // Auto-create any missing providers.
     const missing = providerNames.filter((n) => !provByName.has(n));
-    for (const name of missing) {
-      const [created] = await db
+    if (missing.length) {
+      const created = await db
         .insert(providersTable)
-        .values({ name })
-        .returning({ id: providersTable.id });
-      provByName.set(name, created.id);
+        .values(missing.map((name) => ({ name })))
+        .returning({ id: providersTable.id, name: providersTable.name });
+      for (const c of created as Array<{ id: string; name: string }>) {
+        provByName.set(c.name, c.id);
+      }
     }
   }
 
@@ -226,8 +241,3 @@ export async function resolveDimensions(
     };
   });
 }
-
-// Re-export sql so that any caller constructing dynamic predicates elsewhere
-// can share the same drizzle instance without a separate import. (Kept for
-// parity with the previous resolver surface.)
-export { sql };
