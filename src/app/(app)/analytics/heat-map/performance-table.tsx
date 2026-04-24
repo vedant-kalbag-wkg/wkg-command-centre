@@ -14,6 +14,7 @@ import {
   formatNumber,
   formatNullValue,
 } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { cn } from "@/lib/utils";
 import type { HeatMapHotel, LocationFlag } from "@/lib/analytics/types";
 import {
@@ -49,6 +50,7 @@ const trafficLightLabel: Record<string, string> = {
 };
 
 export function PerformanceTable({ data, title, thresholdConfig, flags = [], onFlagCreated }: PerformanceTableProps) {
+  const metricLabel = useMetricLabel();
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
     const existing = flagsByLocation.get(f.locationId) ?? [];
@@ -73,9 +75,9 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                 Hotel
               </TableHead>
               <TableHead>Maturity</TableHead>
-              <TableHead className="text-right">Revenue</TableHead>
+              <TableHead className="text-right">{metricLabel}</TableHead>
               <TableHead className="text-right">Transactions</TableHead>
-              <TableHead className="text-right">Rev / Room</TableHead>
+              <TableHead className="text-right">{metricLabel === "Revenue" ? "Rev" : "Sales"} / Room</TableHead>
               <TableHead className="text-right">Txn / Kiosk</TableHead>
               <TableHead className="text-right">Avg Basket</TableHead>
               <TableHead className="text-right w-20">Score</TableHead>

@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { ChartWrapper } from "@/components/analytics/chart-wrapper";
 import { formatCurrency } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { HourlyDistributionRow } from "@/lib/analytics/types";
 
 interface HourlyDistributionProps {
@@ -21,6 +22,7 @@ export function HourlyDistribution({
   data,
   loading = false,
 }: HourlyDistributionProps) {
+  const metricLabel = useMetricLabel();
   return (
     <ChartWrapper loading={loading}>
       <BarChart
@@ -38,7 +40,7 @@ export function HourlyDistribution({
           fontSize={12}
         />
         <Tooltip
-          formatter={(value) => [formatCurrency(Number(value)), "Revenue"]}
+          formatter={(value) => [formatCurrency(Number(value)), metricLabel]}
           labelFormatter={(label) => {
             const h = String(label).padStart(2, "0");
             return `${h}:00 - ${h}:59`;

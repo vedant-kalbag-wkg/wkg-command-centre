@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { TopProductRow } from "@/lib/analytics/types";
 
 interface TopProductsProps {
@@ -17,13 +18,14 @@ interface TopProductsProps {
 }
 
 export function TopProducts({ data }: TopProductsProps) {
+  const metricLabel = useMetricLabel();
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-12">#</TableHead>
           <TableHead>Product</TableHead>
-          <TableHead className="text-right">Revenue</TableHead>
+          <TableHead className="text-right">{metricLabel}</TableHead>
           <TableHead className="text-right">Transactions</TableHead>
           <TableHead className="text-right">Quantity</TableHead>
         </TableRow>

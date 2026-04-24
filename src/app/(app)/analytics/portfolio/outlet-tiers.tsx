@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { cn } from "@/lib/utils";
 import {
   classifyTrafficLight,
@@ -47,6 +48,7 @@ const trafficLightLabel: Record<string, string> = {
 };
 
 export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }: OutletTiersProps) {
+  const metricLabel = useMetricLabel();
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
     const existing = flagsByLocation.get(f.locationId) ?? [];
@@ -61,7 +63,7 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }
           <TableHead>Outlet Code</TableHead>
           <TableHead>Hotel Name</TableHead>
           <TableHead>Maturity</TableHead>
-          <TableHead className="text-right">Revenue</TableHead>
+          <TableHead className="text-right">{metricLabel}</TableHead>
           <TableHead className="text-right">Transactions</TableHead>
           <TableHead className="text-right">Share</TableHead>
           <TableHead>Tier</TableHead>

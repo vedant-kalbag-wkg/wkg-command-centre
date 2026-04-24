@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { LowPerformerPatterns as LowPerformerPatternsData } from "@/lib/analytics/types";
 
 interface LowPerformerPatternsProps {
@@ -19,6 +20,7 @@ interface LowPerformerPatternsProps {
 export function LowPerformerPatterns({
   data,
 }: LowPerformerPatternsProps) {
+  const metricLabel = useMetricLabel();
   if (!data) return null;
 
   return (
@@ -45,7 +47,7 @@ export function LowPerformerPatterns({
       {/* KPI values */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiValue
-          label="Avg Revenue / Room"
+          label={`Avg ${metricLabel} / Room`}
           value={
             data.avgRevenuePerRoom != null
               ? formatCurrency(data.avgRevenuePerRoom)
@@ -135,7 +137,7 @@ export function LowPerformerPatterns({
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
-                <TableHead className="text-right">Revenue</TableHead>
+                <TableHead className="text-right">{metricLabel}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

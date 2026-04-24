@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { HighPerformerPatterns as HighPerformerPatternsData } from "@/lib/analytics/types";
 
 interface HighPerformerPatternsProps {
@@ -19,6 +20,7 @@ interface HighPerformerPatternsProps {
 export function HighPerformerPatterns({
   data,
 }: HighPerformerPatternsProps) {
+  const metricLabel = useMetricLabel();
   if (!data) return null;
 
   return (
@@ -45,7 +47,7 @@ export function HighPerformerPatterns({
       {/* KPI values */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiValue
-          label="Avg Revenue / Room"
+          label={`Avg ${metricLabel} / Room`}
           value={data.avgRevenuePerRoom != null ? formatCurrency(data.avgRevenuePerRoom) : "\u2014"}
         />
         <KpiValue
@@ -127,7 +129,7 @@ export function HighPerformerPatterns({
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
-                <TableHead className="text-right">Revenue</TableHead>
+                <TableHead className="text-right">{metricLabel}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

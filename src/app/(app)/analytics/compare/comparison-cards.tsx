@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { ComparisonEntity } from "@/lib/analytics/types";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ export function ComparisonCards({
 }: {
   entities: ComparisonEntity[];
 }) {
+  const metricLabel = useMetricLabel();
   if (entities.length === 0) return null;
 
   const best = getBestValues(entities);
@@ -63,7 +65,7 @@ export function ComparisonCards({
             </CardHeader>
             <CardContent className="space-y-1">
               <MetricRow
-                label="Revenue"
+                label={metricLabel}
                 value={entity.revenue}
                 formatted={formatCurrency(entity.revenue)}
                 isBest={entity.revenue === best.revenue}
@@ -105,7 +107,7 @@ export function ComparisonCards({
           </thead>
           <tbody>
             <tr className="border-b">
-              <td className="px-4 py-3 text-muted-foreground">Revenue</td>
+              <td className="px-4 py-3 text-muted-foreground">{metricLabel}</td>
               {entities.map((entity) => (
                 <td
                   key={entity.entityId}
