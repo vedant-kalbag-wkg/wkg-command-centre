@@ -4,6 +4,7 @@
   "description": "Unified kiosk operations + analytics platform (WeKnow Group)",
   "private": true,
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "next dev --port 3003",
     "build": "next build",
     "start": "next start",
@@ -78,6 +79,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.1.7",
+    "patch-package": "^8.0.0",
     "pg": "^8.20.0",
     "tailwindcss": "^4",
     "testcontainers": "^11.14.0",

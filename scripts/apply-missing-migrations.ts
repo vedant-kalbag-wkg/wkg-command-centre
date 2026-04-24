@@ -1,6 +1,18 @@
 /**
  * Manually apply migrations 0022 and 0023 to Neon dev.
  *
+ * NOTE (2026-04): The drizzle-orm skip-by-max-timestamp bug this script was
+ * written to work around is now permanently fixed at the library level via
+ * `patches/drizzle-orm+0.45.2.patch` (patch-package, re-applied on every
+ * `npm ci` through the `postinstall` hook). The patched migrator checks
+ * per-hash membership instead of comparing folderMillis against max(created_at),
+ * so migrations renumbered after a branch merge are no longer silently skipped.
+ *
+ * This script is kept as a belt-and-braces manual-application tool — useful
+ * for inspecting/reapplying a specific pair of migration files against a live
+ * database, or as a fallback if the patch ever fails to apply in a CI env —
+ * but it is NOT required for the normal migration flow.
+ *
  * Drizzle's migrator has a bug when _journal.json's `when` timestamps are
  * non-monotonic (as happened after the merge that renumbered 0018->0022,
  * 0019->0023). It compares each migration's `folderMillis` against the
