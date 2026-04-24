@@ -18,7 +18,7 @@
  */
 
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
-import { auditLogs as _auditLogs, locations, salesRecords } from "@/db/schema";
+import { auditLogs, locations, salesRecords } from "@/db/schema";
 import { suggestLocationType } from "@/lib/locations/suggest-location-type";
 import type { LocationType } from "@/lib/analytics/types";
 import { writeAuditLog } from "@/lib/audit";
@@ -27,11 +27,6 @@ import { writeAuditLog } from "@/lib/audit";
 // instance OR rely on the production postgres-js default.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = any;
-
-// Silence unused-import when @auditLogs is only referenced via writeAuditLog
-// (Drizzle table objects are imported for schema discoverability even when
-// the library does the actual insertion).
-void _auditLogs;
 
 export type OutletTypeActor = { id: string; name: string };
 
@@ -177,25 +172,20 @@ export async function _bulkSetLocationTypeForActor(
       .set({ locationType: type, updatedAt: new Date() })
       .where(inArray(locations.id, locationIds));
 
-    for (const r of rows as Array<{
-      id: string;
-      name: string;
-      locationType: string | null;
-    }>) {
-      await writeAuditLog(
-        {
-          actorId: actor.id,
-          actorName: actor.name,
-          entityType: "location",
-          entityId: r.id,
-          entityName: r.name,
-          action: "set_location_type",
-          field: "location_type",
-          oldValue: r.locationType ?? undefined,
-          newValue: type,
-        },
-        tx,
-      );
-    }
+    // Single multi-row INSERT rather than N sequential writeAuditLog calls.
+    // On 290-row bulk classifies this collapses 290 Neon round-trips into one.
+    await tx.insert(auditLogs).values(
+      (rows as Array<{ id: string; name: string; locationType: string | null }>).map((r) => ({
+        actorId: actor.id,
+        actorName: actor.name,
+        entityType: "location" as const,
+        entityId: r.id,
+        entityName: r.name,
+        action: "set_location_type" as const,
+        field: "location_type",
+        oldValue: r.locationType ?? undefined,
+        newValue: type,
+      })),
+    );
   });
 }

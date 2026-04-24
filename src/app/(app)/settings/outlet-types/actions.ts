@@ -30,10 +30,7 @@ export async function setLocationTypeAction(
   type: LocationType,
 ): Promise<void> {
   const session = await requireRole("admin");
-  const actor = {
-    id: session.user.id,
-    name: session.user.name ?? session.user.email,
-  };
+  const actor = { id: session.user.id, name: session.user.name };
   await _setLocationTypeForActor(db, actor, locationId, type);
   revalidateTag("analytics", "max");
 }
@@ -43,10 +40,7 @@ export async function bulkSetLocationTypeAction(
   type: LocationType,
 ): Promise<void> {
   const session = await requireRole("admin");
-  const actor = {
-    id: session.user.id,
-    name: session.user.name ?? session.user.email,
-  };
+  const actor = { id: session.user.id, name: session.user.name };
   await _bulkSetLocationTypeForActor(db, actor, locationIds, type);
   revalidateTag("analytics", "max");
 }
