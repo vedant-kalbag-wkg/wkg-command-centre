@@ -10,7 +10,7 @@ export async function writeAuditLog(
   entry: {
     actorId: string;
     actorName: string;
-    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation" | "app_setting" | "location_flag" | "experiment_cohort" | "action_item" | "commission_ledger";
+    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation" | "app_setting" | "location_flag" | "experiment_cohort" | "action_item" | "commission_ledger" | "product_code_fallback";
     entityId: string;
     entityName: string;
     action:
@@ -32,6 +32,7 @@ export async function writeAuditLog(
     field?: string;
     oldValue?: string;
     newValue?: string;
+    metadata?: Record<string, unknown>;
   },
   // Optional db override — defaults to the production singleton. Tests inject
   // their testcontainers db so writes land in the same isolated database the
@@ -48,6 +49,7 @@ export async function writeAuditLog(
     field: entry.field,
     oldValue: entry.oldValue,
     newValue: entry.newValue,
+    metadata: entry.metadata,
     createdAt: new Date(),
   });
 }
