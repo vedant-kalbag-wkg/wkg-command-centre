@@ -11,8 +11,9 @@ import { DefaultAzureCredential } from "@azure/identity";
  *      (managed identity in Azure, env creds, CLI, VS Code — in that order).
  *   3. Neither set                     → throw with clear guidance.
  *
- * The client is memoised; call {@link resetAzureBlobClientCacheForTests} to
- * clear it between tests.
+ * The client is memoised. Tests that need a different client shouldn't reach
+ * for a cache-reset hook — they should inject the client directly via the
+ * caller's `{ client }` option (see `runAzureEtl`, `AzureBlobSource`).
  */
 
 let cached: BlobServiceClient | null = null;
@@ -32,8 +33,4 @@ export function getAzureBlobClient(): BlobServiceClient {
   }
   cached = new BlobServiceClient(url, new DefaultAzureCredential());
   return cached;
-}
-
-export function resetAzureBlobClientCacheForTests(): void {
-  cached = null;
 }
