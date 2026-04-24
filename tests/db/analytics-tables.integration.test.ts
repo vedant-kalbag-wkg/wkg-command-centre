@@ -4,6 +4,7 @@ import { setupTestDb, teardownTestDb, type TestDbContext } from '../helpers/test
 import {
   user,
   locations,
+  regions,
   outletExclusions,
   analyticsPresets,
   analyticsSavedViews,
@@ -25,7 +26,19 @@ describe('remaining analytics tables (M1 Task 1.8)', () => {
       .values({ id: 'analytics-user-1', email: 'a@t.t', name: 'Analyst', emailVerified: true })
       .returning();
     userId = u.id;
-    const [loc] = await ctx.db.insert(locations).values({ name: 'Weather Test Hotel' }).returning();
+    // Migration 0018 seeds canonical regions (UK/IE/DE/ES/CZ); pick UK here.
+    const [uk] = await ctx.db
+      .select()
+      .from(regions)
+      .where(eq(regions.code, 'UK'));
+    const [loc] = await ctx.db
+      .insert(locations)
+      .values({
+        name: 'Weather Test Hotel',
+        outletCode: 'ANALYTICS-WEATHER',
+        primaryRegionId: uk.id,
+      })
+      .returning();
     locationId = loc.id;
   }, 120_000);
 
