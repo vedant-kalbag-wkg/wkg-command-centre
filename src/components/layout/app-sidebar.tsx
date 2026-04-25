@@ -24,6 +24,7 @@ import {
   Ban,
   Gauge,
   Tag,
+  RefreshCw,
 } from "lucide-react";
 import {
   Sidebar,
@@ -81,6 +82,7 @@ const configure: NavItem[] = [
   { label: "Analytics Presets", href: "/settings/analytics-presets", icon: Filter },
   { label: "Outlet Exclusions", href: "/settings/outlet-exclusions", icon: Ban },
   { label: "Outlet Types", href: "/settings/outlet-types", icon: Tag },
+  { label: "Monday Import", href: "/settings/data-import/monday", icon: RefreshCw },
   { label: "Thresholds", href: "/settings/thresholds", icon: Gauge },
 ];
 
