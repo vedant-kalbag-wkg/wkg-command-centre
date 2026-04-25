@@ -19,7 +19,9 @@ export async function proxy(request: NextRequest) {
 
   if (session && isAuthRoute) {
     const userType = (session.user as { userType?: string }).userType;
-    const target = userType === "external" ? "/portal/analytics/portfolio" : "/kiosks";
+    // Portal analytics is feature-paused (archive/portal-lockdown-2026-04-25);
+    // route external users straight to the coming-soon page.
+    const target = userType === "external" ? "/portal/coming-soon" : "/kiosks";
     return NextResponse.redirect(new URL(target, request.url));
   }
 
@@ -28,7 +30,9 @@ export async function proxy(request: NextRequest) {
   if (session && (session.user as { userType?: "internal" | "external" }).userType === "external") {
     const p = request.nextUrl.pathname;
     if (shouldGateExternalUser("external", p)) {
-      return NextResponse.redirect(new URL("/portal/analytics/portfolio", request.url));
+      // Portal analytics is feature-paused (archive/portal-lockdown-2026-04-25);
+      // route external users straight to the coming-soon page.
+      return NextResponse.redirect(new URL("/portal/coming-soon", request.url));
     }
   }
 
