@@ -39,15 +39,15 @@ const BOARD_NAMES: Record<number, string> = {
 
 // Default region for placeholder locations, keyed by board. Monday hotels
 // without a mirror9 outlet code get a placeholder `locations` row so their
-// commission tiers import; since we don't know the real region, we seed UK
-// (prod has no AU region — Australia hotels will need operator reassignment
-// via the admin UI once they go live in prod). Ready-to-Launch / Removed
-// boards don't produce placeholders (see PLACEHOLDER_IMPORT_BOARDS).
+// commission tiers import; since we don't know the real region, we seed by
+// board geography. Operators can reassign per-hotel via the region picker
+// in /settings/outlet-types. Ready-to-Launch / Removed boards don't produce
+// placeholders (see PLACEHOLDER_IMPORT_BOARDS).
 const BOARD_REGION: Record<number, string> = {
   1356570756: "UK", // Live Estate — default; operator reassigns per-hotel if wrong
   1743012104: "UK", // Ready to Launch — not imported (see PLACEHOLDER_IMPORT_BOARDS)
   5026387784: "UK", // Removed — not imported
-  5092887865: "UK", // Australia DCM — default; no AU region on prod yet
+  5092887865: "AU", // Australia DCM — defaults to AU (added in migration 0025)
 };
 
 // Boards whose no-outlet-code hotels get promoted from silent-skip to
