@@ -17,8 +17,8 @@
  * integration tests can drive them directly against Testcontainers Postgres.
  */
 
-import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
-import { auditLogs, locations, salesRecords } from "@/db/schema";
+import { and, asc, desc, eq, gte, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { auditLogs, locations, regions, salesRecords } from "@/db/schema";
 import { suggestLocationType } from "@/lib/locations/suggest-location-type";
 import type { LocationType } from "@/lib/analytics/types";
 import { writeAuditLog } from "@/lib/audit";
@@ -38,8 +38,15 @@ export type OutletTypeActor = { id: string; name: string };
  * `MONDAY-<mondayItemId>` placeholder and the region defaults to UK, so the
  * operator needs to both classify AND verify the region before these rows are
  * analytics-safe).
+ *
+ * `classified` is set only when the caller passes `includeClassified: true` —
+ * surfaces rows that already have a `location_type`, so operators can re-edit
+ * them (correct misclassifications without going via the audit log).
  */
-export type ReviewReason = "missing_type" | "imported_from_monday";
+export type ReviewReason =
+  | "missing_type"
+  | "imported_from_monday"
+  | "classified";
 
 export type UnclassifiedOutletRow = {
   id: string;
@@ -48,25 +55,62 @@ export type UnclassifiedOutletRow = {
   last30dRevenue: number;
   last30dTransactions: number;
   suggestedType: LocationType | null;
+  /**
+   * Current location type — null for unclassified rows (the default state),
+   * populated for classified rows surfaced via `includeClassified: true` so
+   * the table can pre-select the row's existing type in the picker.
+   */
+  currentType: LocationType | null;
   notes: string | null;
   reviewReason: ReviewReason;
+  // The location's current region — surfaced so operators can sanity-check the
+  // Monday placeholders (which all default to UK) and reassign in-place.
+  primaryRegionId: string;
+  primaryRegionCode: string;
+};
+
+export type RegionOption = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export type ListUnclassifiedOutletsOptions = {
+  /**
+   * When true, drops the `location_type IS NULL` filter so already-classified
+   * rows surface alongside unclassified ones. Operators can then re-edit a
+   * misclassification without going via the audit log. Archived rows stay
+   * excluded regardless.
+   */
+  includeClassified?: boolean;
 };
 
 /**
- * List all locations with `locationType IS NULL AND archivedAt IS NULL`,
- * annotated with their last-30d revenue + transaction count (LEFT JOIN so
- * outlets with zero recent sales still surface) and a classifier suggestion.
+ * List locations with `archivedAt IS NULL`, annotated with their last-30d
+ * revenue + transaction count (LEFT JOIN so outlets with zero recent sales
+ * still surface) and a classifier suggestion.
  *
- * Ordered by revenue DESC NULLS LAST — the busiest unclassified outlets
- * float to the top for the admin to triage first.
+ * By default scoped to `locationType IS NULL` — the "needs review" backlog.
+ * Pass `{ includeClassified: true }` to surface classified rows as well so
+ * operators can re-classify in place.
+ *
+ * Ordered by revenue DESC NULLS LAST — the busiest outlets float to the top
+ * for the admin to triage first.
  */
 export async function _listUnclassifiedOutletsForActor(
   db: AnyDb,
+  options: ListUnclassifiedOutletsOptions = {},
 ): Promise<UnclassifiedOutletRow[]> {
   // Snapshot "now - 30d" once in JS so every row sees the same cutoff; easier
   // to reason about than pushing `now()` into SQL.
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgoDate = thirtyDaysAgo.toISOString().slice(0, 10);
+
+  // Conditional WHERE: archived always excluded; locationType IS NULL only
+  // when includeClassified is false (the default).
+  const whereClause = options.includeClassified
+    ? isNull(locations.archivedAt)
+    : and(isNull(locations.locationType), isNull(locations.archivedAt));
 
   const rows = await db
     .select({
@@ -77,10 +121,14 @@ export async function _listUnclassifiedOutletsForActor(
       numRooms: locations.numRooms,
       starRating: locations.starRating,
       notes: locations.notes,
+      locationType: locations.locationType,
+      primaryRegionId: locations.primaryRegionId,
+      primaryRegionCode: regions.code,
       revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}), 0)`,
       transactions: sql<string>`COALESCE(COUNT(${salesRecords.id}), 0)`,
     })
     .from(locations)
+    .innerJoin(regions, eq(regions.id, locations.primaryRegionId))
     .leftJoin(
       salesRecords,
       and(
@@ -88,8 +136,8 @@ export async function _listUnclassifiedOutletsForActor(
         gte(salesRecords.transactionDate, thirtyDaysAgoDate),
       ),
     )
-    .where(and(isNull(locations.locationType), isNull(locations.archivedAt)))
-    .groupBy(locations.id)
+    .where(whereClause)
+    .groupBy(locations.id, regions.code)
     .orderBy(desc(sql`COALESCE(SUM(${salesRecords.netAmount}), 0)`));
 
   return rows.map(
@@ -101,32 +149,56 @@ export async function _listUnclassifiedOutletsForActor(
       numRooms: number | null;
       starRating: number | null;
       notes: string | null;
+      locationType: LocationType | null;
+      primaryRegionId: string;
+      primaryRegionCode: string;
       revenue: string;
       transactions: string;
-    }) => ({
-      id: r.id,
-      outletCode: r.outletCode,
-      name: r.name,
-      last30dRevenue: Number(r.revenue),
-      last30dTransactions: Number(r.transactions),
-      suggestedType: suggestLocationType({
-        name: r.name,
+    }) => {
+      // Review-reason precedence: a classified row reports `classified` even
+      // when its outletCode is a MONDAY-* placeholder — the operator already
+      // resolved that placeholder, so the relevant signal now is "this row
+      // is editable, not new".
+      const reviewReason: ReviewReason =
+        r.locationType !== null
+          ? "classified"
+          : r.outletCode.startsWith("MONDAY-")
+            ? "imported_from_monday"
+            : "missing_type";
+      return {
+        id: r.id,
         outletCode: r.outletCode,
-        hotelGroup: r.hotelGroup,
-        numRooms: r.numRooms,
-        starRating: r.starRating,
-      }),
-      notes: r.notes,
-      // The Monday placeholder script stamps outletCode=`MONDAY-<mondayItemId>`
-      // (see scripts/import-location-products-from-monday.ts). That prefix is
-      // how we distinguish a placeholder from a genuine new outlet surfaced by
-      // the ETL; we don't add a separate `review_reason` column because the
-      // prefix already encodes the signal 1:1 with `notes`.
-      reviewReason: r.outletCode.startsWith("MONDAY-")
-        ? ("imported_from_monday" as const)
-        : ("missing_type" as const),
-    }),
+        name: r.name,
+        last30dRevenue: Number(r.revenue),
+        last30dTransactions: Number(r.transactions),
+        suggestedType: suggestLocationType({
+          name: r.name,
+          outletCode: r.outletCode,
+          hotelGroup: r.hotelGroup,
+          numRooms: r.numRooms,
+          starRating: r.starRating,
+        }),
+        currentType: r.locationType,
+        notes: r.notes,
+        reviewReason,
+        primaryRegionId: r.primaryRegionId,
+        primaryRegionCode: r.primaryRegionCode,
+      };
+    },
   );
+}
+
+/**
+ * List all regions for the bulk + per-row region picker, ordered by name.
+ * Surfaced via the actions wrapper so the page can pass DB-backed options
+ * to the client island (vs hardcoding CZ/DE/ES/IE/UK).
+ */
+export async function _listRegionsForActor(db: AnyDb): Promise<RegionOption[]> {
+  const rows = await db
+    .select({ id: regions.id, code: regions.code, name: regions.name })
+    .from(regions)
+    .orderBy(asc(regions.name));
+  return rows as RegionOption[];
 }
 
 /**
@@ -211,5 +283,191 @@ export async function _bulkSetLocationTypeForActor(
         newValue: type,
       })),
     );
+  });
+}
+
+/**
+ * Look up a region by id, throw a clean message if it doesn't exist. Used as
+ * a pre-flight by both region setters so a bad regionId doesn't surface as an
+ * opaque PG FK violation.
+ */
+async function assertRegionExists(db: AnyDb, regionId: string): Promise<void> {
+  const [region] = await db
+    .select({ id: regions.id })
+    .from(regions)
+    .where(eq(regions.id, regionId));
+  if (!region) throw new Error(`Region ${regionId} not found`);
+}
+
+/**
+ * Reassign a single location's primaryRegionId. Validates the region first,
+ * then read + update + audit inside one transaction. The composite-unique
+ * constraint on (primaryRegionId, outletCode) can fire here; we surface the
+ * conflict as a recognisable error message rather than a raw PG code.
+ */
+export async function _setPrimaryRegionForActor(
+  db: AnyDb,
+  actor: OutletTypeActor,
+  locationId: string,
+  regionId: string,
+): Promise<void> {
+  await assertRegionExists(db, regionId);
+  await db.transaction(async (tx: AnyDb) => {
+    const [before] = await tx
+      .select({
+        primaryRegionId: locations.primaryRegionId,
+        name: locations.name,
+        outletCode: locations.outletCode,
+      })
+      .from(locations)
+      .where(eq(locations.id, locationId));
+    if (!before) throw new Error(`Location ${locationId} not found`);
+
+    // Pre-flight composite-unique check: would another location in the target
+    // region already own this outletCode? Cheaper to check than to catch the
+    // PG 23505 and re-classify it.
+    if (before.primaryRegionId !== regionId) {
+      const conflicts = await tx
+        .select({ id: locations.id })
+        .from(locations)
+        .where(
+          and(
+            eq(locations.primaryRegionId, regionId),
+            eq(locations.outletCode, before.outletCode),
+          ),
+        );
+      if (conflicts.length > 0) {
+        throw new Error(
+          `Cannot move ${before.outletCode}: another location with that outlet code already exists in the target region`,
+        );
+      }
+    }
+
+    await tx
+      .update(locations)
+      .set({ primaryRegionId: regionId, updatedAt: new Date() })
+      .where(eq(locations.id, locationId));
+
+    await writeAuditLog(
+      {
+        actorId: actor.id,
+        actorName: actor.name,
+        entityType: "location",
+        entityId: locationId,
+        entityName: before.name,
+        action: "set_primary_region",
+        field: "primary_region_id",
+        oldValue: before.primaryRegionId,
+        newValue: regionId,
+      },
+      tx,
+    );
+  });
+}
+
+export type BulkRegionResult = {
+  okIds: string[];
+  conflictingIds: string[];
+};
+
+/**
+ * Bulk reassign primaryRegionId for many locations. Pre-flight pass identifies
+ * which ids would collide on the (primary_region_id, outlet_code) composite
+ * unique — those are skipped, the rest are applied + audited atomically.
+ *
+ * Mirrors `_bulkSetLocationTypeForActor`: read-current + UPDATE + multi-row
+ * INSERT into audit_logs, all in one transaction. Empty input is a no-op so
+ * the audit log stays clean (matches the type-bulk helper).
+ */
+export async function _bulkSetPrimaryRegionForActor(
+  db: AnyDb,
+  actor: OutletTypeActor,
+  locationIds: string[],
+  regionId: string,
+): Promise<BulkRegionResult> {
+  if (locationIds.length === 0) return { okIds: [], conflictingIds: [] };
+  await assertRegionExists(db, regionId);
+
+  return await db.transaction(async (tx: AnyDb) => {
+    const rows = (await tx
+      .select({
+        id: locations.id,
+        name: locations.name,
+        outletCode: locations.outletCode,
+        primaryRegionId: locations.primaryRegionId,
+      })
+      .from(locations)
+      .where(inArray(locations.id, locationIds))) as Array<{
+      id: string;
+      name: string;
+      outletCode: string;
+      primaryRegionId: string;
+    }>;
+
+    // Conflict pre-flight: any other location already in the target region
+    // with one of our outlet codes? Build a set of "taken" outlet codes in
+    // the target region, then filter our candidates against it. We exclude
+    // the candidates themselves from the lookup (a location moving from
+    // region X to region Y can keep its own outlet code).
+    const candidateOutletCodes = rows
+      .filter((r) => r.primaryRegionId !== regionId)
+      .map((r) => r.outletCode);
+
+    const takenOutletCodes = new Set<string>();
+    if (candidateOutletCodes.length > 0) {
+      const candidateIds = rows.map((r) => r.id);
+      const taken = (await tx
+        .select({ outletCode: locations.outletCode })
+        .from(locations)
+        .where(
+          and(
+            eq(locations.primaryRegionId, regionId),
+            inArray(locations.outletCode, candidateOutletCodes),
+            // Exclude the candidates themselves — if loc X is already in the
+            // target region with code Q5, moving it "to itself" is a no-op,
+            // not a conflict.
+            notInArray(locations.id, candidateIds),
+          ),
+        )) as Array<{ outletCode: string }>;
+      for (const t of taken) takenOutletCodes.add(t.outletCode);
+    }
+
+    const okRows = rows.filter(
+      (r) =>
+        r.primaryRegionId === regionId || !takenOutletCodes.has(r.outletCode),
+    );
+    const conflictingIds = rows
+      .filter(
+        (r) =>
+          r.primaryRegionId !== regionId && takenOutletCodes.has(r.outletCode),
+      )
+      .map((r) => r.id);
+
+    if (okRows.length === 0) {
+      return { okIds: [], conflictingIds };
+    }
+
+    const okIds = okRows.map((r) => r.id);
+
+    await tx
+      .update(locations)
+      .set({ primaryRegionId: regionId, updatedAt: new Date() })
+      .where(inArray(locations.id, okIds));
+
+    await tx.insert(auditLogs).values(
+      okRows.map((r) => ({
+        actorId: actor.id,
+        actorName: actor.name,
+        entityType: "location" as const,
+        entityId: r.id,
+        entityName: r.name,
+        action: "set_primary_region" as const,
+        field: "primary_region_id",
+        oldValue: r.primaryRegionId,
+        newValue: regionId,
+      })),
+    );
+
+    return { okIds, conflictingIds };
   });
 }

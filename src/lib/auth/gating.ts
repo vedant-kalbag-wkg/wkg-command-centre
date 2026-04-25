@@ -7,7 +7,9 @@
  * auth redirect handles separately).
  *
  * Anything else is gated; middleware should redirect to
- * /portal/analytics/portfolio.
+ * /portal/coming-soon while the portal is feature-paused
+ * (archive/portal-lockdown-2026-04-25). When the portal is revived, this
+ * destination flips back to /portal/analytics/portfolio.
  *
  * Internal users are never gated by this helper.
  */

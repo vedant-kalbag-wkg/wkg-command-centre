@@ -34,6 +34,7 @@ const MANIFEST_PATH = "migrations/meta/_journal.json";
 const MIGRATIONS = [
   "0022_restructure_salesrecords_region_scoped",
   "0023_sales_imports_region_id",
+  "0025_au_region",
 ];
 
 async function main() {

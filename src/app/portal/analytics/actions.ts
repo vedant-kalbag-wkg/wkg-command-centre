@@ -17,6 +17,16 @@ import {
 import type { DimensionOptions } from "@/lib/analytics/types";
 
 export async function getScopedDimensionOptions(): Promise<DimensionOptions> {
+  // Portal feature-paused 2026-04-25 (see archive/portal-lockdown-2026-04-25).
+  // Guard against any stale client component still importing this so it
+  // can't reach the DB while the portal is dark. The `as boolean` cast keeps
+  // TypeScript's flow-narrowing intact below so the original implementation
+  // (preserved verbatim for revival) still type-checks.
+  if (true as boolean) {
+    throw new Error("External portal is currently disabled");
+  }
+  // The original implementation is preserved below for revival; reverting
+  // the lockdown tag restores the call site.
   const userCtx = await getUserCtx();
   const userId = userCtx.id;
   const scopes = await db

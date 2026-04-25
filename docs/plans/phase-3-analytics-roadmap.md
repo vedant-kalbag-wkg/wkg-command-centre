@@ -1,144 +1,68 @@
-# Phase 3 — Analytics Enhancement Roadmap
+# Project Roadmap
 
-**Date:** 2026-04-17
-**Status:** Planning
-**Prerequisite:** Phase 2 complete (M7-M9 merged)
+**Last updated:** 2026-04-25
+**Branch in flight:** `feat/admin-triggers-and-etl-smoke` (admin operations + ETL smoke)
+**Most recent merged milestone:** Phase 3+4 admin operations + property-first analytics (PR #25 merged earlier 2026-04-25)
 
-## Context
+## Status by milestone
 
-This roadmap captures analytics feature requests, data quality improvements, and known bugs identified from the original analytics repo demo. These items extend the analytics capabilities built in Phase 1 (M6) and Phase 2 (M7-M9 portal + invite + impersonation).
+### M10 — Bug Fixes + Data Quality Foundations — DONE
+- BUG-01 trend-builder date range — `src/app/(app)/analytics/trend-builder/page.tsx`
+- BUG-02 pivot MoM/YoY — `src/app/(app)/analytics/pivot-table/`
+- M10.2 markets hierarchy — `markets` table + `regions.marketId` FK + `useMarketGroups` in region selector
+- M10.3 operating-group mapping — `locations.operating_group_id` FK
+- M10.4 data-quality dashboard — `/settings/data-quality`
 
----
+### M11 — Performance Flagging & Maturity — DONE
+- M11.1 traffic-light thresholds — `/settings/thresholds` + `classifyTrafficLight` across heat-map + portfolio
+- M11.2 location flagging — `location_flags` table + FlagBadge/FlagDialog wired into heat-map + portfolio + audit log
+- M11.3 high-performer comparison — patterns card on portfolio (post-Phase-4 reshape)
+- M11.4 kiosk maturity — filter + column in heat-map + portfolio + dedicated `/analytics/maturity`
 
-## Known Bugs (Fix First)
+### M12 — Experiment Measurement & Comparison — PARTIAL
+- M12.1 YoY comparison — DONE on portfolio + trend builder
+- M12.2 cohort experiment analysis — DONE; `/analytics/experiments` with intervention overlays
+- **M12.3 seasonality controls — PARTIAL.** Rolling averages (raw / 7d / 30d) shipped on trend builder via `applyRollingAverage`. Missing: period-normalised / index-100 view that compares a window's performance to the same window in prior years. Deferred.
+- **M12.4 saved comparison templates — NOT DONE.** `/analytics/compare` is ad-hoc only. Need a `saved_comparisons` table + named save/load UI. Deferred.
 
-| Bug | Page | Description | Est. |
-|-----|------|-------------|------|
-| **BUG-01** | Trend Builder | Date range selector not showing in the filter bar | 1-2h |
-| **BUG-02** | Pivot Table | MoM and YoY comparison columns are all blank | 2-4h |
+### M13 — Event System & Insight-to-Action — DONE
+- M13.1 event system — `business_events` + categories seeded (Promotion / Holiday / Operational / Market) + EventAnnotations on trend builder + portfolio daily trends
+- M13.2 insight-to-action — `action_items` table + flag-to-action conversion in FlagDialog
+- M13.3 action dashboard — `/analytics/actions-dashboard` with filters + source-back-linking
 
----
+### Phase 4 — Admin Operations & ETL — DONE (current branch)
+Shipped on `feat/admin-triggers-and-etl-smoke` (9 commits — plus the lockdown commit):
+- `/settings/outlet-types` — outlet-type classifier, Monday-placeholder review reason, region picker (single + bulk), show-classified toggle, conflict pre-flight on `(primary_region_id, outlet_code)` (`902eb4d`, `23fed29`)
+- `/settings/data-import/monday` — admin-triggered Monday import (advisory-locked, audited) (`fd59015`, `1c9db46`)
+- `/settings/data-import/azure` — read-only Azure ETL run history with KPIs + filters (`fafc943`)
+- `/settings/audit-log` — read-only audit_logs viewer with filters + pagination (`6a57949`)
+- `regions.AU` (Australia) added with `azure_code='AU'`; Australia DCM placeholders default to AU (`265efdd`)
+- `scripts/seed-testdata-azure.ts` + `npm run seed:azure-testdata` — synthetic 4-day NetSuite CSVs in Azure `testdata` container, smoked end-to-end against a throwaway Neon branch (`cdf6936`)
+- Sidebar wiring for Audit Log + Azure ETL Runs (`a720ee2`)
+- Azure ETL Vercel cron — wired at `vercel.json` (`0 4 * * *` → `/api/etl/azure/run`)
+- Drizzle migrator skip-by-max-timestamp bug — patched via `patch-package` (`patches/drizzle-orm+0.45.2.patch`, originally landed on `main` in `0f19cd6`)
+- External portal locked down (`archive/portal-lockdown-2026-04-25` — see Deferred)
 
-## Milestone Breakdown
+## Deferred / future work
 
-### M10 — Bug Fixes + Data Quality Foundations (8-12h)
+| Item | Source | Note |
+|---|---|---|
+| **M12.3** Seasonality / period-normalised view | Roadmap | Rolling averages shipped; index-100 / YoY-overlay charts still missing |
+| **M12.4** Saved comparison templates | Roadmap | Need `saved_comparisons` table + named save/load on `/analytics/compare` |
+| **External portal** | `phase-2-external-portal.md` (deleted) | Half-built; locked down 2026-04-25 — `/portal/analytics/*` redirects to `/portal/coming-soon`. Revive with `git revert archive/portal-lockdown-2026-04-25` once external-user scoping is wired through every analytics surface. |
+| **9 Australia kiosks → AU region** | Operator task | AU region now exists; their associated locations still on UK by default. Operator triage via `/settings/outlet-types?showClassified=1` + Region picker. No code work. |
+| **Drizzle upstream PR** | `0f19cd6` follow-up | Local patch in `patches/`; upstream contribution still TBD |
 
-**M10.1: Bug fixes**
-- BUG-01: Trend builder date range selector not rendering
-- BUG-02: Pivot table MoM/YoY comparison columns blank
-- Investigate and fix any other report-builder interaction issues from demo
+## Operational notes
 
-**M10.2: Geographic hierarchy standardization**
-- Add `market` entity (above region in hierarchy): Market → Region → Location Group
-- Schema: `markets` table + `region.marketId` FK
-- Seed initial market data
-- Update region analytics to show market grouping
+- **Vercel envs**: `AZURE_STORAGE_CONNECTION_STRING` + `MONDAY_API_TOKEN` on production. Preview has `DATABASE_URL` + `BETTER_AUTH_SECRET` scoped to the branch `feat/netsuite-etl-data-model` (now merged) — flip to "all preview branches" in Vercel UI before the next preview is needed.
+- **Neon backup branches**: keep `pre-monday-placeholders-20260424T181301`, `pre-au-region-2026...`, `pre-monday-import-20260424T175609`, `pre-migration-0024-20260424T145839` until ~2026-05-01 then delete.
+- **Azure containers**: `clientdata` (production NetSuite drops, currently empty until cron's first successful run), `testdata` (4 days × 13-row synthetic seed for smoke runs — persistent).
 
-**M10.3: Hotel ownership/group mapping**
-- Fix hotels under same brand belonging to different operating groups
-- Add `operatingGroupId` field to locations (distinct from hotelGroup)
-- Data validation: flag locations with missing region/group metadata
-- Admin UI: bulk-assign missing metadata
+## Reading order for new contributors
 
-**M10.4: Data quality controls**
-- Add data completeness dashboard: % of locations with region, hotel group, market assigned
-- Flag records with missing or suspicious values (e.g., zero revenue locations that should have data)
-- Add data quality score per location visible on location detail pages
-
-### M11 — Performance Flagging & Kiosk Maturity (10-14h)
-
-**M11.1: Traffic-light thresholds**
-- Add configurable revenue thresholds (default: Red <500, Amber 501-1499, Green 1500+)
-- Settings page for threshold management (admin only)
-- Apply color-coding to heat map, portfolio outlet tiers, and location group views
-- Portal users see thresholds on their scoped views
-
-**M11.2: Performance flagging & triage**
-- Add "Flag" action on underperforming locations (red/amber)
-- Flag types: Relocate, Monitor, Strategic/Loss-Leader Exception
-- Flags stored in `locationFlags` table with actor, reason, timestamp
-- Flag status visible on location detail, heat map, and portfolio pages
-- Audit log integration for flag changes
-
-**M11.3: High-performer comparison**
-- Add "What do top performers have in common?" view
-- Compare green-tier locations by: hotel group, region, product mix, kiosk count, rooms
-- Surface patterns (e.g., "8 of 10 top performers have 2+ kiosks")
-
-**M11.4: Kiosk maturity analytics**
-- Calculate maturity buckets from `kiosks.goLiveDate`: 0-1mo, 1-3mo, 3-6mo, 6+mo
-- Add maturity as a filter/segment in analytics filter bar
-- Performance comparison across maturity stages (revenue curve by age)
-- Maturity column in heat map and outlet tier tables
-
-### M12 — Experiment Measurement & Comparison UX (10-14h)
-
-**M12.1: Year-over-year comparison**
-- Add YoY toggle to portfolio and trend builder pages
-- Compare selected date range vs same period previous year
-- Show delta (absolute + percentage) for all KPIs
-- Fix the existing pivot table MoM/YoY (BUG-02 in M10) as foundation
-
-**M12.2: Cohort experiment analysis**
-- Select a cohort of locations (e.g., "5 hotels across Spain, Germany, UK")
-- Save cohorts as named groups (persisted in `experimentCohorts` table)
-- Compare cohort metrics to control group (rest of portfolio or named control)
-- Overlay intervention dates on trend charts
-
-**M12.3: Seasonality controls**
-- Add period-normalized views: compare performance adjusted for seasonal patterns
-- Rolling averages (7-day, 30-day) as trend builder options
-- Index-based comparison: current performance vs historical same-period average
-
-**M12.4: Comparison UX improvements**
-- Entity vs entity comparison workflow: select 2+ locations/groups → side-by-side
-- Hotel group within region breakdown
-- Revenue trends by month (quick report)
-- Saved comparison templates ("My comparisons") for repeat use
-
-### M13 — Event System & Insight-to-Action (8-12h)
-
-**M13.1: Event & annotation system**
-- Complete event overlay categories: Promotions, Operational Changes, Market Events, Holidays
-- Event CRUD: date range, entity targeting (global/region/hotel/location)
-- Reliable rendering in trend builder + portfolio daily trends
-- Event filtering: show/hide by category, scope to selected entities
-
-**M13.2: Insight-to-action workflow**
-- Turn flagged issues into trackable action items
-- Action types: Investigation, Relocation, Training, Equipment Change
-- Assign owner + due date to actions
-- Action status: Open → In Progress → Resolved
-- Outcome tracking: did the action improve the metric?
-
-**M13.3: Action dashboard**
-- List view of all open actions across the portfolio
-- Filter by: action type, owner, location, status
-- Link back to the original insight/flag that triggered the action
-- Resolution summary: what was done, when, and what changed
-
----
-
-## Success Criteria (Phase 3 Complete)
-
-- [ ] Both known bugs fixed (trend builder date range, pivot MoM/YoY)
-- [ ] Geographic hierarchy includes markets, all locations have region+group assigned
-- [ ] Traffic-light thresholds visible across analytics pages
-- [ ] Admins can flag and triage underperforming locations
-- [ ] Kiosk maturity available as filter and comparison dimension
-- [ ] YoY comparison working in portfolio and trend builder
-- [ ] Cohort experiment analysis with intervention overlays
-- [ ] Event system reliably renders across trend views
-- [ ] Flagged insights convert to trackable actions with outcome measurement
-
-## Estimated Effort
-
-| Milestone | Est. Hours | Dependencies |
-|-----------|-----------|-------------|
-| M10 (bugs + data quality) | 8-12h | Phase 2 complete |
-| M11 (flagging + maturity) | 10-14h | M10 |
-| M12 (experiments + comparison) | 10-14h | M10 |
-| M13 (events + actions) | 8-12h | M11 |
-| **Total** | **36-52h** | |
-
-M11 and M12 can run in parallel after M10. M13 depends on M11 (flagging feeds into actions).
+1. `README.md` — project overview
+2. `CLAUDE.md` — branch and dev conventions (npm lockfile gotcha is in here)
+3. This file — current state + what's deferred
+4. `docs/plans/2026-04-24-netsuite-etl-restructure-design.md` — Azure ETL design rationale
+5. `docs/plans/2026-04-24-phase-3-outlet-types-phase-4-property-performers.md` — most recent merged feature work

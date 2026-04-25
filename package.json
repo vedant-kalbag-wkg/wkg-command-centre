@@ -17,6 +17,7 @@
     "db:enrich:locations": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/enrich-locations-from-monday.ts",
     "db:import:location-products": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/import-location-products-from-monday.ts",
     "etl:azure": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/run-azure-etl.ts",
+    "seed:azure-testdata": "npx tsx --env-file=.env.local --tsconfig tsconfig.json scripts/seed-testdata-azure.ts",
     "test:e2e:remote": "playwright test --config=playwright.remote.config.ts"
   },
   "dependencies": {
