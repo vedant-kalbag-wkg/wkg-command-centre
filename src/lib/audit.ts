@@ -31,6 +31,7 @@ export async function writeAuditLog(
       | "recalculate"
       | "purge"
       | "set_location_type"
+      | "set_primary_region"
       | "monday_import_triggered";
     field?: string;
     oldValue?: string;

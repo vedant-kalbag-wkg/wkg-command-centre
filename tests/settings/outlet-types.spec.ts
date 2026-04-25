@@ -45,10 +45,21 @@ test("@settings/outlet-types classify → Location Type filter shows Airport", a
     )?.trim();
     expect(outletCode, "outlet code should be readable").toBeTruthy();
 
-    // Open the per-row type dropdown. The trigger is the Select's button
-    // inside the row — there's one Select and one Save button per row, so
-    // first() on a role-scoped query is stable.
-    const typeTrigger = firstRow.getByRole("combobox").first();
+    // Per-row layout: row checkbox | outlet code | name | review reason |
+    // last30d revenue | last30d txns | suggested | REGION select |
+    // TYPE select | Save. Two combobox triggers per row — region first,
+    // type second.
+    const regionTrigger = firstRow.getByRole("combobox").nth(0);
+    const typeTrigger = firstRow.getByRole("combobox").nth(1);
+
+    // Region picker smoke test — open the region select and confirm the
+    // options dropdown rendered (we don't change region here to keep the
+    // happy-path classify flow simple, but we want to know the dropdown
+    // mounts without a runtime error). Press Escape to close.
+    await regionTrigger.click();
+    await expect(page.getByRole("option").first()).toBeVisible();
+    await page.keyboard.press("Escape");
+
     await typeTrigger.click();
 
     // shadcn Select renders options in a portal, so scope via role not

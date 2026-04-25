@@ -35,11 +35,17 @@ import {
   LOCATION_TYPE_LABELS,
   type LocationType,
 } from "@/lib/analytics/types";
-import { bulkSetLocationTypeAction, setLocationTypeAction } from "./actions";
-import type { UnclassifiedOutletRow } from "./pipeline";
+import {
+  bulkSetLocationTypeAction,
+  bulkSetPrimaryRegionAction,
+  setLocationTypeAction,
+  setPrimaryRegionAction,
+} from "./actions";
+import type { RegionOption, UnclassifiedOutletRow } from "./pipeline";
 
 interface OutletTypesTableProps {
   initialRows: UnclassifiedOutletRow[];
+  regions: RegionOption[];
 }
 
 // Default fallback for rows where the classifier returned null — picking
@@ -47,7 +53,7 @@ interface OutletTypesTableProps {
 // the outliers rather than choose from scratch on every row.
 const DEFAULT_TYPE: LocationType = "hotel";
 
-export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
+export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps) {
   const router = useRouter();
 
   // Local state mirrors initialRows at mount, then gets mutated optimistically
@@ -67,6 +73,17 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
       return seed;
     },
   );
+  // Region picker state per row — defaults to the row's current region so the
+  // Save button stays disabled until the operator actually changes something.
+  const [selectedRegion, setSelectedRegion] = React.useState<Record<string, string>>(
+    () => {
+      const seed: Record<string, string> = {};
+      for (const row of initialRows) {
+        seed[row.id] = row.primaryRegionId;
+      }
+      return seed;
+    },
+  );
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
 
   if (initialRows !== prevInitialRows) {
@@ -79,6 +96,13 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
       }
       return next;
     });
+    setSelectedRegion((prev) => {
+      const next: Record<string, string> = {};
+      for (const row of initialRows) {
+        next[row.id] = prev[row.id] ?? row.primaryRegionId;
+      }
+      return next;
+    });
     setSelectedIds((prev) => {
       const validIds = new Set(initialRows.map((r) => r.id));
       const next = new Set<string>();
@@ -88,8 +112,23 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
   }
 
   const [bulkType, setBulkType] = React.useState<LocationType>(DEFAULT_TYPE);
+  // Bulk-region default — first region by name (the same order shown in the
+  // dropdown). If `regions` is empty we leave it as undefined; the bulk
+  // toolbar's region button is disabled in that edge case.
+  const [bulkRegion, setBulkRegion] = React.useState<string>(
+    regions[0]?.id ?? "",
+  );
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [bulkSaving, setBulkSaving] = React.useState(false);
+  const [bulkRegionSaving, setBulkRegionSaving] = React.useState(false);
+
+  // Lookup helpers for rendering region codes (e.g. UK / DE / ES) without
+  // re-shaping the regions array on every cell render.
+  const regionById = React.useMemo(() => {
+    const m = new Map<string, RegionOption>();
+    for (const r of regions) m.set(r.id, r);
+    return m;
+  }, [regions]);
 
   if (rows.length === 0) {
     return (
@@ -124,9 +163,23 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
 
   const handleSave = async (row: UnclassifiedOutletRow) => {
     const type = selectedType[row.id] ?? row.suggestedType ?? DEFAULT_TYPE;
+    const region = selectedRegion[row.id] ?? row.primaryRegionId;
+    const regionChanged = region !== row.primaryRegionId;
+
     setSavingId(row.id);
     try {
+      // Region update first so a successful type save can drop the row
+      // without losing the region change.
+      if (regionChanged) {
+        const result = await setPrimaryRegionAction(row.id, region);
+        if (result.status === "conflict") {
+          toast.error(result.message);
+          return;
+        }
+      }
+
       await setLocationTypeAction(row.id, type);
+
       // Optimistic removal — server already persisted.
       setRows((prev) => prev.filter((r) => r.id !== row.id));
       setSelectedIds((prev) => {
@@ -134,8 +187,14 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
         next.delete(row.id);
         return next;
       });
+
+      const newRegionCode = regionChanged
+        ? regionById.get(region)?.code ?? region
+        : null;
       toast.success(
-        `Classified ${row.outletCode} as ${LOCATION_TYPE_LABELS[type]}`,
+        regionChanged
+          ? `Classified ${row.outletCode} as ${LOCATION_TYPE_LABELS[type]} (moved to ${newRegionCode})`
+          : `Classified ${row.outletCode} as ${LOCATION_TYPE_LABELS[type]}`,
       );
       router.refresh();
     } catch (err) {
@@ -170,6 +229,79 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
     }
   };
 
+  const handleBulkApplyRegion = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || !bulkRegion) return;
+    setBulkRegionSaving(true);
+    try {
+      const { okIds, conflictingIds } = await bulkSetPrimaryRegionAction(
+        ids,
+        bulkRegion,
+      );
+
+      // Reflect the move in local state so the cells update without a full
+      // refresh — the rows stay in the list (region change alone doesn't
+      // satisfy `locationType IS NULL`).
+      const okSet = new Set(okIds);
+      const target = regionById.get(bulkRegion);
+      if (target) {
+        setRows((prev) =>
+          prev.map((r) =>
+            okSet.has(r.id)
+              ? {
+                  ...r,
+                  primaryRegionId: target.id,
+                  primaryRegionCode: target.code,
+                }
+              : r,
+          ),
+        );
+        setSelectedRegion((prev) => {
+          const next = { ...prev };
+          for (const id of okIds) next[id] = target.id;
+          return next;
+        });
+      }
+      // Drop only the successful ids from the selection — leave the
+      // conflicting ones selected so the operator can pick a different
+      // region without re-checking them.
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of okIds) next.delete(id);
+        return next;
+      });
+
+      const targetCode = target?.code ?? "";
+      if (okIds.length > 0 && conflictingIds.length === 0) {
+        toast.success(
+          `Moved ${okIds.length} outlet${okIds.length === 1 ? "" : "s"} to ${targetCode}`,
+        );
+      } else if (okIds.length > 0 && conflictingIds.length > 0) {
+        const conflictingCodes = rows
+          .filter((r) => conflictingIds.includes(r.id))
+          .map((r) => r.outletCode);
+        toast.error(
+          `Moved ${okIds.length} to ${targetCode}; skipped ${conflictingIds.length} (outlet code${conflictingIds.length === 1 ? "" : "s"} ${conflictingCodes.join(", ")} already exist${conflictingIds.length === 1 ? "s" : ""} in ${targetCode})`,
+        );
+      } else {
+        const conflictingCodes = rows
+          .filter((r) => conflictingIds.includes(r.id))
+          .map((r) => r.outletCode);
+        toast.error(
+          `No outlets moved — outlet code${conflictingCodes.length === 1 ? "" : "s"} ${conflictingCodes.join(", ")} already exist${conflictingCodes.length === 1 ? "s" : ""} in ${targetCode}`,
+        );
+      }
+
+      router.refresh();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Bulk region change failed",
+      );
+    } finally {
+      setBulkRegionSaving(false);
+    }
+  };
+
   return (
     <TooltipProvider>
     <div className="space-y-4">
@@ -199,20 +331,52 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
           <Button
             size="sm"
             onClick={handleBulkApply}
-            disabled={bulkSaving}
+            disabled={bulkSaving || bulkRegionSaving}
           >
             {bulkSaving ? (
               <Loader2 className="mr-1.5 size-3.5 animate-spin" />
             ) : (
               <Save className="mr-1.5 size-3.5" />
             )}
-            Apply to selected
+            Apply type to selected
+          </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Set region to</span>
+            <Select
+              value={bulkRegion}
+              onValueChange={(v) => v && setBulkRegion(v)}
+              disabled={regions.length === 0}
+            >
+              <SelectTrigger size="sm" className="min-w-32">
+                <SelectValue placeholder="Region" />
+              </SelectTrigger>
+              <SelectContent>
+                {regions.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.code} — {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleBulkApplyRegion}
+            disabled={bulkSaving || bulkRegionSaving || !bulkRegion}
+          >
+            {bulkRegionSaving ? (
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+            ) : (
+              <Save className="mr-1.5 size-3.5" />
+            )}
+            Apply region to selected
           </Button>
           <Button
             size="sm"
             variant="ghost"
             onClick={() => setSelectedIds(new Set())}
-            disabled={bulkSaving}
+            disabled={bulkSaving || bulkRegionSaving}
           >
             Clear
           </Button>
@@ -237,6 +401,7 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
               <TableHead className="text-right">Last 30d revenue</TableHead>
               <TableHead className="text-right">Last 30d txns</TableHead>
               <TableHead>Suggested</TableHead>
+              <TableHead>Region</TableHead>
               <TableHead>Type</TableHead>
               <TableHead className="w-24" />
             </TableRow>
@@ -313,6 +478,29 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
                   </TableCell>
                   <TableCell>
                     <Select
+                      value={selectedRegion[row.id] ?? row.primaryRegionId}
+                      onValueChange={(v) =>
+                        v &&
+                        setSelectedRegion((prev) => ({
+                          ...prev,
+                          [row.id]: v,
+                        }))
+                      }
+                    >
+                      <SelectTrigger size="sm" className="min-w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {regions.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Select
                       value={current}
                       onValueChange={(v) =>
                         v &&
@@ -339,7 +527,7 @@ export function OutletTypesTable({ initialRows }: OutletTypesTableProps) {
                       size="sm"
                       variant="outline"
                       onClick={() => handleSave(row)}
-                      disabled={isSaving || bulkSaving}
+                      disabled={isSaving || bulkSaving || bulkRegionSaving}
                     >
                       {isSaving ? (
                         <Loader2 className="mr-1.5 size-3.5 animate-spin" />
