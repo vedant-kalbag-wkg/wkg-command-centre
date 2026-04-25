@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -15,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -46,6 +48,11 @@ import type { RegionOption, UnclassifiedOutletRow } from "./pipeline";
 interface OutletTypesTableProps {
   initialRows: UnclassifiedOutletRow[];
   regions: RegionOption[];
+  /**
+   * Whether classified rows are currently included in the listing. Drives
+   * the "Show classified" Switch state and the empty-state copy.
+   */
+  showClassified: boolean;
 }
 
 // Default fallback for rows where the classifier returned null — picking
@@ -53,7 +60,11 @@ interface OutletTypesTableProps {
 // the outliers rather than choose from scratch on every row.
 const DEFAULT_TYPE: LocationType = "hotel";
 
-export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps) {
+export function OutletTypesTable({
+  initialRows,
+  regions,
+  showClassified,
+}: OutletTypesTableProps) {
   const router = useRouter();
 
   // Local state mirrors initialRows at mount, then gets mutated optimistically
@@ -68,7 +79,11 @@ export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps
     () => {
       const seed: Record<string, LocationType> = {};
       for (const row of initialRows) {
-        seed[row.id] = row.suggestedType ?? DEFAULT_TYPE;
+        // For classified rows surfaced via showClassified, seed with the
+        // current type so the picker reflects "no change" until the operator
+        // picks a different one. Unclassified rows fall back to the
+        // classifier's suggestion (or DEFAULT_TYPE).
+        seed[row.id] = row.currentType ?? row.suggestedType ?? DEFAULT_TYPE;
       }
       return seed;
     },
@@ -92,7 +107,8 @@ export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps
     setSelectedType((prev) => {
       const next: Record<string, LocationType> = {};
       for (const row of initialRows) {
-        next[row.id] = prev[row.id] ?? row.suggestedType ?? DEFAULT_TYPE;
+        next[row.id] =
+          prev[row.id] ?? row.currentType ?? row.suggestedType ?? DEFAULT_TYPE;
       }
       return next;
     });
@@ -130,13 +146,64 @@ export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps
     return m;
   }, [regions]);
 
+  // URL push for the showClassified switch — leaving the rest of the URL
+  // alone so the toggle composes with other deep-link state if it's added
+  // later. We intentionally clear `?page=` (not present today, but cheap
+  // to be defensive) — current listing has no pagination, so this is a no-op.
+  const handleToggleShowClassified = (checked: boolean) => {
+    const params = new URLSearchParams(window.location.search);
+    if (checked) params.set("showClassified", "1");
+    else params.delete("showClassified");
+    const qs = params.toString();
+    router.replace(qs ? `/settings/outlet-types?${qs}` : "/settings/outlet-types");
+  };
+
+  const toggleControl = (
+    <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-4 py-2">
+      <div className="flex items-center gap-2">
+        <Switch
+          id="show-classified-toggle"
+          size="sm"
+          checked={showClassified}
+          onCheckedChange={(v) => handleToggleShowClassified(v === true)}
+        />
+        <Label
+          htmlFor="show-classified-toggle"
+          className="cursor-pointer text-sm"
+        >
+          Show classified
+        </Label>
+      </div>
+      <span className="text-xs text-muted-foreground">
+        {showClassified
+          ? "Showing classified rows so you can re-edit. Toggle off for the unclassified backlog only."
+          : "Toggle on to surface already-classified rows for re-editing."}
+      </span>
+    </div>
+  );
+
   if (rows.length === 0) {
+    // Empty-state copy depends on whether classified rows are surfaced too.
+    // showClassified=on → "no outlets at all match these filters" (the
+    // operator filtered too aggressively or the DB really is empty);
+    // showClassified=off → the original "all classified" celebration.
     return (
-      <EmptyState
-        icon={CheckCircle2}
-        title="All outlets classified"
-        description="Nothing to do here — new outlets will appear as soon as they land from the next ETL run."
-      />
+      <div className="space-y-4">
+        {toggleControl}
+        {showClassified ? (
+          <EmptyState
+            icon={CheckCircle2}
+            title="No outlets at all match these filters"
+            description="No active outlets are visible — check region scoping or wait for the next ETL run."
+          />
+        ) : (
+          <EmptyState
+            icon={CheckCircle2}
+            title="All outlets classified"
+            description="Nothing to do here — new outlets will appear as soon as they land from the next ETL run."
+          />
+        )}
+      </div>
     );
   }
 
@@ -180,13 +247,38 @@ export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps
 
       await setLocationTypeAction(row.id, type);
 
-      // Optimistic removal — server already persisted.
-      setRows((prev) => prev.filter((r) => r.id !== row.id));
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(row.id);
-        return next;
-      });
+      // Optimistic update: when showClassified is OFF, classifying the row
+      // drops it out of the backlog → remove from local state. When
+      // showClassified is ON the row stays visible but with the new type
+      // reflected → mutate it in place (and update the review-reason badge).
+      if (showClassified) {
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === row.id
+              ? {
+                  ...r,
+                  currentType: type,
+                  reviewReason: "classified" as const,
+                  // Mirror the region change if it happened.
+                  ...(regionChanged
+                    ? {
+                        primaryRegionId: region,
+                        primaryRegionCode:
+                          regionById.get(region)?.code ?? r.primaryRegionCode,
+                      }
+                    : {}),
+                }
+              : r,
+          ),
+        );
+      } else {
+        setRows((prev) => prev.filter((r) => r.id !== row.id));
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(row.id);
+          return next;
+        });
+      }
 
       const newRegionCode = regionChanged
         ? regionById.get(region)?.code ?? region
@@ -214,7 +306,23 @@ export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps
     setBulkSaving(true);
     try {
       await bulkSetLocationTypeAction(ids, bulkType);
-      setRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      // showClassified ON: rows stay (now reclassified). OFF: rows drop out
+      // of the backlog → remove from local state. Mirrors handleSave.
+      if (showClassified) {
+        setRows((prev) =>
+          prev.map((r) =>
+            selectedIds.has(r.id)
+              ? {
+                  ...r,
+                  currentType: bulkType,
+                  reviewReason: "classified" as const,
+                }
+              : r,
+          ),
+        );
+      } else {
+        setRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      }
       setSelectedIds(new Set());
       toast.success(
         `Classified ${ids.length} outlet${ids.length === 1 ? "" : "s"} as ${LOCATION_TYPE_LABELS[bulkType]}`,
@@ -305,6 +413,7 @@ export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps
   return (
     <TooltipProvider>
     <div className="space-y-4">
+      {toggleControl}
       {selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/30 px-4 py-3">
           <span className="text-sm font-medium">
@@ -426,7 +535,16 @@ export function OutletTypesTable({ initialRows, regions }: OutletTypesTableProps
                   </TableCell>
                   <TableCell className="font-medium">{row.name}</TableCell>
                   <TableCell>
-                    {row.reviewReason === "imported_from_monday" ? (
+                    {row.reviewReason === "classified" ? (
+                      // Emerald — already classified, surfaced via the
+                      // "Show classified" toggle so the operator can edit it.
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                      >
+                        Classified
+                      </Badge>
+                    ) : row.reviewReason === "imported_from_monday" ? (
                       // Amber/warning styling — this row was auto-created by
                       // the Monday import script with a MONDAY-<itemId>
                       // placeholder outletCode. Operators need to verify the

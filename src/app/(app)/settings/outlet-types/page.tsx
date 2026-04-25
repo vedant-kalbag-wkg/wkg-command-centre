@@ -8,15 +8,33 @@ import {
 } from "./pipeline";
 import { OutletTypesTable } from "./outlet-types-table";
 
-export default async function OutletTypesPage() {
+function readParam(
+  v: string | string[] | undefined,
+): string | undefined {
+  if (Array.isArray(v)) v = v[0];
+  if (!v) return undefined;
+  return v;
+}
+
+export default async function OutletTypesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   try {
     await requireRole("admin");
   } catch {
     redirect("/settings");
   }
 
+  const sp = await searchParams;
+  // `?showClassified=1` = include already-classified rows so operators can
+  // re-edit them in place. Default behaviour (param absent) is the original
+  // backlog-only listing.
+  const showClassified = readParam(sp.showClassified) === "1";
+
   const [initialRows, regions] = await Promise.all([
-    _listUnclassifiedOutletsForActor(db),
+    _listUnclassifiedOutletsForActor(db, { includeClassified: showClassified }),
     _listRegionsForActor(db),
   ]);
 
@@ -28,7 +46,11 @@ export default async function OutletTypesPage() {
         count={initialRows.length}
       />
       <div className="flex-1 overflow-auto p-4 md:p-6">
-        <OutletTypesTable initialRows={initialRows} regions={regions} />
+        <OutletTypesTable
+          initialRows={initialRows}
+          regions={regions}
+          showClassified={showClassified}
+        />
       </div>
     </div>
   );

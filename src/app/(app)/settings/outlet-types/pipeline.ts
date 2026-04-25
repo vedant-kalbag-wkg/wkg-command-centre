@@ -38,8 +38,15 @@ export type OutletTypeActor = { id: string; name: string };
  * `MONDAY-<mondayItemId>` placeholder and the region defaults to UK, so the
  * operator needs to both classify AND verify the region before these rows are
  * analytics-safe).
+ *
+ * `classified` is set only when the caller passes `includeClassified: true` —
+ * surfaces rows that already have a `location_type`, so operators can re-edit
+ * them (correct misclassifications without going via the audit log).
  */
-export type ReviewReason = "missing_type" | "imported_from_monday";
+export type ReviewReason =
+  | "missing_type"
+  | "imported_from_monday"
+  | "classified";
 
 export type UnclassifiedOutletRow = {
   id: string;
@@ -48,6 +55,12 @@ export type UnclassifiedOutletRow = {
   last30dRevenue: number;
   last30dTransactions: number;
   suggestedType: LocationType | null;
+  /**
+   * Current location type — null for unclassified rows (the default state),
+   * populated for classified rows surfaced via `includeClassified: true` so
+   * the table can pre-select the row's existing type in the picker.
+   */
+  currentType: LocationType | null;
   notes: string | null;
   reviewReason: ReviewReason;
   // The location's current region — surfaced so operators can sanity-check the
@@ -62,21 +75,42 @@ export type RegionOption = {
   name: string;
 };
 
+export type ListUnclassifiedOutletsOptions = {
+  /**
+   * When true, drops the `location_type IS NULL` filter so already-classified
+   * rows surface alongside unclassified ones. Operators can then re-edit a
+   * misclassification without going via the audit log. Archived rows stay
+   * excluded regardless.
+   */
+  includeClassified?: boolean;
+};
+
 /**
- * List all locations with `locationType IS NULL AND archivedAt IS NULL`,
- * annotated with their last-30d revenue + transaction count (LEFT JOIN so
- * outlets with zero recent sales still surface) and a classifier suggestion.
+ * List locations with `archivedAt IS NULL`, annotated with their last-30d
+ * revenue + transaction count (LEFT JOIN so outlets with zero recent sales
+ * still surface) and a classifier suggestion.
  *
- * Ordered by revenue DESC NULLS LAST — the busiest unclassified outlets
- * float to the top for the admin to triage first.
+ * By default scoped to `locationType IS NULL` — the "needs review" backlog.
+ * Pass `{ includeClassified: true }` to surface classified rows as well so
+ * operators can re-classify in place.
+ *
+ * Ordered by revenue DESC NULLS LAST — the busiest outlets float to the top
+ * for the admin to triage first.
  */
 export async function _listUnclassifiedOutletsForActor(
   db: AnyDb,
+  options: ListUnclassifiedOutletsOptions = {},
 ): Promise<UnclassifiedOutletRow[]> {
   // Snapshot "now - 30d" once in JS so every row sees the same cutoff; easier
   // to reason about than pushing `now()` into SQL.
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgoDate = thirtyDaysAgo.toISOString().slice(0, 10);
+
+  // Conditional WHERE: archived always excluded; locationType IS NULL only
+  // when includeClassified is false (the default).
+  const whereClause = options.includeClassified
+    ? isNull(locations.archivedAt)
+    : and(isNull(locations.locationType), isNull(locations.archivedAt));
 
   const rows = await db
     .select({
@@ -87,6 +121,7 @@ export async function _listUnclassifiedOutletsForActor(
       numRooms: locations.numRooms,
       starRating: locations.starRating,
       notes: locations.notes,
+      locationType: locations.locationType,
       primaryRegionId: locations.primaryRegionId,
       primaryRegionCode: regions.code,
       revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}), 0)`,
@@ -101,7 +136,7 @@ export async function _listUnclassifiedOutletsForActor(
         gte(salesRecords.transactionDate, thirtyDaysAgoDate),
       ),
     )
-    .where(and(isNull(locations.locationType), isNull(locations.archivedAt)))
+    .where(whereClause)
     .groupBy(locations.id, regions.code)
     .orderBy(desc(sql`COALESCE(SUM(${salesRecords.netAmount}), 0)`));
 
@@ -114,35 +149,42 @@ export async function _listUnclassifiedOutletsForActor(
       numRooms: number | null;
       starRating: number | null;
       notes: string | null;
+      locationType: LocationType | null;
       primaryRegionId: string;
       primaryRegionCode: string;
       revenue: string;
       transactions: string;
-    }) => ({
-      id: r.id,
-      outletCode: r.outletCode,
-      name: r.name,
-      last30dRevenue: Number(r.revenue),
-      last30dTransactions: Number(r.transactions),
-      suggestedType: suggestLocationType({
-        name: r.name,
+    }) => {
+      // Review-reason precedence: a classified row reports `classified` even
+      // when its outletCode is a MONDAY-* placeholder — the operator already
+      // resolved that placeholder, so the relevant signal now is "this row
+      // is editable, not new".
+      const reviewReason: ReviewReason =
+        r.locationType !== null
+          ? "classified"
+          : r.outletCode.startsWith("MONDAY-")
+            ? "imported_from_monday"
+            : "missing_type";
+      return {
+        id: r.id,
         outletCode: r.outletCode,
-        hotelGroup: r.hotelGroup,
-        numRooms: r.numRooms,
-        starRating: r.starRating,
-      }),
-      notes: r.notes,
-      // The Monday placeholder script stamps outletCode=`MONDAY-<mondayItemId>`
-      // (see scripts/import-location-products-from-monday.ts). That prefix is
-      // how we distinguish a placeholder from a genuine new outlet surfaced by
-      // the ETL; we don't add a separate `review_reason` column because the
-      // prefix already encodes the signal 1:1 with `notes`.
-      reviewReason: r.outletCode.startsWith("MONDAY-")
-        ? ("imported_from_monday" as const)
-        : ("missing_type" as const),
-      primaryRegionId: r.primaryRegionId,
-      primaryRegionCode: r.primaryRegionCode,
-    }),
+        name: r.name,
+        last30dRevenue: Number(r.revenue),
+        last30dTransactions: Number(r.transactions),
+        suggestedType: suggestLocationType({
+          name: r.name,
+          outletCode: r.outletCode,
+          hotelGroup: r.hotelGroup,
+          numRooms: r.numRooms,
+          starRating: r.starRating,
+        }),
+        currentType: r.locationType,
+        notes: r.notes,
+        reviewReason,
+        primaryRegionId: r.primaryRegionId,
+        primaryRegionCode: r.primaryRegionCode,
+      };
+    },
   );
 }
 

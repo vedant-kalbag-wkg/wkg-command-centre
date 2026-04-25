@@ -565,6 +565,75 @@ describe("outlet-types server actions (pipeline)", () => {
     expect(audits).toHaveLength(0);
   });
 
+  test("includeClassified=true surfaces classified rows alongside NULL-type rows; archived stays excluded", async () => {
+    // Seed three locations:
+    //   - 1 NULL-type (should always show)
+    //   - 1 classified hotel (only shows when includeClassified=true)
+    //   - 1 archived (always excluded, regardless of the option)
+    await ctx.db.insert(locations).values([
+      {
+        name: "NULL Outlet",
+        outletCode: "NUL",
+        primaryRegionId: regionId,
+      },
+      {
+        name: "Classified Hotel",
+        outletCode: "CLS",
+        primaryRegionId: regionId,
+        locationType: "hotel",
+      },
+      {
+        name: "Archived Outlet",
+        outletCode: "ARC",
+        primaryRegionId: regionId,
+        archivedAt: new Date("2025-01-01"),
+      },
+    ]);
+
+    // Default — backwards-compatible behaviour: only the NULL-type row.
+    const defaultRows = await _listUnclassifiedOutletsForActor(ctx.db);
+    expect(defaultRows).toHaveLength(1);
+    expect(defaultRows[0].outletCode).toBe("NUL");
+    expect(defaultRows[0].reviewReason).toBe("missing_type");
+    expect(defaultRows[0].currentType).toBeNull();
+
+    // Explicit `false` matches the default.
+    const explicitFalse = await _listUnclassifiedOutletsForActor(ctx.db, {
+      includeClassified: false,
+    });
+    expect(explicitFalse).toHaveLength(1);
+
+    // includeClassified=true → 2 rows (NULL + classified). Archived still
+    // excluded because archivedAt IS NOT NULL.
+    const expanded = await _listUnclassifiedOutletsForActor(ctx.db, {
+      includeClassified: true,
+    });
+    expect(expanded).toHaveLength(2);
+    const byCode = new Map(expanded.map((r) => [r.outletCode, r]));
+    expect(byCode.has("ARC")).toBe(false);
+    expect(byCode.get("NUL")?.reviewReason).toBe("missing_type");
+    expect(byCode.get("NUL")?.currentType).toBeNull();
+    expect(byCode.get("CLS")?.reviewReason).toBe("classified");
+    expect(byCode.get("CLS")?.currentType).toBe("hotel");
+  });
+
+  test("includeClassified=true: a classified MONDAY-* row reports reviewReason='classified' (classification wins over Monday placeholder)", async () => {
+    await ctx.db.insert(locations).values({
+      name: "Reclassified Monday Hotel",
+      outletCode: "MONDAY-abc789",
+      primaryRegionId: regionId,
+      locationType: "hotel",
+      notes: "Imported from Monday (mondayItemId=abc789)",
+    });
+
+    const rows = await _listUnclassifiedOutletsForActor(ctx.db, {
+      includeClassified: true,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].reviewReason).toBe("classified");
+    expect(rows[0].currentType).toBe("hotel");
+  });
+
   test("bulkSetLocationType with an empty array is a no-op (no writes)", async () => {
     const [loc] = await ctx.db
       .insert(locations)
