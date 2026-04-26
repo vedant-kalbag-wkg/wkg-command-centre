@@ -33,17 +33,18 @@ export function buildDateCondition(filters: AnalyticsFilters): SQL {
   return sql`${salesRecords.transactionDate} >= ${filters.dateFrom} AND ${salesRecords.transactionDate} <= ${filters.dateTo}`;
 }
 
-// Netsuite codes of all WKG-collected fee rows. 9991=Booking Fee sets
-// is_booking_fee=true; 9992=Cash Handling Fee does NOT (the flag is named
-// after its original single purpose). Keep both here so "revenue" mode and
-// the non-fee exclusion agree on what a "fee row" is.
+// NetSuite codes of all WKG-collected fee rows. The CSV parser flips
+// is_weknow_fee=true for either code (D10), so the column is the canonical
+// "is this a fee row?" signal. The list is kept here for the few call sites
+// that need to discriminate between Booking Fee (9991) and Cash Handling
+// Fee (9992) directly.
 export const FEE_NETSUITE_CODES = ["9991", "9992"] as const;
 
-// "A fee row" — either is_booking_fee=true (covers 9991) or netsuite_code=9992.
-// Using an explicit OR keeps us future-proof: a new fee code can be added to
-// FEE_NETSUITE_CODES without requiring a schema change.
+// "A fee row" — single-column predicate post-D10. The parser sets
+// is_weknow_fee=true for NetSuite 9991 + 9992, so we no longer need to
+// OR-in the netsuite_code list at every call site.
 export function buildIsFeeCondition(): SQL {
-  return sql`(${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
+  return sql`${salesRecords.isWeknowFee} = true`;
 }
 
 // Metric-mode filter: 'revenue' restricts to fee rows (WKG's take);
@@ -55,7 +56,7 @@ export function buildMetricModeCondition(filters: AnalyticsFilters): SQL | undef
 // Top-Products excludes fee rows unconditionally (per product-reporting spec:
 // Booking Fee / Cash Handling Fee are not "products" and skew the ranking).
 export function buildNonFeeCondition(): SQL {
-  return sql`NOT (${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
+  return sql`${salesRecords.isWeknowFee} = false`;
 }
 
 // Reversal helpers (D2). is_reversal is true on every refund row (net_amount<0);

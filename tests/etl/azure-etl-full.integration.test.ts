@@ -182,12 +182,13 @@ describe.skipIf(!CSV_PRESENT)("runAzureEtl (full CSV fixture)", () => {
       .from(salesRecords);
     expect(Number(total)).toBe(95103);
 
-    // Booking Fee rows: 45621 by is_booking_fee flag AND 45621 by netsuite_code='9991'.
-    const bookingFees = await ctx.db
+    // WKG-fee rows: 47661 total via is_weknow_fee flag (= 45621 Booking Fee
+    // 9991 + 2040 Cash Handling Fee 9992 — D10 widened the parser).
+    const wkgFees = await ctx.db
       .select({ id: salesRecords.id })
       .from(salesRecords)
       .where(eq(salesRecords.isWeknowFee, true));
-    expect(bookingFees).toHaveLength(45621);
+    expect(wkgFees).toHaveLength(47661);
 
     const code9991 = await ctx.db
       .select({ id: salesRecords.id })

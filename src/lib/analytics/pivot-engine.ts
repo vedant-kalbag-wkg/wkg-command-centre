@@ -32,8 +32,7 @@ import type {
  * same fee rows (9991 Booking Fee + 9992 Cash Handling Fee), otherwise a
  * pivot total and a trend total over the same range will diverge.
  */
-const IS_FEE_RAW_SQL =
-  "(sales_records.is_booking_fee = true OR sales_records.netsuite_code IN ('9991', '9992'))";
+const IS_FEE_RAW_SQL = "sales_records.is_weknow_fee = true";
 
 /**
  * Maps logical column names to qualified SQL expressions.

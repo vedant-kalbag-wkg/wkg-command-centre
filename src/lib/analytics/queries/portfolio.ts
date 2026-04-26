@@ -216,7 +216,7 @@ export async function getTopProducts(
         FROM ${salesRecords} AS parent
         WHERE parent.region_id = ${salesRecords.regionId}
           AND parent.ref_no = REGEXP_REPLACE(${salesRecords.refNo}, '-b$', '')
-          AND NOT (parent.is_booking_fee = true OR parent.netsuite_code IN ('9991', '9992'))
+          AND parent.is_weknow_fee = false
         LIMIT 1
       ) AS parent_one
       INNER JOIN ${products} AS p ON p.id = parent_one.product_id

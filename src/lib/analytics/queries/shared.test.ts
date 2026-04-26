@@ -27,10 +27,8 @@ describe("reversal helpers (shared.ts)", () => {
 
   it("buildSalesTxnCondition: combines non-fee and non-reversal", () => {
     const sqlText = render(buildSalesTxnCondition());
-    // Non-fee branch uses isBookingFee + the netsuite_code IN list (until 1.3).
-    expect(sqlText).toContain('"sales_records"."is_booking_fee" = true');
-    expect(sqlText).toContain("'9991'");
-    expect(sqlText).toContain("'9992'");
+    // Non-fee branch is a single column check post-D10.
+    expect(sqlText).toContain('"sales_records"."is_weknow_fee" = false');
     // Reversal branch.
     expect(sqlText).toContain('"sales_records"."is_reversal" = false');
     // The two branches are AND-joined.
@@ -57,10 +55,8 @@ describe("reversal helpers (shared.ts)", () => {
     expect(sqlText).toContain('"sales_records"."original_record_id" IS NULL');
   });
 
-  it("buildNonFeeCondition: still references is_booking_fee + netsuite_code", () => {
+  it("buildNonFeeCondition: single-column predicate post-D10", () => {
     const sqlText = render(buildNonFeeCondition());
-    expect(sqlText).toContain('"sales_records"."is_booking_fee"');
-    expect(sqlText).toContain("'9991'");
-    expect(sqlText).toContain("'9992'");
+    expect(sqlText).toContain('"sales_records"."is_weknow_fee" = false');
   });
 });

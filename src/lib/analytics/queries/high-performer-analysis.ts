@@ -15,6 +15,7 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
+  buildNonFeeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -191,7 +192,7 @@ async function computePerformerPatterns(
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
         WHERE ${salesRecords.locationId} = ANY(${sql.param(tierIds)}::uuid[])
-          AND ${salesRecords.isBookingFee} = false
+          AND ${buildNonFeeCondition()}
           ${whereClause ? sql`AND ${whereClause}` : sql``}
         GROUP BY ${products.name}
         ORDER BY revenue DESC
