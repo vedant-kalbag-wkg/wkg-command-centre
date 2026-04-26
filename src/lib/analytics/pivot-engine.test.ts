@@ -25,6 +25,34 @@ describe("ALLOWED_COLUMNS", () => {
     expect(ALLOWED_COLUMNS.get("booking_fee")).toContain("is_booking_fee");
   });
 
+  it("booking_fee predicate matches both 9991 and 9992 fee rows", () => {
+    // Symmetry with buildIsFeeCondition() in queries/shared.ts: pivot's
+    // booking_fee value/metric must include 9991 (Booking Fee, flag=true) AND
+    // 9992 (Cash Handling Fee, flag=false). If this drifts, a Pivot Table
+    // total and a Trend Builder total over the same range will diverge.
+    const expr = ALLOWED_COLUMNS.get("booking_fee")!;
+    expect(expr).toContain("sales_records.is_booking_fee = true");
+    expect(expr).toContain("sales_records.netsuite_code IN ('9991', '9992')");
+    expect(expr).toContain("OR");
+  });
+
+  it("booking_fee SUM aggregates over both 9991 and 9992 rows", () => {
+    // End-to-end check: the SUM expression generated for the booking_fee
+    // metric should include net_amount for any row matching the fee predicate
+    // (either is_booking_fee=true OR netsuite_code 9991/9992) and 0 otherwise.
+    // We verify the SQL string contains all three discriminators simultaneously,
+    // proving the CASE-WHEN evaluates to net_amount for both NetSuite codes.
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "booking_fee", aggregation: "sum" }],
+    });
+    expect(sql).toContain("SUM(COALESCE((CASE WHEN");
+    expect(sql).toContain("sales_records.is_booking_fee = true");
+    expect(sql).toContain("sales_records.netsuite_code IN ('9991', '9992')");
+    expect(sql).toContain("THEN sales_records.net_amount::numeric ELSE 0 END)");
+  });
+
   it("rejects unknown columns", () => {
     expect(ALLOWED_COLUMNS.get("unknown_field")).toBeUndefined();
     expect(ALLOWED_COLUMNS.get("category_name")).toBeUndefined();

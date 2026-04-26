@@ -26,6 +26,16 @@ import type {
 // ─── Column Allowlists ──────────────────────────────────────────────────────
 
 /**
+ * Raw-SQL form of `buildIsFeeCondition()` (queries/shared.ts). Pivot builds
+ * raw SQL strings (not Drizzle SQL objects), so we inline the predicate here.
+ * MUST stay in lockstep with `buildIsFeeCondition()` — both must match the
+ * same fee rows (9991 Booking Fee + 9992 Cash Handling Fee), otherwise a
+ * pivot total and a trend total over the same range will diverge.
+ */
+const IS_FEE_RAW_SQL =
+  "(sales_records.is_booking_fee = true OR sales_records.netsuite_code IN ('9991', '9992'))";
+
+/**
  * Maps logical column names to qualified SQL expressions.
  *
  * IMPORTANT: These use fully-qualified table names (NOT aliases) because the
@@ -39,20 +49,13 @@ export const ALLOWED_COLUMNS = new Map<string, string>([
   ["product_name", "products.name"],
   ["outlet_code", "locations.outlet_code"],
   ["hotel_name", "locations.name"],
-  // Free-text denormalised columns on `locations` — kept by the 0022 NetSuite
-  // ETL restructure as a quick row dimension. The normalised joins live on
-  // location_*_memberships but pivot stays on the denormalised text for now.
-  // `locations.region` was dropped in 0022 and has no equivalent on this
-  // FROM clause; users wanting region grouping should use the Regions
-  // dashboard (which joins via location_region_memberships).
+  // Denormalised text columns on `locations`; see migration 0022.
   ["hotel_group", "locations.hotel_group"],
   ["location_group", "locations.location_group"],
-  // 0022 dropped gross_amount / quantity / booking_fee / sale_commission /
-  // discount_amount in favour of net_amount + vat_amount + the is_booking_fee
-  // flag. `net_amount` is the universal value column; `booking_fee` is now a
-  // CASE on the flag isolating fee-row revenue from the same result set.
+  // `net_amount` is the universal value column; `booking_fee` isolates fee-row
+  // revenue (9991 + 9992) using IS_FEE_RAW_SQL — see migration 0022.
   ["net_amount", "sales_records.net_amount::numeric"],
-  ["booking_fee", "(CASE WHEN sales_records.is_booking_fee THEN sales_records.net_amount::numeric ELSE 0 END)"],
+  ["booking_fee", `(CASE WHEN ${IS_FEE_RAW_SQL} THEN sales_records.net_amount::numeric ELSE 0 END)`],
 ]);
 
 /** Derived group columns that require SQL expressions (not simple column refs). */
