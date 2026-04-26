@@ -12,10 +12,11 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  buildAmountModeCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
+  buildSalesTxnCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -44,14 +45,13 @@ async function buildComparisonWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // metricMode applied per-aggregate via FILTER (D1 — counts mode-invariant).
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -68,14 +68,16 @@ export async function getEntityMetrics(
 
   const whereClause = await buildComparisonWhere(filters, userCtx);
   const idList = sql.raw(`(${entityIds.map((id) => `'${id}'`).join(",")})`);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   switch (entityType) {
     case "location":
-      return getLocationMetrics(entityIds, idList, whereClause);
+      return getLocationMetrics(entityIds, idList, whereClause, amountMode, salesTxn);
     case "hotel_group":
-      return getHotelGroupMetrics(entityIds, idList, whereClause);
+      return getHotelGroupMetrics(entityIds, idList, whereClause, amountMode, salesTxn);
     case "region":
-      return getRegionMetrics(entityIds, idList, whereClause);
+      return getRegionMetrics(entityIds, idList, whereClause, amountMode, salesTxn);
   }
 }
 
@@ -85,6 +87,8 @@ async function getLocationMetrics(
   _entityIds: string[],
   idList: SQL,
   whereClause: SQL | undefined,
+  amountMode: SQL,
+  salesTxn: SQL,
 ): Promise<ComparisonEntity[]> {
   const entityFilter = sql`${salesRecords.locationId} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
@@ -98,8 +102,8 @@ async function getLocationMetrics(
     SELECT
       ${locations.id} AS entity_id,
       ${locations.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
@@ -126,6 +130,8 @@ async function getHotelGroupMetrics(
   _entityIds: string[],
   idList: SQL,
   whereClause: SQL | undefined,
+  amountMode: SQL,
+  salesTxn: SQL,
 ): Promise<ComparisonEntity[]> {
   const entityFilter = sql`${hotelGroups.id} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
@@ -139,8 +145,8 @@ async function getHotelGroupMetrics(
     SELECT
       ${hotelGroups.id} AS entity_id,
       ${hotelGroups.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
       INNER JOIN ${locationHotelGroupMemberships} ON ${locations.id} = ${locationHotelGroupMemberships.locationId}
@@ -169,6 +175,8 @@ async function getRegionMetrics(
   _entityIds: string[],
   idList: SQL,
   whereClause: SQL | undefined,
+  amountMode: SQL,
+  salesTxn: SQL,
 ): Promise<ComparisonEntity[]> {
   const entityFilter = sql`${regions.id} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
@@ -182,8 +190,8 @@ async function getRegionMetrics(
     SELECT
       ${regions.id} AS entity_id,
       ${regions.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
       INNER JOIN ${locationRegionMemberships} ON ${locations.id} = ${locationRegionMemberships.locationId}

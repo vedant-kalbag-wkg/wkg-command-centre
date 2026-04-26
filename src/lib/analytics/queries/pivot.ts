@@ -14,7 +14,6 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationConditionForRawContext } from "@/lib/analytics/active-locations";
@@ -57,14 +56,14 @@ async function buildPivotWhereString(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // metricMode applied per-aggregate via FILTER on the SUM/COUNT clauses inside
+  // the pivot engine (D1 — counts mode-invariant; SUM swaps fee/non-fee).
   const combined = combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 

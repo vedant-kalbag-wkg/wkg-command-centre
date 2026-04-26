@@ -6,10 +6,11 @@ import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
   activeKioskCountFragment,
+  buildAmountModeCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
+  buildSalesTxnCondition,
   canonicalHotelGroupNameFragment,
   combineConditions,
   kioskLiveDateSubquery,
@@ -81,14 +82,13 @@ async function buildHeatMapWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // metricMode is applied per-aggregate via FILTER (D1 — counts mode-invariant).
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -110,6 +110,8 @@ export async function getHeatMapData(
 ): Promise<HeatMapData> {
   const SCORE_WEIGHTS = resolveWeights(weightsInput);
   const whereClause = await buildHeatMapWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   // 1. Query sales grouped by location
   //
@@ -141,9 +143,9 @@ export async function getHeatMapData(
       ${kioskLiveDateSubquery}::text AS live_date,
       ${canonicalHotelGroupNameFragment()} AS hotel_group_name,
       ${activeKioskCountFragment()} AS kiosk_count,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(*)::text AS quantity
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS quantity
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}

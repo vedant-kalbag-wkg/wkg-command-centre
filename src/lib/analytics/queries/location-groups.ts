@@ -10,10 +10,11 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  buildAmountModeCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
+  buildSalesTxnCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -48,14 +49,13 @@ async function buildLocationGroupWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // metricMode applied per-aggregate via FILTER (D1 — counts mode-invariant).
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -76,6 +76,8 @@ export async function getLocationGroupsList(
   userCtx: UserCtx,
 ): Promise<LocationGroupData[]> {
   const whereClause = await buildLocationGroupWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   const rows = await executeRows<{
     group_id: string;
@@ -89,9 +91,9 @@ export async function getLocationGroupsList(
     SELECT
       ${locationGroups.id} AS group_id,
       ${locationGroups.name} AS group_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(DISTINCT ${salesRecords.locationId})::text AS hotel_count,
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
+      COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count,
       SUM(DISTINCT ${locations.numRooms})::text AS total_rooms,
       NULL::text AS total_kiosks
     FROM ${baseFromWithLocationGroups()}
@@ -130,6 +132,8 @@ export async function getLocationGroupDetail(
   const whereClause = await buildLocationGroupWhere(filters, userCtx);
   const groupFilter = sql`${locationGroups.id} IN ${sql.raw(`(${groupIds.map((id) => `'${id}'`).join(",")})`)}`;
   const fullWhere = combineConditions([whereClause, groupFilter]);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   // Summary + capacity metrics
   const summaryRows = await executeRows<{
@@ -140,9 +144,9 @@ export async function getLocationGroupDetail(
     total_kiosks: string | null;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(DISTINCT ${salesRecords.locationId})::text AS hotel_count,
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
+      COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count,
       SUM(DISTINCT ${locations.numRooms})::text AS total_rooms,
       NULL::text AS total_kiosks
     FROM ${baseFromWithLocationGroups()}
@@ -212,9 +216,9 @@ export async function getLocationGroupDetail(
       ${salesRecords.locationId} AS location_id,
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(*)::text AS quantity,
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS quantity,
       ${locations.numRooms}::text AS rooms,
       NULL::text AS kiosks,
       ${locations.starRating}::text AS star_rating
@@ -254,8 +258,8 @@ export async function getLocationGroupDetail(
       transactions: string;
     }>(sql`
       SELECT
-        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-        COUNT(*)::text AS transactions
+        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+        COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
       FROM ${baseFromWithLocationGroups()}
       ${prevFullWhere ? sql`WHERE ${prevFullWhere}` : sql``}
     `);

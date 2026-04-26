@@ -48,9 +48,22 @@ export function buildIsFeeCondition(): SQL {
 }
 
 // Metric-mode filter: 'revenue' restricts to fee rows (WKG's take);
-// 'sales' (default) adds no predicate so every row counts.
+// 'sales' (default) adds no predicate so every row counts. NOTE: this is
+// NOT used by the universal build*Where helpers post-D1 — counts are now
+// mode-invariant. Kept for any caller that wants to scope an entire query
+// to fee rows (e.g. revenue-mode top-products lateral join).
 export function buildMetricModeCondition(filters: AnalyticsFilters): SQL | undefined {
   return filters.metricMode === "revenue" ? buildIsFeeCondition() : undefined;
+}
+
+// Per-aggregate amount predicate (D1): in sales mode the SUM is over non-fee
+// rows ("Total Sales" = customer purchase volume); in revenue mode it's over
+// fee rows only ("Total Revenue" = WKG's take). Use as a FILTER (WHERE …)
+// arm on SUM(net_amount) so the same query can carry mode-invariant counts.
+export function buildAmountModeCondition(filters: AnalyticsFilters): SQL {
+  return filters.metricMode === "revenue"
+    ? buildIsFeeCondition()
+    : buildNonFeeCondition();
 }
 
 // Top-Products excludes fee rows unconditionally (per product-reporting spec:

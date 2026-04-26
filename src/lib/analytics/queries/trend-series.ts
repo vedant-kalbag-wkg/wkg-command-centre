@@ -11,7 +11,12 @@ import {
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
-import { combineConditions, buildIsFeeCondition } from "@/lib/analytics/queries/shared";
+import {
+  buildIsFeeCondition,
+  buildNonFeeCondition,
+  buildSalesTxnCondition,
+  combineConditions,
+} from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import { unstable_cache } from "next/cache";
 import { withStats } from "@/lib/analytics/cache-stats";
@@ -77,14 +82,17 @@ function buildSeriesDimensionFilters(filters: SeriesFilters): SQL[] {
 function metricExpression(metric: TrendMetric): SQL {
   switch (metric) {
     case "revenue":
-      return sql`SUM(${salesRecords.netAmount}::numeric)`;
+      // Customer-paid sales (D1 sales-mode "Total Sales") — non-fee only.
+      return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
     case "transactions":
-      return sql`COUNT(*)::numeric`;
+      // D1 mode-invariant transactions: non-fee, non-reversal.
+      return sql`COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()})::numeric`;
     case "avg_basket_value":
-      return sql`SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(*), 0)`;
+      // Avg Basket = SUM(non-fee net) / COUNT(sales txns) — see D1.
+      return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()}) / NULLIF(COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`;
     case "booking_fee":
-      // matches both 9991 (Booking Fee) and 9992 (Cash Handling Fee)
-      return sql`SUM(CASE WHEN ${buildIsFeeCondition()} THEN ${salesRecords.netAmount}::numeric ELSE 0 END)`;
+      // Fee revenue (9991 + 9992). is_weknow_fee=true covers both post-D10.
+      return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildIsFeeCondition()})`;
   }
 }
 

@@ -1,0 +1,178 @@
+/**
+ * Per-dashboard contract test for D1 COUNT(*) sweep (PR-4).
+ *
+ * Each query module that emits a "Transactions" KPI must scope the count to
+ * non-fee, non-reversal rows via FILTER (WHERE …) so the value matches the
+ * mode-invariant Transactions definition in queries/shared.ts.
+ *
+ * We capture the raw `sql` template object passed to executeRows (or the
+ * Drizzle query builder's .where()) and serialise it to text via Drizzle's
+ * toSQL pipeline, then assert the predicate text is present. This keeps the
+ * test surface small — one assertion per dashboard — and the helper-level
+ * coverage stays in shared.test.ts.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { sql as drizzleSql } from "drizzle-orm";
+
+const captured: string[] = [];
+
+const fakeDb = drizzle("postgres://noop");
+
+function renderFragment(frag: unknown): string {
+  if (!frag) return "";
+  try {
+    // Drizzle SQL templates have a toSQL() method — we wrap the fragment in a
+    // dummy SELECT so any embedded refs resolve.
+    return fakeDb
+      .select({ v: drizzleSql`1` })
+      .from(drizzleSql`sales_records`)
+      .where(frag as never)
+      .toSQL().sql;
+  } catch {
+    const obj = frag as { toSQL?: () => { sql: string } };
+    if (obj?.toSQL) return obj.toSQL().sql;
+    return String(frag);
+  }
+}
+
+vi.mock("@/db/execute-rows", () => ({
+  executeRows: vi.fn(async (frag: unknown) => {
+    captured.push(renderFragment(frag));
+    // Return one zero-filled stub row — enough for caller-side `rows[0]!`
+    // dereferences in queries like getPortfolioSummary that assume non-empty.
+    return [
+      new Proxy(
+        {},
+        {
+          get: (_target, prop) =>
+            prop === Symbol.toPrimitive ? () => 0 : "0",
+        },
+      ),
+    ];
+  }),
+}));
+
+vi.mock("@/db", () => {
+  const realFakeDb = drizzle("postgres://noop");
+  return {
+    db: realFakeDb,
+  };
+});
+
+vi.mock("@/lib/scoping/scoped-query", () => ({
+  scopedSalesCondition: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/analytics/queries/shared")>();
+  return {
+    ...actual,
+    // hotel-groups uses the legacy outlet-exclusion path; short-circuit to
+    // avoid the DB lookup. The active-location predicate covers the same
+    // semantic in practice.
+    buildExclusionCondition: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
+vi.mock("@/lib/analytics/active-locations", () => ({
+  getActiveLocationIds: vi.fn().mockResolvedValue([]),
+  buildActiveLocationCondition: vi.fn().mockResolvedValue(undefined),
+  buildActiveLocationConditionForRawContext: vi.fn().mockResolvedValue(undefined),
+}));
+
+const filters = {
+  dateFrom: "2025-01-01",
+  dateTo: "2025-06-30",
+} as const;
+
+const userCtx = {
+  id: "test-user",
+  userType: "internal" as const,
+  role: "admin" as const,
+};
+
+beforeEach(() => {
+  captured.length = 0;
+});
+
+const SALES_TXN_FILTER_FRAGMENT = "is_weknow_fee";
+
+describe("D1 COUNT(*) sweep — every Transactions KPI scopes to non-fee, non-reversal", () => {
+  it("portfolio.getPortfolioSummary — total_transactions FILTERS on sales-txn", async () => {
+    const { getPortfolioSummary } = await import("../portfolio");
+    await getPortfolioSummary(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain("total_transactions");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+    expect(sql).toMatch(/count\(\*\)\s+filter\s+\(where/i);
+  });
+
+  it("portfolio.getDailyTrends — transactions FILTERS on sales-txn", async () => {
+    const { getDailyTrends } = await import("../portfolio");
+    await getDailyTrends(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+    expect(sql).toMatch(/count\(\*\)\s+filter\s+\(where/i);
+  });
+
+  it("portfolio.getOutletTiers — transactions FILTERS on sales-txn", async () => {
+    const { getOutletTiers } = await import("../portfolio");
+    await getOutletTiers(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+  });
+
+  it("heat-map.getHeatMapData — transactions FILTERS on sales-txn", async () => {
+    const { getHeatMapData } = await import("../heat-map");
+    await getHeatMapData(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+  });
+
+  it("hotel-groups.getHotelGroupsList — loc_agg transactions FILTERS on sales-txn", async () => {
+    const { getHotelGroupsList } = await import("../hotel-groups");
+    await getHotelGroupsList(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+  });
+
+  it("regions.getRegionsList — transactions FILTERS on sales-txn", async () => {
+    const { getRegionsList } = await import("../regions");
+    await getRegionsList(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+  });
+
+  it("location-groups.getLocationGroupsList — transactions FILTERS on sales-txn", async () => {
+    const { getLocationGroupsList } = await import("../location-groups");
+    await getLocationGroupsList(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+  });
+
+  it("comparison.getEntityMetrics(location) — transactions FILTERS on sales-txn", async () => {
+    const { getEntityMetrics } = await import("../comparison");
+    await getEntityMetrics("location", ["00000000-0000-0000-0000-000000000001"], filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+  });
+
+  it("maturity-analysis.getRevenueByMaturityBucket — SUM filtered by amount-mode", async () => {
+    const { getRevenueByMaturityBucket } = await import("../maturity-analysis");
+    await getRevenueByMaturityBucket(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    // Maturity-analysis doesn't surface a transactions tile, but its SUM
+    // must filter by amount-mode (non-fee in sales mode) so revenue doesn't
+    // include fee rows.
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+  });
+
+  it("trend-series.transactions metric — emits sales-txn filter", async () => {
+    const { getTrendSeriesData } = await import("../trend-series");
+    await getTrendSeriesData("transactions", {}, "2025-01-01", "2025-06-30", userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
+    expect(sql).toContain("is_reversal");
+  });
+});

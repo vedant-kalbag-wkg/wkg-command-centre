@@ -5,10 +5,10 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  buildAmountModeCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
   combineConditions,
   kioskLiveDateSubquery,
 } from "@/lib/analytics/queries/shared";
@@ -43,14 +43,13 @@ async function buildMaturityWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // metricMode applied per-aggregate via FILTER (D1 — counts mode-invariant).
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -67,6 +66,7 @@ export async function getRevenueByMaturityBucket(
   userCtx: UserCtx,
 ): Promise<MaturityBucketMetrics[]> {
   const whereClause = await buildMaturityWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
 
   const liveDateCondition = sql`${kioskLiveDateSubquery} IS NOT NULL`;
   const fullWhere = whereClause
@@ -78,6 +78,9 @@ export async function getRevenueByMaturityBucket(
   // its maturity today, ignoring the selected reporting window.
   const referenceDate = sql`${filters.dateTo}::timestamp`;
 
+  // location_count is intentionally raw — "any location contributing to
+  // this bucket" regardless of fee-vs-sales row mix. Revenue uses the
+  // mode-specific filter so the avg/total flip with sales/revenue mode.
   const rows = await executeRows<{
     bucket: string;
     location_count: string;
@@ -92,8 +95,8 @@ export async function getRevenueByMaturityBucket(
         ELSE '90+d'
       END AS bucket,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
-      COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_revenue,
-      COALESCE(SUM(${salesRecords.netAmount}::numeric), 0) AS total_revenue
+      COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue,
+      COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}), 0) AS total_revenue
     FROM ${baseFrom()}
     WHERE ${fullWhere}
     GROUP BY bucket
@@ -132,6 +135,7 @@ export async function getRevenueRampCurve(
   userCtx: UserCtx,
 ): Promise<RevenueRampPoint[]> {
   const whereClause = await buildMaturityWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
 
   const liveDateCondition = sql`${kioskLiveDateSubquery} IS NOT NULL`;
   const fullWhere = whereClause
@@ -148,7 +152,7 @@ export async function getRevenueRampCurve(
         FLOOR(EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400)),
         6
       )::int AS months_since,
-      COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_revenue,
+      COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count
     FROM ${baseFrom()}
     WHERE ${fullWhere}
@@ -185,6 +189,7 @@ export async function getInstallCohorts(
   userCtx: UserCtx,
 ): Promise<InstallCohort[]> {
   const whereClause = await buildMaturityWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
 
   const liveDateCondition = sql`${kioskLiveDateSubquery} IS NOT NULL`;
   const fullWhere = whereClause
@@ -199,7 +204,7 @@ export async function getInstallCohorts(
     SELECT
       TO_CHAR(${kioskLiveDateSubquery}, 'YYYY-MM') AS install_month,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
-      COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0) AS avg_monthly_revenue
+      COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_monthly_revenue
     FROM ${baseFrom()}
     WHERE ${fullWhere}
     GROUP BY install_month

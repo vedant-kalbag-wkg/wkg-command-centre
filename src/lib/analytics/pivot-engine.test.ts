@@ -205,13 +205,16 @@ describe("buildPivotSQL", () => {
     );
   });
 
-  it("uses COUNT for count aggregation", () => {
+  it("uses COUNT scoped to non-fee, non-reversal rows for count aggregation (D1)", () => {
     const sql = buildPivotSQL({
       rowFields: ["hotel_name"],
       columnFields: [],
       values: [{ field: "net_amount", aggregation: "count" }],
     });
-    expect(sql).toContain("COUNT(sales_records.net_amount::numeric)::numeric");
+    // D1: "Transactions" count = real customer transactions only.
+    expect(sql).toContain(
+      "COUNT(sales_records.net_amount::numeric) FILTER (WHERE sales_records.is_weknow_fee = false AND sales_records.is_reversal = false)",
+    );
   });
 
   it("handles derived column in group by", () => {

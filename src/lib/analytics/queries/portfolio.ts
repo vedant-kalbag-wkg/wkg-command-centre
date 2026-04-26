@@ -6,12 +6,12 @@ import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
   activeKioskCountFragment,
+  buildAmountModeCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildIsFeeCondition,
   buildMaturityCondition,
-  buildMetricModeCondition,
-  buildNonFeeCondition,
+  buildSalesTxnCondition,
   canonicalHotelGroupNameFragment,
   combineConditions,
   kioskLiveDateSubquery,
@@ -56,14 +56,16 @@ async function buildPortfolioWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // Note: metricMode (sales | revenue) is NOT part of the universal where —
+  // it's applied per-aggregate via FILTER clauses below, so a single query
+  // can return mode-invariant counts (always non-fee + non-reversal, per D1)
+  // alongside mode-dependent SUMs (sales: non-fee total; revenue: fee total).
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
@@ -98,6 +100,8 @@ export async function getPortfolioSummary(
   userCtx: UserCtx,
 ): Promise<PortfolioSummary> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   const rows = await executeRows<{
     total_revenue: string;
@@ -107,11 +111,11 @@ export async function getPortfolioSummary(
     unique_outlets: string;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS total_revenue,
-      COUNT(*)::text AS total_transactions,
-      COUNT(*)::text AS total_quantity,
-      COUNT(DISTINCT ${salesRecords.productId})::text AS unique_products,
-      COUNT(DISTINCT ${salesRecords.locationId})::text AS unique_outlets
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS total_revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS total_transactions,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS total_quantity,
+      COUNT(DISTINCT ${salesRecords.productId}) FILTER (WHERE ${salesTxn})::text AS unique_products,
+      COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS unique_outlets
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
   `);
@@ -137,6 +141,8 @@ export async function getCategoryPerformance(
   userCtx: UserCtx,
 ): Promise<CategoryPerformanceRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   const rows = await executeRows<{
     category_name: string;
@@ -147,10 +153,10 @@ export async function getCategoryPerformance(
   }>(sql`
     SELECT
       ${products.name} AS category_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(*)::text AS quantity,
-      COALESCE(AVG(${salesRecords.netAmount}), 0) AS avg_value
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS quantity,
+      COALESCE(AVG(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS avg_value
     FROM ${baseFromWithProducts()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${products.name}
@@ -192,8 +198,9 @@ export async function getTopProducts(
   //                outlet codes repeat across regions, but ref_no is
   //                region-unique.
   if (filters.metricMode === "revenue") {
-    const filtersForFees: AnalyticsFilters = { ...filters, metricMode: "sales" };
-    const baseWhere = await buildPortfolioWhere(filtersForFees, userCtx);
+    const baseWhere = await buildPortfolioWhere(filters, userCtx);
+    // Outer scope: fee rows only (revenue mode), exclude reversals so refund
+    // events (rare for fees, but possible) don't double-count attribution.
     const whereClause = combineConditions([baseWhere, buildIsFeeCondition()]);
 
     // Leave the outer sales_records unaliased so the shared WHERE helpers
@@ -205,6 +212,8 @@ export async function getTopProducts(
       transactions: string;
       quantity: string;
     }>(sql`
+      -- Outer WHERE already restricts to fee rows (revenue mode); raw COUNT(*)
+      -- here counts fee events attributed to the parent product.
       SELECT
         p.name AS product_name,
         COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
@@ -236,9 +245,10 @@ export async function getTopProducts(
     }));
   }
 
-  const filtersForProducts: AnalyticsFilters = { ...filters, metricMode: "sales" };
-  const baseWhere = await buildPortfolioWhere(filtersForProducts, userCtx);
-  const whereClause = combineConditions([baseWhere, buildNonFeeCondition()]);
+  const baseWhere = await buildPortfolioWhere(filters, userCtx);
+  // Sales-mode top products: non-fee, non-reversal rows only — fees aren't
+  // products and reversal rows would double-count.
+  const whereClause = combineConditions([baseWhere, buildSalesTxnCondition()]);
 
   const rows = await executeRows<{
     product_name: string;
@@ -246,6 +256,8 @@ export async function getTopProducts(
     transactions: string;
     quantity: string;
   }>(sql`
+    -- Outer WHERE already restricts to non-fee, non-reversal rows (sales-mode
+    -- top products); raw COUNT(*) here counts product transactions.
     SELECT
       ${products.name} AS product_name,
       COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
@@ -275,6 +287,8 @@ export async function getDailyTrends(
   userCtx: UserCtx,
 ): Promise<DailyTrendRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   const rows = await executeRows<{
     date: string;
@@ -283,8 +297,8 @@ export async function getDailyTrends(
   }>(sql`
     SELECT
       ${salesRecords.transactionDate}::text AS date,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${salesRecords.transactionDate}
@@ -307,6 +321,8 @@ export async function getHourlyDistribution(
   const baseWhere = await buildPortfolioWhere(filters, userCtx);
   const timeNotNull = sql`${salesRecords.transactionTime} IS NOT NULL`;
   const whereClause = combineConditions([baseWhere, timeNotNull]);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   const rows = await executeRows<{
     hour: string;
@@ -315,8 +331,8 @@ export async function getHourlyDistribution(
   }>(sql`
     SELECT
       EXTRACT(HOUR FROM ${salesRecords.transactionTime})::int::text AS hour,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY EXTRACT(HOUR FROM ${salesRecords.transactionTime})
@@ -337,6 +353,8 @@ export async function getOutletTiers(
   userCtx: UserCtx,
 ): Promise<OutletTierRow[]> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   // Property-level enrichment (Phase 4.2):
   //   hotel_group_name — canonical group, tie-broken to exactly one. Uses
@@ -367,8 +385,8 @@ export async function getOutletTiers(
       ${canonicalHotelGroupNameFragment()} AS hotel_group_name,
       ${activeKioskCountFragment()} AS kiosk_count,
       ${locations.numRooms} AS num_rooms,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}

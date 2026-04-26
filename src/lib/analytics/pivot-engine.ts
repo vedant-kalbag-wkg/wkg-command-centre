@@ -35,6 +35,14 @@ import type {
 const IS_FEE_RAW_SQL = "sales_records.is_weknow_fee = true";
 
 /**
+ * Raw-SQL form of `buildSalesTxnCondition()` — D1's "real customer transaction"
+ * predicate (non-fee AND non-reversal). Used to scope Pivot's COUNT aggregation
+ * so the "Transactions" metric matches the rest of the analytics surface.
+ */
+const IS_SALES_TXN_RAW_SQL =
+  "sales_records.is_weknow_fee = false AND sales_records.is_reversal = false";
+
+/**
  * Maps logical column names to qualified SQL expressions.
  *
  * IMPORTANT: These use fully-qualified table names (NOT aliases) because the
@@ -201,7 +209,11 @@ export function buildPivotSQL(
     if (!expr) continue;
     const alias = `${v.aggregation}_${v.field}`;
     if (v.aggregation === "count") {
-      selectParts.push(`COUNT(${expr})::numeric AS "${alias}"`);
+      // D1: "Transactions" count is non-fee + non-reversal (same predicate
+      // as buildSalesTxnCondition in queries/shared.ts).
+      selectParts.push(
+        `COUNT(${expr}) FILTER (WHERE ${IS_SALES_TXN_RAW_SQL})::numeric AS "${alias}"`,
+      );
     } else {
       selectParts.push(
         `${v.aggregation.toUpperCase()}(COALESCE(${expr}, 0)) AS "${alias}"`,

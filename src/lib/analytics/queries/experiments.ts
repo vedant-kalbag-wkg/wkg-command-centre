@@ -4,10 +4,11 @@ import { sql, inArray, notInArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  buildAmountModeCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
+  buildSalesTxnCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -43,24 +44,25 @@ export async function getCohortMetrics(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   const locationCondition = inArray(salesRecords.locationId, locationIds);
 
+  // metricMode applied per-aggregate via FILTER (D1 — counts mode-invariant).
   const where = combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     locationCondition,
     ...dimensionConditions,
   ]);
 
   const rows = await db
     .select({
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric), 0)`,
-      transactions: sql<number>`COUNT(*)::int`,
+      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}), 0)`,
+      transactions: sql<number>`COUNT(*) FILTER (WHERE ${salesTxn})::int`,
     })
     .from(salesRecords)
     .where(where);
@@ -92,14 +94,15 @@ export async function getRestOfPortfolioMetrics(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
+  // metricMode applied per-aggregate via FILTER (D1 — counts mode-invariant).
   const conditions: (SQL | undefined)[] = [
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ];
 
@@ -116,8 +119,8 @@ export async function getRestOfPortfolioMetrics(
 
   const rows = await db
     .select({
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric), 0)`,
-      transactions: sql<number>`COUNT(*)::int`,
+      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}), 0)`,
+      transactions: sql<number>`COUNT(*) FILTER (WHERE ${salesTxn})::int`,
     })
     .from(salesRecords)
     .where(where);
