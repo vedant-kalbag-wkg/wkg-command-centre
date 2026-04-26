@@ -34,12 +34,13 @@ export const getActiveLocationIds = cache(async (): Promise<string[]> => {
   const rows = await executeRows<{ id: string }>(sql`
     SELECT ${locations.id} AS id
     FROM ${locations}
-    WHERE NOT EXISTS (
-      SELECT 1
-      FROM ${outletExclusions} oe
-      WHERE (oe.pattern_type = 'exact' AND ${locations.outletCode} = oe.outlet_code)
-         OR (oe.pattern_type = 'regex' AND ${locations.outletCode} ~ oe.outlet_code)
-    )
+    WHERE ${locations.archivedAt} IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ${outletExclusions} oe
+        WHERE (oe.pattern_type = 'exact' AND ${locations.outletCode} = oe.outlet_code)
+           OR (oe.pattern_type = 'regex' AND ${locations.outletCode} ~ oe.outlet_code)
+      )
   `);
 
   return rows.map((r) => r.id);
