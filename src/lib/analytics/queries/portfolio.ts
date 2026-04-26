@@ -199,8 +199,8 @@ export async function getTopProducts(
   //                region-unique.
   if (filters.metricMode === "revenue") {
     const baseWhere = await buildPortfolioWhere(filters, userCtx);
-    // Outer scope: fee rows only (revenue mode), exclude reversals so refund
-    // events (rare for fees, but possible) don't double-count attribution.
+    // Outer scope: fee rows only (revenue mode). Fee rows are not reversed in
+    // practice (probe-confirmed against prod), so no extra reversal predicate.
     const whereClause = combineConditions([baseWhere, buildIsFeeCondition()]);
 
     // Leave the outer sales_records unaliased so the shared WHERE helpers

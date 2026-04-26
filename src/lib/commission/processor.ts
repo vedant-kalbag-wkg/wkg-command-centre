@@ -86,6 +86,7 @@ export async function calculateCommissionsForRecords(
     transactionDate: string;
     netAmount: string;
     isWeknowFee: boolean;
+    netsuiteCode: string | null;
   };
   const records: SalesRow[] = [];
   for (let i = 0; i < salesRecordIds.length; i += ID_CHUNK) {
@@ -98,14 +99,19 @@ export async function calculateCommissionsForRecords(
         transactionDate: salesRecords.transactionDate,
         netAmount: salesRecords.netAmount,
         isWeknowFee: salesRecords.isWeknowFee,
+        netsuiteCode: salesRecords.netsuiteCode,
       })
       .from(salesRecords)
       .where(inArray(salesRecords.id, slice));
     records.push(...batch);
   }
 
-  // Split fee rows (commission-bearing) from principal rows (skipped).
-  const feeRecords = records.filter((r) => r.isWeknowFee);
+  // Commission applies to hotel kiosks only via Booking Fee (9991). Cash
+  // Handling Fee (9992) is retail-outlet-only and not commissionable, even
+  // though both flag isWeknowFee=true post-D10.
+  const feeRecords = records.filter(
+    (r) => r.isWeknowFee && r.netsuiteCode === "9991",
+  );
   const principalCount = records.length - feeRecords.length;
 
   // 2. Fetch only the locationProducts matching the fee records' (locationId, productId) pairs
@@ -205,6 +211,7 @@ export async function calculateCommissionsForRecords(
           eq(salesRecords.locationId, locationId),
           eq(salesRecords.productId, productId),
           eq(salesRecords.isWeknowFee, true),
+          eq(salesRecords.netsuiteCode, "9991"),
           sql`${salesRecords.transactionDate} >= ${mStart}::date`,
           sql`${salesRecords.transactionDate} < ${mEnd}::date`,
           sql`${salesRecords.id} NOT IN (${sql.join(
@@ -366,6 +373,7 @@ export async function recalculateCommissions(
           eq(salesRecords.locationId, lp.locationId),
           eq(salesRecords.productId, lp.productId),
           eq(salesRecords.isWeknowFee, true),
+          eq(salesRecords.netsuiteCode, "9991"),
           sql`${salesRecords.transactionDate} >= ${mStart}::date`,
           sql`${salesRecords.transactionDate} < ${mEnd}::date`,
         ),

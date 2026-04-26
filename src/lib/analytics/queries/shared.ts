@@ -33,27 +33,10 @@ export function buildDateCondition(filters: AnalyticsFilters): SQL {
   return sql`${salesRecords.transactionDate} >= ${filters.dateFrom} AND ${salesRecords.transactionDate} <= ${filters.dateTo}`;
 }
 
-// NetSuite codes of all WKG-collected fee rows. The CSV parser flips
-// is_weknow_fee=true for either code (D10), so the column is the canonical
-// "is this a fee row?" signal. The list is kept here for the few call sites
-// that need to discriminate between Booking Fee (9991) and Cash Handling
-// Fee (9992) directly.
-export const FEE_NETSUITE_CODES = ["9991", "9992"] as const;
-
-// "A fee row" — single-column predicate post-D10. The parser sets
-// is_weknow_fee=true for NetSuite 9991 + 9992, so we no longer need to
-// OR-in the netsuite_code list at every call site.
+// "A fee row" — single-column predicate post-D10. Parser sets is_weknow_fee=true
+// for NetSuite 9991 (Booking Fee) and 9992 (Cash Handling Fee).
 export function buildIsFeeCondition(): SQL {
   return sql`${salesRecords.isWeknowFee} = true`;
-}
-
-// Metric-mode filter: 'revenue' restricts to fee rows (WKG's take);
-// 'sales' (default) adds no predicate so every row counts. NOTE: this is
-// NOT used by the universal build*Where helpers post-D1 — counts are now
-// mode-invariant. Kept for any caller that wants to scope an entire query
-// to fee rows (e.g. revenue-mode top-products lateral join).
-export function buildMetricModeCondition(filters: AnalyticsFilters): SQL | undefined {
-  return filters.metricMode === "revenue" ? buildIsFeeCondition() : undefined;
 }
 
 // Per-aggregate amount predicate (D1): in sales mode the SUM is over non-fee
