@@ -39,14 +39,20 @@ export const ALLOWED_COLUMNS = new Map<string, string>([
   ["product_name", "products.name"],
   ["outlet_code", "locations.outlet_code"],
   ["hotel_name", "locations.name"],
+  // Free-text denormalised columns on `locations` — kept by the 0022 NetSuite
+  // ETL restructure as a quick row dimension. The normalised joins live on
+  // location_*_memberships but pivot stays on the denormalised text for now.
+  // `locations.region` was dropped in 0022 and has no equivalent on this
+  // FROM clause; users wanting region grouping should use the Regions
+  // dashboard (which joins via location_region_memberships).
   ["hotel_group", "locations.hotel_group"],
-  ["region", "locations.region"],
   ["location_group", "locations.location_group"],
-  ["gross_amount", "sales_records.gross_amount::numeric"],
-  ["quantity", "sales_records.quantity"],
-  ["booking_fee", "sales_records.booking_fee::numeric"],
-  ["sale_commission", "sales_records.sale_commission::numeric"],
-  ["discount_amount", "sales_records.discount_amount::numeric"],
+  // 0022 dropped gross_amount / quantity / booking_fee / sale_commission /
+  // discount_amount in favour of net_amount + vat_amount + the is_booking_fee
+  // flag. `net_amount` is the universal value column; `booking_fee` is now a
+  // CASE on the flag isolating fee-row revenue from the same result set.
+  ["net_amount", "sales_records.net_amount::numeric"],
+  ["booking_fee", "(CASE WHEN sales_records.is_booking_fee THEN sales_records.net_amount::numeric ELSE 0 END)"],
 ]);
 
 /** Derived group columns that require SQL expressions (not simple column refs). */
@@ -62,7 +68,6 @@ const DIMENSION_COLUMNS = new Set([
   "outlet_code",
   "hotel_name",
   "hotel_group",
-  "region",
   "location_group",
   "sale_month",
   "sale_year",
@@ -71,11 +76,8 @@ const DIMENSION_COLUMNS = new Set([
 
 /** Columns that can appear as value/metric fields (aggregation targets). */
 const METRIC_COLUMNS = new Set([
-  "gross_amount",
-  "quantity",
+  "net_amount",
   "booking_fee",
-  "sale_commission",
-  "discount_amount",
 ]);
 
 const VALID_AGGREGATIONS = new Set<PivotAggregation>([
@@ -243,11 +245,7 @@ export function buildPivotSQL(
 
 /** Formats a numeric value into a display cell. */
 function formatCell(value: number, field: string, agg: PivotAggregation): PivotCell {
-  const isCurrency =
-    field === "gross_amount" ||
-    field === "booking_fee" ||
-    field === "sale_commission" ||
-    field === "discount_amount";
+  const isCurrency = field === "net_amount" || field === "booking_fee";
 
   let formatted: string;
   if (agg === "count") {
@@ -412,8 +410,9 @@ const DIMENSION_LABELS: Record<string, string> = {
   outlet_code: "Outlet Code",
   hotel_name: "Hotel",
   hotel_group: "Hotel Group",
-  region: "Region",
   location_group: "Location Group",
+  net_amount: "Revenue",
+  booking_fee: "Booking Fee",
   sale_month: "Month",
   sale_year: "Year",
   sale_hour: "Hour",

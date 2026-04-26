@@ -19,15 +19,28 @@ describe("ALLOWED_COLUMNS", () => {
     expect(ALLOWED_COLUMNS.get("product_name")).toBe("products.name");
     expect(ALLOWED_COLUMNS.get("outlet_code")).toBe("locations.outlet_code");
     expect(ALLOWED_COLUMNS.get("hotel_name")).toBe("locations.name");
-    expect(ALLOWED_COLUMNS.get("gross_amount")).toBe(
-      "sales_records.gross_amount::numeric",
+    expect(ALLOWED_COLUMNS.get("net_amount")).toBe(
+      "sales_records.net_amount::numeric",
     );
+    expect(ALLOWED_COLUMNS.get("booking_fee")).toContain("is_booking_fee");
   });
 
   it("rejects unknown columns", () => {
     expect(ALLOWED_COLUMNS.get("unknown_field")).toBeUndefined();
     expect(ALLOWED_COLUMNS.get("category_name")).toBeUndefined();
     expect(ALLOWED_COLUMNS.get("__proto__")).toBeUndefined();
+  });
+
+  it("rejects columns dropped in migration 0022", () => {
+    // gross_amount, quantity, sale_commission, discount_amount were removed
+    // from sales_records; locations.region was removed. These must not
+    // resolve, otherwise the pivot SQL will reference non-existent columns
+    // and Postgres will 42703.
+    expect(ALLOWED_COLUMNS.get("gross_amount")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("quantity")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("sale_commission")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("discount_amount")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("region")).toBeUndefined();
   });
 });
 
@@ -45,7 +58,7 @@ describe("validatePivotConfig", () => {
   const validConfig: PivotConfig = {
     rowFields: ["product_name"],
     columnFields: ["sale_month"],
-    values: [{ field: "gross_amount", aggregation: "sum" }],
+    values: [{ field: "net_amount", aggregation: "sum" }],
   };
 
   it("accepts a valid config", () => {
@@ -67,7 +80,7 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: ["bogus_field"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(errors.some((e) => e.message.includes("bogus_field"))).toBe(true);
   });
@@ -76,7 +89,7 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: [],
       columnFields: ["no_such_col"],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(errors.some((e) => e.message.includes("no_such_col"))).toBe(true);
   });
@@ -94,7 +107,7 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "median" as never }],
+      values: [{ field: "net_amount", aggregation: "median" as never }],
     });
     expect(errors.some((e) => e.message.includes("median"))).toBe(true);
   });
@@ -103,7 +116,7 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: ["product_name"],
       columnFields: ["product_name"],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(
       errors.some((e) => e.message.includes("both rows and columns")),
@@ -114,16 +127,16 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: ["sale_month"],
       columnFields: ["sale_year"],
-      values: [{ field: "quantity", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(errors).toEqual([]);
   });
 
   it("rejects metric columns used as dimensions", () => {
     const errors = validatePivotConfig({
-      rowFields: ["gross_amount"],
+      rowFields: ["net_amount"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(errors.some((e) => e.field === "rowFields")).toBe(true);
   });
@@ -136,13 +149,13 @@ describe("buildPivotSQL", () => {
     const sql = buildPivotSQL({
       rowFields: ["hotel_name"],
       columnFields: ["sale_month"],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
 
     expect(sql).toContain("SELECT");
     expect(sql).toContain('locations.name AS "hotel_name"');
     expect(sql).toContain(
-      "SUM(COALESCE(sales_records.gross_amount::numeric, 0))",
+      "SUM(COALESCE(sales_records.net_amount::numeric, 0))",
     );
     expect(sql).toContain(
       "INNER JOIN locations ON sales_records.location_id = locations.id",
@@ -159,7 +172,7 @@ describe("buildPivotSQL", () => {
       {
         rowFields: ["product_name"],
         columnFields: [],
-        values: [{ field: "quantity", aggregation: "count" }],
+        values: [{ field: "net_amount", aggregation: "count" }],
       },
       `"sales_records"."transaction_date" >= '2025-01-01'`,
     );
@@ -172,16 +185,16 @@ describe("buildPivotSQL", () => {
     const sql = buildPivotSQL({
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "quantity", aggregation: "count" }],
+      values: [{ field: "net_amount", aggregation: "count" }],
     });
-    expect(sql).toContain("COUNT(sales_records.quantity)::numeric");
+    expect(sql).toContain("COUNT(sales_records.net_amount::numeric)::numeric");
   });
 
   it("handles derived column in group by", () => {
     const sql = buildPivotSQL({
       rowFields: ["sale_month"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "avg" }],
+      values: [{ field: "net_amount", aggregation: "avg" }],
     });
     expect(sql).toContain(
       "TO_CHAR(sales_records.transaction_date, 'Mon YYYY')",
@@ -193,27 +206,27 @@ describe("buildPivotSQL", () => {
 
 describe("buildPivotData", () => {
   const values: PivotValueConfig[] = [
-    { field: "gross_amount", aggregation: "sum" },
+    { field: "net_amount", aggregation: "sum" },
   ];
 
   it("builds flat rows when no column fields", () => {
     const rawRows = [
-      { hotel_name: "Hotel A", sum_gross_amount: 1000 },
-      { hotel_name: "Hotel B", sum_gross_amount: 2000 },
+      { hotel_name: "Hotel A", sum_net_amount: 1000 },
+      { hotel_name: "Hotel B", sum_net_amount: 2000 },
     ];
     const result = buildPivotData(rawRows, ["hotel_name"], [], values);
 
     expect(result).toHaveLength(2);
     expect(result[0].dimensions.hotel_name).toBe("Hotel A");
-    expect(result[0].cells["sum_gross_amount"].value).toBe(1000);
+    expect(result[0].cells["sum_net_amount"].value).toBe(1000);
     expect(result[1].dimensions.hotel_name).toBe("Hotel B");
   });
 
   it("builds crosstab when column fields present", () => {
     const rawRows = [
-      { hotel_name: "Hotel A", sale_month: "Jan 2025", sum_gross_amount: 500 },
-      { hotel_name: "Hotel A", sale_month: "Feb 2025", sum_gross_amount: 700 },
-      { hotel_name: "Hotel B", sale_month: "Jan 2025", sum_gross_amount: 300 },
+      { hotel_name: "Hotel A", sale_month: "Jan 2025", sum_net_amount: 500 },
+      { hotel_name: "Hotel A", sale_month: "Feb 2025", sum_net_amount: 700 },
+      { hotel_name: "Hotel B", sale_month: "Jan 2025", sum_net_amount: 300 },
     ];
     const result = buildPivotData(
       rawRows,
@@ -245,18 +258,18 @@ describe("formatPivotResults", () => {
   const config: PivotConfig = {
     rowFields: ["hotel_name"],
     columnFields: [],
-    values: [{ field: "gross_amount", aggregation: "sum" }],
+    values: [{ field: "net_amount", aggregation: "sum" }],
   };
 
   it("formats flat results with headers and grand totals", () => {
     const rawRows = [
-      { hotel_name: "Hotel A", sum_gross_amount: 1000 },
-      { hotel_name: "Hotel B", sum_gross_amount: 2500 },
+      { hotel_name: "Hotel A", sum_net_amount: 1000 },
+      { hotel_name: "Hotel B", sum_net_amount: 2500 },
     ];
     const result = formatPivotResults(rawRows, config);
 
     expect(result.headers).toContain("Hotel");
-    expect(result.headers).toContain("Sum of gross amount");
+    expect(result.headers).toContain("Sum of Revenue");
     expect(result.rows).toHaveLength(2);
     expect(result.rowCount).toBe(2);
     expect(result.truncated).toBe(false);
@@ -264,67 +277,67 @@ describe("formatPivotResults", () => {
 
   it("calculates sum grand total", () => {
     const rawRows = [
-      { hotel_name: "A", sum_gross_amount: 1000 },
-      { hotel_name: "B", sum_gross_amount: 3000 },
+      { hotel_name: "A", sum_net_amount: 1000 },
+      { hotel_name: "B", sum_net_amount: 3000 },
     ];
     const result = formatPivotResults(rawRows, config);
-    expect(result.grandTotals["sum_gross_amount"].value).toBe(4000);
+    expect(result.grandTotals["sum_net_amount"].value).toBe(4000);
   });
 
   it("calculates avg grand total", () => {
     const avgConfig: PivotConfig = {
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "avg" }],
+      values: [{ field: "net_amount", aggregation: "avg" }],
     };
     const rawRows = [
-      { hotel_name: "A", avg_gross_amount: 100 },
-      { hotel_name: "B", avg_gross_amount: 200 },
+      { hotel_name: "A", avg_net_amount: 100 },
+      { hotel_name: "B", avg_net_amount: 200 },
     ];
     const result = formatPivotResults(rawRows, avgConfig);
-    expect(result.grandTotals["avg_gross_amount"].value).toBe(150);
+    expect(result.grandTotals["avg_net_amount"].value).toBe(150);
   });
 
   it("calculates count grand total", () => {
     const countConfig: PivotConfig = {
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "quantity", aggregation: "count" }],
+      values: [{ field: "net_amount", aggregation: "count" }],
     };
     const rawRows = [
-      { hotel_name: "A", count_quantity: 10 },
-      { hotel_name: "B", count_quantity: 15 },
+      { hotel_name: "A", count_net_amount: 10 },
+      { hotel_name: "B", count_net_amount: 15 },
     ];
     const result = formatPivotResults(rawRows, countConfig);
-    expect(result.grandTotals["count_quantity"].value).toBe(25);
+    expect(result.grandTotals["count_net_amount"].value).toBe(25);
   });
 
   it("calculates min grand total", () => {
     const minConfig: PivotConfig = {
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "min" }],
+      values: [{ field: "net_amount", aggregation: "min" }],
     };
     const rawRows = [
-      { hotel_name: "A", min_gross_amount: 500 },
-      { hotel_name: "B", min_gross_amount: 200 },
+      { hotel_name: "A", min_net_amount: 500 },
+      { hotel_name: "B", min_net_amount: 200 },
     ];
     const result = formatPivotResults(rawRows, minConfig);
-    expect(result.grandTotals["min_gross_amount"].value).toBe(200);
+    expect(result.grandTotals["min_net_amount"].value).toBe(200);
   });
 
   it("calculates max grand total", () => {
     const maxConfig: PivotConfig = {
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "max" }],
+      values: [{ field: "net_amount", aggregation: "max" }],
     };
     const rawRows = [
-      { hotel_name: "A", max_gross_amount: 500 },
-      { hotel_name: "B", max_gross_amount: 800 },
+      { hotel_name: "A", max_net_amount: 500 },
+      { hotel_name: "B", max_net_amount: 800 },
     ];
     const result = formatPivotResults(rawRows, maxConfig);
-    expect(result.grandTotals["max_gross_amount"].value).toBe(800);
+    expect(result.grandTotals["max_net_amount"].value).toBe(800);
   });
 
   it("handles empty results", () => {
@@ -332,14 +345,14 @@ describe("formatPivotResults", () => {
     expect(result.rows).toEqual([]);
     expect(result.rowCount).toBe(0);
     expect(result.truncated).toBe(false);
-    expect(result.grandTotals["sum_gross_amount"].value).toBe(0);
+    expect(result.grandTotals["sum_net_amount"].value).toBe(0);
   });
 
   it("marks truncated when over limit", () => {
     // Build more than 10_000 rows
     const rawRows = Array.from({ length: 10_002 }, (_, i) => ({
       hotel_name: `Hotel ${i}`,
-      sum_gross_amount: i * 10,
+      sum_net_amount: i * 10,
     }));
     const result = formatPivotResults(rawRows, config);
     expect(result.truncated).toBe(true);

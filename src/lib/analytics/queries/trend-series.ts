@@ -11,7 +11,7 @@ import {
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
-import { combineConditions } from "@/lib/analytics/queries/shared";
+import { combineConditions, buildIsFeeCondition } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import { unstable_cache } from "next/cache";
 import { withStats } from "@/lib/analytics/cache-stats";
@@ -83,11 +83,12 @@ function metricExpression(metric: TrendMetric): SQL {
     case "avg_basket_value":
       return sql`SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(*), 0)`;
     case "booking_fee":
-      // NetSuite ETL (2026-04-24): booking fees are their own rows now
-      // (isBookingFee = true) rather than a denormalised column on the
-      // principal row. Conditional SUM keeps a single aggregate while
-      // isolating fee revenue from the same result set.
-      return sql`SUM(CASE WHEN ${salesRecords.isBookingFee} THEN ${salesRecords.netAmount}::numeric ELSE 0 END)`;
+      // NetSuite ETL (2026-04-24): booking fees are their own rows. Use the
+      // shared buildIsFeeCondition() so the predicate matches both 9991
+      // (isBookingFee=true) AND 9992 (Cash Handling Fee, flag still false
+      // pending the D10 backfill) — otherwise the series silently drops
+      // every cash-handling-fee row.
+      return sql`SUM(CASE WHEN ${buildIsFeeCondition()} THEN ${salesRecords.netAmount}::numeric ELSE 0 END)`;
   }
 }
 

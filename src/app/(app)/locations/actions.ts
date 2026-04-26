@@ -225,7 +225,6 @@ const EDITABLE_LOCATION_FIELDS = [
   "freeTrialEndDate",
   "hardwareAssets",
   "notes",
-  "region",
   "locationGroup",
   "internalPocId",
   "status",

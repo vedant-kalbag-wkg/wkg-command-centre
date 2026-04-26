@@ -14,13 +14,11 @@ export const AVAILABLE_FIELDS: readonly FieldDefinition[] = [
   { id: "outlet_code", label: "Outlet Code", type: "dimension" },
   { id: "hotel_name", label: "Hotel", type: "dimension" },
   { id: "hotel_group", label: "Hotel Group", type: "dimension" },
-  { id: "region", label: "Region", type: "dimension" },
   { id: "location_group", label: "Location Group", type: "dimension" },
   { id: "sale_month", label: "Month", type: "dimension" },
   { id: "sale_year", label: "Year", type: "dimension" },
   { id: "sale_hour", label: "Hour", type: "dimension" },
-  { id: "gross_amount", label: "Revenue", type: "metric" },
-  { id: "quantity", label: "Quantity", type: "metric" },
+  { id: "net_amount", label: "Revenue", type: "metric" },
   { id: "booking_fee", label: "Booking Fee", type: "metric" },
 ] as const;
 

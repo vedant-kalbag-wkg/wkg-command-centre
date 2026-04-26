@@ -96,7 +96,7 @@ export async function getHotelGroupsList(
   // group columns), so the result set is semantically identical:
   //
   //   outer revenue      = SUM(per-location revenue) per hotel_group
-  //                      = SUM(sales_records.gross_amount) per hotel_group
+  //                      = SUM(sales_records.net_amount) per hotel_group
   //   outer transactions = SUM(per-location txn count) per hotel_group
   //                      = COUNT(*) of sales_records per hotel_group
   //   outer hotel_count  = COUNT(DISTINCT per-location rows) per hotel_group
