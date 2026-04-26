@@ -637,6 +637,14 @@ export const importStagings = pgTable(
 // is now guaranteed by blob-level idempotency (sales_blob_ingestions) + the
 // feed's "no overlap between days" guarantee; reversal pairs legitimately
 // share (saleRef, refNo, transactionDate) with opposite-signed amounts.
+//
+// Reversal columns (D2, migration 0027): isReversal / isPartialReversal /
+// originalRecordId / processedAtLocationId. Populated at CSV ingest by
+// matching (refNo, opposite sign, equal magnitude). For matched refunds the
+// row's locationId is rewritten to the original's locationId so cancellations
+// attribute to the booking outlet, and processedAtLocationId retains the CSV
+// attribution. Unmatched ("orphan") refunds keep the CSV's location_id and
+// originalRecordId stays NULL.
 export const salesRecords = pgTable(
   "sales_records",
   {
@@ -668,6 +676,14 @@ export const salesRecords = pgTable(
     country: text("country"),
     customerCode: text("customer_code"),
     customerName: text("customer_name"),
+    isReversal: boolean("is_reversal").notNull().default(false),
+    isPartialReversal: boolean("is_partial_reversal").notNull().default(false),
+    originalRecordId: uuid("original_record_id").references((): AnyPgColumn => salesRecords.id, {
+      onDelete: "set null",
+    }),
+    processedAtLocationId: uuid("processed_at_location_id").references(() => locations.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -678,6 +694,8 @@ export const salesRecords = pgTable(
     prodDateIdx: index("sales_prod_date_idx").on(t.productId, t.transactionDate),
     provDateIdx: index("sales_prov_date_idx").on(t.providerId, t.transactionDate),
     txnDateIdx: index("sales_txn_date_idx").on(t.transactionDate),
+    isReversalIdx: index("sales_records_is_reversal_idx").on(t.isReversal),
+    originalRecordIdx: index("sales_records_original_record_id_idx").on(t.originalRecordId),
     // No natural unique — idempotency enforced at blob level.
   }),
 );
