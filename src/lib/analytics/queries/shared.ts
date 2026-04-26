@@ -58,6 +58,44 @@ export function buildNonFeeCondition(): SQL {
   return sql`NOT (${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
 }
 
+// Reversal helpers (D2). is_reversal is true on every refund row (net_amount<0);
+// original_record_id is set when the refund matched a positive original at
+// ingest. Together they let KPIs distinguish gross bookings from cancellations,
+// partial refunds, and orphan refunds without re-deriving the join.
+
+export function buildNonReversalCondition(): SQL {
+  return sql`${salesRecords.isReversal} = false`;
+}
+
+// Canonical "real Sales transaction" predicate — what every COUNT(*) on the
+// "Transactions" / "Bookings" KPI tile should use post-D1+D2. Excludes both
+// fee rows (not customer purchases) and reversal rows (refunds aren't new
+// bookings; PR-4 wires this into the dashboards).
+export function buildSalesTxnCondition(): SQL {
+  return sql`(${buildNonFeeCondition()}) AND (${buildNonReversalCondition()})`;
+}
+
+// Cancellations = refund rows that fully reversed a matched original.
+// Partial-refund rows are excluded so the Cancellations KPI is a pure count
+// of bookings nullified end-to-end. Callers typically wrap this with
+// COUNT(DISTINCT original_record_id) to get one cancellation per booking.
+export function buildCancellationCondition(): SQL {
+  return sql`${salesRecords.isReversal} = true AND ${salesRecords.isPartialReversal} = false AND ${salesRecords.originalRecordId} IS NOT NULL`;
+}
+
+// Partial Refunds — separate KPI tile per D2. abs(refund) < abs(original) at
+// the matched original, computed and stored at ingest time on the column.
+export function buildPartialReversalCondition(): SQL {
+  return sql`${salesRecords.isReversal} = true AND ${salesRecords.isPartialReversal} = true AND ${salesRecords.originalRecordId} IS NOT NULL`;
+}
+
+// Orphan Refunds — refunds whose original predates the data window or could
+// not be matched by ref_no/magnitude. Surfaced in the portfolio-level health
+// badge (D2.4); their amounts still net into portfolio-level revenue SUM.
+export function buildOrphanReversalCondition(): SQL {
+  return sql`${salesRecords.isReversal} = true AND ${salesRecords.originalRecordId} IS NULL`;
+}
+
 export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
   const conditions: SQL[] = [];
 
