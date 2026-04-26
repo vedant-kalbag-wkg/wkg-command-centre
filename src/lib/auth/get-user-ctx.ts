@@ -27,7 +27,7 @@ export const getUserCtx = cache(async (): Promise<UserCtx> => {
       return {
         id: target.id,
         userType: (target.userType ?? "internal") as "internal" | "external",
-        role: (target.role ?? null) as "admin" | "member" | "viewer" | null,
+        role: (target.role ?? null) as "admin" | "system" | "member" | "viewer" | null,
       };
     }
   }
@@ -37,6 +37,6 @@ export const getUserCtx = cache(async (): Promise<UserCtx> => {
     userType:
       (session.user as unknown as { userType: "internal" | "external" })
         .userType ?? "internal",
-    role: (session.user.role ?? null) as "admin" | "member" | "viewer" | null,
+    role: (session.user.role ?? null) as "admin" | "system" | "member" | "viewer" | null,
   };
 });

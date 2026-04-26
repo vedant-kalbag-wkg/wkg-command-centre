@@ -6,9 +6,12 @@
  * SQL WHERE condition for sales_records queries.
  *
  * INVARIANTS (enforced here):
- *   - userType='internal' && role='admin' → no filter (unrestricted).
- *   - userType='internal' (member/viewer) with 0 scopes → no filter.
- *   - userType='external' with 0 scopes → THROW. External users must be scoped.
+ *   - userType='internal' && role IN ('admin', 'system') → no filter
+ *     (unrestricted). 'system' covers automation actors (e.g. ETL) which
+ *     legitimately operate outside any scope assignment.
+ *   - Any other user with 0 scopes → THROW. This includes internal
+ *     member/viewer (previously silently unrestricted — security bug) and
+ *     all external users.
  *   - Multiple scopes of the same dimension = UNION (IN (…)).
  *   - Multiple scopes across dimensions = UNION across dimensions
  *     (OR in SQL).
@@ -46,7 +49,7 @@ export type Scope = {
 export type UserCtx = {
   id: string;
   userType: 'internal' | 'external';
-  role: 'admin' | 'member' | 'viewer' | null;
+  role: 'admin' | 'system' | 'member' | 'viewer' | null;
 };
 
 export type Session = {
@@ -81,15 +84,18 @@ export function buildScopeFilter(
 
   const user = resolveUser(input, options);
 
-  if (user.userType === 'internal' && user.role === 'admin') {
+  if (
+    user.userType === 'internal' &&
+    (user.role === 'admin' || user.role === 'system')
+  ) {
     return null;
   }
 
-  if (user.userType === 'external' && scopes.length === 0) {
-    throw new Error('External user must have at least one scope row');
+  if (scopes.length === 0) {
+    throw new Error(
+      "User has no analytics scopes assigned. Either assign scopes via /settings/users, or change the user's role to 'admin' or 'system' if unrestricted access is intended.",
+    );
   }
-
-  if (scopes.length === 0) return null;
 
   const byDim = new Map<DimensionType, Set<string>>();
   for (const s of scopes) {

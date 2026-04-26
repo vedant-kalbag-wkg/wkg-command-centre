@@ -183,6 +183,13 @@
       "when": 1777336801003,
       "tag": "0025_au_region",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1777336801004,
+      "tag": "0026_add_system_role_and_etl_promotion",
+      "breakpoints": true
     }
   ]
 }
