@@ -20,6 +20,7 @@
  *     is used for scope decisions.
  */
 
+import { cache } from 'react';
 import { eq, inArray, or, type SQL, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
@@ -141,12 +142,18 @@ type DrizzleDb = NodePgDatabase<any>;
  *   - product        → sales_records.product_id IN (…)
  *   - provider       → sales_records.provider_id IN (…)
  *   - union          → OR of the above
+ *
+ * Wrapped in React.cache so a request that runs N analytics queries in
+ * parallel only fires the user_scopes SELECT once (was N round-trips).
+ * Cache key is the (db, input, options) tuple by reference. In non-React
+ * contexts (tests, scripts) cache() is a no-op, so this is safe to wrap
+ * unconditionally.
  */
-export async function scopedSalesCondition(
+export const scopedSalesCondition = cache(async (
   db: DrizzleDb,
   input: UserCtx | Session,
   options?: BuildScopeFilterOptions,
-): Promise<SQL | undefined> {
+): Promise<SQL | undefined> => {
   const user = resolveUser(input, options);
 
   const rows = await db
@@ -162,7 +169,7 @@ export async function scopedSalesCondition(
   if (filter === null) return undefined;
 
   return translateFilterToSalesSql(filter);
-}
+});
 
 function translateFilterToSalesSql(filter: ScopeFilter): SQL {
   if (filter === null) {
