@@ -36,6 +36,7 @@ describe("parseSalesCsv (NetSuite format)", () => {
     expect(p.netAmount).toBe("12.48");
     expect(p.vatAmount).toBe("2.5");
     expect(p.isBookingFee).toBe(false);
+    expect(p.isReversal).toBe(false);
   });
 
   it("uses fee-code fallback when Code is empty for a Booking Fee row", () => {
@@ -85,6 +86,7 @@ describe("parseSalesCsv (NetSuite format)", () => {
     expect(res.validCount).toBe(1);
     expect(res.rows[0].parsed?.netAmount).toBe("-34.09");
     expect(res.rows[0].parsed?.vatAmount).toBe("-6.82");
+    expect(res.rows[0].parsed?.isReversal).toBe(true);
   });
 
   it("uses Date column (not Din) as transactionDate", () => {

@@ -25,6 +25,7 @@ export type ParsedSalesRow = {
   vatAmount: string;
   currency: string;
   isBookingFee: boolean;
+  isReversal: boolean;
 };
 
 export type RowValidationError = { field: string; message: string };
@@ -177,6 +178,11 @@ export function parseSalesCsv(text: string, opts: ParseOptions): ParseResult {
     }
 
     const isBookingFee = productName === "Booking Fee";
+    // Reversal detection: NetSuite refunds appear as a second ledger row sharing
+    // the original's ref_no with the sign flipped. Matching the original row
+    // (and the location_id rewrite + partial-vs-full classification) happens at
+    // commit time in the pipeline; the parser only flags candidates here.
+    const isReversal = (canonical.netAmount ?? "").trim().startsWith("-");
 
     const transactionDate = parseDate(canonical.transactionDate ?? "");
     if (!transactionDate) errors.push({ field: "transactionDate", message: "transactionDate (Date column) is missing or unparseable" });
@@ -235,6 +241,7 @@ export function parseSalesCsv(text: string, opts: ParseOptions): ParseResult {
         vatAmount,
         currency,
         isBookingFee,
+        isReversal,
       };
       validCount++;
       if (minDate === null || transactionDate < minDate) minDate = transactionDate;

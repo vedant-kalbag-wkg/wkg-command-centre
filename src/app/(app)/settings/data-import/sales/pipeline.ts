@@ -25,7 +25,8 @@
  * been stubbed out pending Phase 8 UI removal.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   importStagings,
@@ -40,6 +41,12 @@ import {
 } from "@/lib/csv/sales-csv";
 import { resolveDimensions, type DimensionInput } from "@/lib/csv/dimension-resolver";
 import type { SalesDataSource } from "@/lib/sales/source";
+import {
+  matchInBatchReversals,
+  applyCrossBatchMatches,
+  type ReversalCandidate,
+  type ReversalMatch,
+} from "@/lib/sales/reversal-matcher";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = NodePgDatabase | any;
@@ -264,37 +271,114 @@ export async function _commitImportForActor(
 
   let committedRows = 0;
 
+  // Reversal matching (D2): pre-assign ids so in-batch refunds can reference
+  // their originals without a round-trip; fetch cross-batch candidates
+  // (already-committed positive-amount rows sharing a ref_no with this batch's
+  // unmatched refunds) once, outside the transaction. Match results then drive
+  // the locationId rewrite + originalRecordId/processedAtLocationId/
+  // isPartialReversal columns on each insert.
+  type Prepared = {
+    id: string;
+    parsed: ParsedSalesRow;
+    resolution: StoredStagedRow["resolution"];
+  };
+  const prepared: Prepared[] = validRows.map(({ parsedRow: stored }) => ({
+    id: randomUUID(),
+    parsed: stored.parsed,
+    resolution: stored.resolution,
+  }));
+
+  const candidates: ReversalCandidate[] = prepared.map((p) => ({
+    id: p.id,
+    refNo: p.parsed.refNo,
+    netAmount: p.parsed.netAmount,
+    transactionDate: p.parsed.transactionDate,
+    locationId: p.resolution.locationId,
+  }));
+  const inBatch = matchInBatchReversals(candidates);
+
+  let crossBatchMatches: ReversalMatch[] = [];
+  if (inBatch.unmatchedRefunds.length > 0) {
+    const refNos = Array.from(new Set(inBatch.unmatchedRefunds.map((r) => r.refNo)));
+    const committedCandidates = await db
+      .select({
+        id: salesRecords.id,
+        refNo: salesRecords.refNo,
+        netAmount: salesRecords.netAmount,
+        transactionDate: salesRecords.transactionDate,
+        locationId: salesRecords.locationId,
+      })
+      .from(salesRecords)
+      .where(
+        and(
+          eq(salesRecords.regionId, regionId),
+          inArray(salesRecords.refNo, refNos),
+          sql`${salesRecords.netAmount} > 0`,
+        ),
+      );
+    const cross = applyCrossBatchMatches(
+      inBatch.unmatchedRefunds,
+      committedCandidates.map((c: ReversalCandidate) => ({
+        id: c.id,
+        refNo: c.refNo,
+        netAmount: c.netAmount,
+        transactionDate: c.transactionDate,
+        locationId: c.locationId,
+      })),
+    );
+    crossBatchMatches = cross.matches;
+    // Orphans (cross.orphans) need no special handling — leaving original_record_id
+    // NULL is exactly what KPIs key on (is_reversal AND original_record_id IS NULL).
+  }
+  const matchByRefundId = new Map<string, ReversalMatch>();
+  for (const m of inBatch.matches) matchByRefundId.set(m.refundId, m);
+  for (const m of crossBatchMatches) matchByRefundId.set(m.refundId, m);
+
   try {
     await db.transaction(async (tx: AnyDb) => {
       const CHUNK = 1000;
-      for (let i = 0; i < validRows.length; i += CHUNK) {
-        const batch = validRows.slice(i, i + CHUNK);
-        const inserts = batch.map(({ parsedRow: stored }) => ({
-          importId,
-          regionId,
-          saleRef: stored.parsed.saleRef,
-          refNo: stored.parsed.refNo,
-          transactionDate: stored.parsed.transactionDate,
-          transactionTime: stored.parsed.transactionTime,
-          locationId: stored.resolution.locationId,
-          productId: stored.resolution.productId,
-          providerId: stored.resolution.providerId,
-          netAmount: stored.parsed.netAmount,
-          vatAmount: stored.parsed.vatAmount,
-          vatRate: stored.parsed.vatRate,
-          currency: stored.parsed.currency,
-          isBookingFee: stored.parsed.isBookingFee,
-          netsuiteCode: stored.parsed.netsuiteCode,
-          agent: stored.parsed.agent,
-          businessDivision: stored.parsed.businessDivision,
-          categoryCode: stored.parsed.categoryCode,
-          categoryName: stored.parsed.categoryName,
-          apiProductName: stored.parsed.apiProductName,
-          city: stored.parsed.city,
-          country: stored.parsed.country,
-          customerCode: stored.parsed.customerCode,
-          customerName: stored.parsed.customerName,
-        }));
+      for (let i = 0; i < prepared.length; i += CHUNK) {
+        const batch = prepared.slice(i, i + CHUNK);
+        const inserts = batch.map((p) => {
+          const match = matchByRefundId.get(p.id);
+          // For matched refunds: rewrite location_id to the original's; keep
+          // CSV-attributed location in processed_at_location_id. For orphans
+          // and originals: location_id stays as resolved; processed_at stays
+          // NULL (only meaningful for matched refunds).
+          const locationId = match ? match.originalLocationId : p.resolution.locationId;
+          const processedAtLocationId = match ? p.resolution.locationId : null;
+          return {
+            id: p.id,
+            importId,
+            regionId,
+            saleRef: p.parsed.saleRef,
+            refNo: p.parsed.refNo,
+            transactionDate: p.parsed.transactionDate,
+            transactionTime: p.parsed.transactionTime,
+            locationId,
+            productId: p.resolution.productId,
+            providerId: p.resolution.providerId,
+            netAmount: p.parsed.netAmount,
+            vatAmount: p.parsed.vatAmount,
+            vatRate: p.parsed.vatRate,
+            currency: p.parsed.currency,
+            isBookingFee: p.parsed.isBookingFee,
+            netsuiteCode: p.parsed.netsuiteCode,
+            agent: p.parsed.agent,
+            businessDivision: p.parsed.businessDivision,
+            categoryCode: p.parsed.categoryCode,
+            categoryName: p.parsed.categoryName,
+            apiProductName: p.parsed.apiProductName,
+            city: p.parsed.city,
+            country: p.parsed.country,
+            customerCode: p.parsed.customerCode,
+            customerName: p.parsed.customerName,
+            isReversal: p.parsed.isReversal,
+            isPartialReversal: match?.isPartialReversal ?? false,
+            originalRecordId: match?.originalId ?? null,
+            processedAtLocationId,
+          };
+        });
         // Raw insert into salesRecords is legitimate here — this path is
         // allow-listed in eslint.config.mjs because admin-only CSV commits
         // don't go through scopedSalesCondition (admins bypass).
@@ -318,7 +402,7 @@ export async function _commitImportForActor(
         .set({ status: "committed" })
         .where(eq(salesImports.id, importId));
     });
-    committedRows = validRows.length;
+    committedRows = prepared.length;
   } catch (err) {
     await db
       .update(salesImports)
