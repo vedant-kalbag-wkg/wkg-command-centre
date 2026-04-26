@@ -72,7 +72,7 @@ export async function calculateCommissionsForRecords(
     return { processed: 0, calculated: 0, skipped: 0 };
   }
 
-  // 1. Fetch the sales records (netAmount + isBookingFee — grossAmount and
+  // 1. Fetch the sales records (netAmount + isWeknowFee — grossAmount and
   //    bookingFee columns were dropped in the NetSuite ETL rewrite).
   //
   // Chunked because Postgres's bind-parameter ceiling is 65,535 — a full-month
@@ -85,7 +85,7 @@ export async function calculateCommissionsForRecords(
     productId: string;
     transactionDate: string;
     netAmount: string;
-    isBookingFee: boolean;
+    isWeknowFee: boolean;
   };
   const records: SalesRow[] = [];
   for (let i = 0; i < salesRecordIds.length; i += ID_CHUNK) {
@@ -97,15 +97,15 @@ export async function calculateCommissionsForRecords(
         productId: salesRecords.productId,
         transactionDate: salesRecords.transactionDate,
         netAmount: salesRecords.netAmount,
-        isBookingFee: salesRecords.isBookingFee,
+        isWeknowFee: salesRecords.isWeknowFee,
       })
       .from(salesRecords)
       .where(inArray(salesRecords.id, slice));
     records.push(...batch);
   }
 
-  // Split booking-fee rows (commission-bearing) from principal rows (skipped).
-  const feeRecords = records.filter((r) => r.isBookingFee);
+  // Split fee rows (commission-bearing) from principal rows (skipped).
+  const feeRecords = records.filter((r) => r.isWeknowFee);
   const principalCount = records.length - feeRecords.length;
 
   // 2. Fetch only the locationProducts matching the fee records' (locationId, productId) pairs
@@ -193,7 +193,7 @@ export async function calculateCommissionsForRecords(
     const mEnd = monthEnd(ym);
 
     // Query cumulative revenue for this location x product x month.
-    // Commission base is SUM(netAmount) WHERE isBookingFee = true, EXCLUDING
+    // Commission base is SUM(netAmount) WHERE isWeknowFee = true, EXCLUDING
     // the records we're about to process (to avoid double-counting the batch).
     const [cumRow] = await db
       .select({
@@ -204,7 +204,7 @@ export async function calculateCommissionsForRecords(
         and(
           eq(salesRecords.locationId, locationId),
           eq(salesRecords.productId, productId),
-          eq(salesRecords.isBookingFee, true),
+          eq(salesRecords.isWeknowFee, true),
           sql`${salesRecords.transactionDate} >= ${mStart}::date`,
           sql`${salesRecords.transactionDate} < ${mEnd}::date`,
           sql`${salesRecords.id} NOT IN (${sql.join(
@@ -355,7 +355,7 @@ export async function recalculateCommissions(
       await tx.insert(commissionLedger).values(reversals.slice(i, i + CHUNK));
     }
 
-    // C3: Find ALL booking-fee salesRecords for this location x product x month
+    // C3: Find ALL fee salesRecords for this location x product x month
     // (not just the ones that already had ledger entries). Principal rows are
     // excluded because they never produce ledger entries.
     const allMonthRecords = await tx
@@ -365,7 +365,7 @@ export async function recalculateCommissions(
         and(
           eq(salesRecords.locationId, lp.locationId),
           eq(salesRecords.productId, lp.productId),
-          eq(salesRecords.isBookingFee, true),
+          eq(salesRecords.isWeknowFee, true),
           sql`${salesRecords.transactionDate} >= ${mStart}::date`,
           sql`${salesRecords.transactionDate} < ${mEnd}::date`,
         ),

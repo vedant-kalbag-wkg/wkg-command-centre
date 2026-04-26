@@ -76,7 +76,7 @@ describe("updateFeeCodeFallback (integration)", () => {
         productId,
         netAmount: "10.00",
         vatAmount: "2.00",
-        isBookingFee: true,
+        isWeknowFee: true,
         netsuiteCode: "9991",
       });
     }

@@ -1,8 +1,8 @@
 /**
  * Verification probes for two things the user called out:
- *   (1) Does is_booking_fee=true capture BOTH Booking Fee (9991) AND Cash
- *       Handling Fee (9992), or just 9991? This is what the Revenue toggle
- *       filters on, so the answer shapes whether we need to widen the predicate.
+ *   (1) Does is_weknow_fee=true capture BOTH Booking Fee (9991) AND Cash
+ *       Handling Fee (9992)? Post-D10 the parser sets the flag for both
+ *       codes; this probe confirms the column reflects that.
  *   (2) Is outlet-code → location resolution region-scoped? i.e. if the same
  *       outlet_code exists in two regions, sales ingested under region A must
  *       only associate with the region-A location, never region B.
@@ -15,7 +15,7 @@ async function main() {
   try {
     console.log("=== 1. Fee-flag coverage ===");
     const feeRows = await pool.query(
-      `SELECT netsuite_code, is_booking_fee, count(*)::int AS rows,
+      `SELECT netsuite_code, is_weknow_fee, count(*)::int AS rows,
               sum(net_amount)::numeric(12,2) AS total
        FROM sales_records
        WHERE netsuite_code IN ('9991', '9992')
@@ -23,17 +23,17 @@ async function main() {
     );
     for (const r of feeRows.rows) {
       console.log(
-        `  code=${r.netsuite_code}  is_booking_fee=${r.is_booking_fee}  rows=${r.rows}  total=£${r.total}`,
+        `  code=${r.netsuite_code}  is_weknow_fee=${r.is_weknow_fee}  rows=${r.rows}  total=£${r.total}`,
       );
     }
     const byFlag = await pool.query(
-      `SELECT is_booking_fee, count(*)::int AS rows,
+      `SELECT is_weknow_fee, count(*)::int AS rows,
               sum(net_amount)::numeric(12,2) AS total
        FROM sales_records GROUP BY 1`,
     );
-    console.log("\n  All rows by is_booking_fee:");
+    console.log("\n  All rows by is_weknow_fee:");
     for (const r of byFlag.rows) {
-      console.log(`    is_booking_fee=${r.is_booking_fee}  rows=${r.rows}  total=£${r.total}`);
+      console.log(`    is_weknow_fee=${r.is_weknow_fee}  rows=${r.rows}  total=£${r.total}`);
     }
 
     console.log("\n=== 2. Repeated outlet codes across regions ===");

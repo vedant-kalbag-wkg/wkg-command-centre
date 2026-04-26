@@ -186,7 +186,7 @@ describe.skipIf(!CSV_PRESENT)("runAzureEtl (full CSV fixture)", () => {
     const bookingFees = await ctx.db
       .select({ id: salesRecords.id })
       .from(salesRecords)
-      .where(eq(salesRecords.isBookingFee, true));
+      .where(eq(salesRecords.isWeknowFee, true));
     expect(bookingFees).toHaveLength(45621);
 
     const code9991 = await ctx.db

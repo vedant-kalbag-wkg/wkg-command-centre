@@ -35,7 +35,7 @@ describe("parseSalesCsv (NetSuite format)", () => {
     expect(p.transactionDate).toBe("2026-01-01");
     expect(p.netAmount).toBe("12.48");
     expect(p.vatAmount).toBe("2.5");
-    expect(p.isBookingFee).toBe(false);
+    expect(p.isWeknowFee).toBe(false);
     expect(p.isReversal).toBe(false);
   });
 
@@ -48,7 +48,7 @@ describe("parseSalesCsv (NetSuite format)", () => {
     ]]);
     const res = parseSalesCsv(text, { feeCodeFallbacks: fallbacks });
     expect(res.rows[0].parsed?.netsuiteCode).toBe("9991");
-    expect(res.rows[0].parsed?.isBookingFee).toBe(true);
+    expect(res.rows[0].parsed?.isWeknowFee).toBe(true);
   });
 
   it("uses fallback for Cash Handling Fee", () => {
@@ -60,7 +60,8 @@ describe("parseSalesCsv (NetSuite format)", () => {
     ]]);
     const res = parseSalesCsv(text, { feeCodeFallbacks: fallbacks });
     expect(res.rows[0].parsed?.netsuiteCode).toBe("9992");
-    expect(res.rows[0].parsed?.isBookingFee).toBe(false);
+    // D10: Cash Handling Fee (9992) is also a WKG fee — parser must flag it.
+    expect(res.rows[0].parsed?.isWeknowFee).toBe(true);
   });
 
   it("rejects a row with empty Code and unknown Product Name", () => {

@@ -362,7 +362,7 @@ export async function _commitImportForActor(
             vatAmount: p.parsed.vatAmount,
             vatRate: p.parsed.vatRate,
             currency: p.parsed.currency,
-            isBookingFee: p.parsed.isBookingFee,
+            isWeknowFee: p.parsed.isWeknowFee,
             netsuiteCode: p.parsed.netsuiteCode,
             agent: p.parsed.agent,
             businessDivision: p.parsed.businessDivision,

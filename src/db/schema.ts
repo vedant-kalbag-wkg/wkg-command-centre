@@ -665,7 +665,7 @@ export const salesRecords = pgTable(
     vatAmount: numeric("vat_amount", { precision: 12, scale: 2 }).notNull(),
     vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
     currency: text("currency").notNull().default("GBP"),
-    isBookingFee: boolean("is_booking_fee").notNull().default(false),
+    isWeknowFee: boolean("is_weknow_fee").notNull().default(false),
     netsuiteCode: text("netsuite_code").notNull(),
     agent: text("agent"),
     businessDivision: text("business_division"),

@@ -24,7 +24,7 @@ export type ParsedSalesRow = {
   netAmount: string;
   vatAmount: string;
   currency: string;
-  isBookingFee: boolean;
+  isWeknowFee: boolean;
   isReversal: boolean;
 };
 
@@ -177,7 +177,10 @@ export function parseSalesCsv(text: string, opts: ParseOptions): ParseResult {
       else errors.push({ field: "netsuiteCode", message: `Code is required and no fallback configured for Product Name '${productName}'` });
     }
 
-    const isBookingFee = productName === "Booking Fee";
+    // WKG-collected fee rows: NetSuite codes 9991 (Booking Fee) and 9992
+    // (Cash Handling Fee). Code is the source of truth — the productName
+    // equality check used to miss 9992 entirely (D10).
+    const isWeknowFee = netsuiteCode === "9991" || netsuiteCode === "9992";
     // Reversal detection: NetSuite refunds appear as a second ledger row sharing
     // the original's ref_no with the sign flipped. Matching the original row
     // (and the location_id rewrite + partial-vs-full classification) happens at
@@ -240,7 +243,7 @@ export function parseSalesCsv(text: string, opts: ParseOptions): ParseResult {
         netAmount,
         vatAmount,
         currency,
-        isBookingFee,
+        isWeknowFee,
         isReversal,
       };
       validCount++;

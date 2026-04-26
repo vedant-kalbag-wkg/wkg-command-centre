@@ -214,7 +214,7 @@ describe("runAzureEtl (integration)", () => {
     const bookingFees = await ctx.db
       .select()
       .from(salesRecords)
-      .where(eq(salesRecords.isBookingFee, true));
+      .where(eq(salesRecords.isWeknowFee, true));
     expect(bookingFees).toHaveLength(1);
 
     const code9991 = await ctx.db

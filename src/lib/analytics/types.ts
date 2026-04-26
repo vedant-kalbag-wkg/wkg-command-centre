@@ -49,7 +49,7 @@ export type AnalyticsFilters = {
   locationTypes?: LocationType[]
   // "sales"   — every row (gross transaction volume, default)
   // "revenue" — only booking-fee + cash-handling-fee rows (WKG's take).
-  //             Identified by salesRecords.isBookingFee = true; by construction
+  //             Identified by salesRecords.isWeknowFee = true; by construction
   //             this matches netsuite_code IN ('9991', '9992').
   metricMode?: MetricMode
 }
