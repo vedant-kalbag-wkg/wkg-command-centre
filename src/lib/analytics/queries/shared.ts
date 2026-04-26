@@ -156,7 +156,8 @@ export function buildMaturityCondition(filters: AnalyticsFilters): SQL | undefin
 
   // Maturity buckets are relative to the user-selected reporting window's end
   // date, not NOW(). Using NOW() would shift bucket boundaries as time passes
-  // and misclassify kiosks for historical date ranges.
+  // and misclassify kiosks for historical date ranges. Buckets follow D3:
+  // left-inclusive / right-exclusive months-since-liveDate (see maturity.ts).
   const referenceDate = sql`${filters.dateTo}::timestamp`;
 
   const bucketConditions: SQL[] = [];
@@ -165,22 +166,27 @@ export function buildMaturityCondition(filters: AnalyticsFilters): SQL | undefin
     switch (bucket) {
       case "0-1mo":
         bucketConditions.push(
-          sql`${kioskLiveDateSubquery} >= (${referenceDate} - INTERVAL '1 month')`,
+          sql`${kioskLiveDateSubquery} > (${referenceDate} - INTERVAL '1 month')`,
         );
         break;
       case "1-3mo":
         bucketConditions.push(
-          sql`(${kioskLiveDateSubquery} >= (${referenceDate} - INTERVAL '3 months') AND ${kioskLiveDateSubquery} < (${referenceDate} - INTERVAL '1 month'))`,
+          sql`(${kioskLiveDateSubquery} > (${referenceDate} - INTERVAL '3 months') AND ${kioskLiveDateSubquery} <= (${referenceDate} - INTERVAL '1 month'))`,
         );
         break;
       case "3-6mo":
         bucketConditions.push(
-          sql`(${kioskLiveDateSubquery} >= (${referenceDate} - INTERVAL '6 months') AND ${kioskLiveDateSubquery} < (${referenceDate} - INTERVAL '3 months'))`,
+          sql`(${kioskLiveDateSubquery} > (${referenceDate} - INTERVAL '6 months') AND ${kioskLiveDateSubquery} <= (${referenceDate} - INTERVAL '3 months'))`,
         );
         break;
-      case "6+mo":
+      case "6-9mo":
         bucketConditions.push(
-          sql`${kioskLiveDateSubquery} < (${referenceDate} - INTERVAL '6 months')`,
+          sql`(${kioskLiveDateSubquery} > (${referenceDate} - INTERVAL '9 months') AND ${kioskLiveDateSubquery} <= (${referenceDate} - INTERVAL '6 months'))`,
+        );
+        break;
+      case "9+mo":
+        bucketConditions.push(
+          sql`${kioskLiveDateSubquery} <= (${referenceDate} - INTERVAL '9 months')`,
         );
         break;
     }

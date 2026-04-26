@@ -75,8 +75,11 @@ export async function getRevenueByMaturityBucket(
 
   // Bucket kiosks by how mature they were on the user-selected end date
   // (filters.dateTo), not NOW(). Using NOW() would classify every kiosk by
-  // its maturity today, ignoring the selected reporting window.
+  // its maturity today, ignoring the selected reporting window. Bucket
+  // boundaries match the canonical 5-bucket months convention (D3) used by
+  // shared.ts/buildMaturityCondition + the client-side calculateMaturityBucket.
   const referenceDate = sql`${filters.dateTo}::timestamp`;
+  const monthsSinceLive = sql`EXTRACT(EPOCH FROM (${referenceDate} - ${kioskLiveDateSubquery})) / (30.44 * 86400)`;
 
   // location_count is intentionally raw — "any location contributing to
   // this bucket" regardless of fee-vs-sales row mix. Revenue uses the
@@ -89,10 +92,11 @@ export async function getRevenueByMaturityBucket(
   }>(sql`
     SELECT
       CASE
-        WHEN EXTRACT(EPOCH FROM (${referenceDate} - ${kioskLiveDateSubquery})) / 86400 <= 30 THEN '0-30d'
-        WHEN EXTRACT(EPOCH FROM (${referenceDate} - ${kioskLiveDateSubquery})) / 86400 <= 60 THEN '31-60d'
-        WHEN EXTRACT(EPOCH FROM (${referenceDate} - ${kioskLiveDateSubquery})) / 86400 <= 90 THEN '61-90d'
-        ELSE '90+d'
+        WHEN ${monthsSinceLive} < 1 THEN '0-1mo'
+        WHEN ${monthsSinceLive} < 3 THEN '1-3mo'
+        WHEN ${monthsSinceLive} < 6 THEN '3-6mo'
+        WHEN ${monthsSinceLive} < 9 THEN '6-9mo'
+        ELSE '9+mo'
       END AS bucket,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
       COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue,
@@ -103,8 +107,8 @@ export async function getRevenueByMaturityBucket(
     ORDER BY bucket
   `);
 
-  // Ensure all 4 buckets are represented
-  const bucketOrder = ["0-30d", "31-60d", "61-90d", "90+d"];
+  // Ensure all 5 buckets are represented (D3).
+  const bucketOrder = ["0-1mo", "1-3mo", "3-6mo", "6-9mo", "9+mo"];
   const resultMap = new Map(
     rows.map((r) => [
       r.bucket,
@@ -142,43 +146,52 @@ export async function getRevenueRampCurve(
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
 
+  // Ramp curve buckets each row by months-since-liveDate using the canonical
+  // 5-bucket convention (D3). The numeric `monthsSinceInstall` field is the
+  // bucket's lower edge, kept on the wire so the chart can plot bucket→avg
+  // without re-deriving labels client-side.
   const rows = await executeRows<{
-    months_since: string;
+    bucket_index: string;
     avg_revenue: string;
     location_count: string;
   }>(sql`
     SELECT
-      LEAST(
-        FLOOR(EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400)),
-        6
-      )::int AS months_since,
+      CASE
+        WHEN EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400) < 1 THEN 0
+        WHEN EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400) < 3 THEN 1
+        WHEN EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400) < 6 THEN 3
+        WHEN EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400) < 9 THEN 6
+        ELSE 9
+      END AS bucket_index,
       COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count
     FROM ${baseFrom()}
     WHERE ${fullWhere}
       AND ${salesRecords.transactionDate}::timestamp >= ${kioskLiveDateSubquery}
-    GROUP BY months_since
-    ORDER BY months_since
+    GROUP BY bucket_index
+    ORDER BY bucket_index
   `);
 
-  // Ensure all points 0-6 are represented
+  // Ensure all 5 canonical buckets are represented (lower-edge as key).
+  const bucketIndices = [0, 1, 3, 6, 9];
   const resultMap = new Map(
     rows.map((r) => [
-      Number(r.months_since),
+      Number(r.bucket_index),
       {
-        monthsSinceInstall: Number(r.months_since),
+        monthsSinceInstall: Number(r.bucket_index),
         avgRevenue: Number(r.avg_revenue),
         locationCount: Number(r.location_count),
       },
     ]),
   );
 
-  return Array.from({ length: 7 }, (_, i) =>
-    resultMap.get(i) ?? {
-      monthsSinceInstall: i,
-      avgRevenue: 0,
-      locationCount: 0,
-    },
+  return bucketIndices.map(
+    (i) =>
+      resultMap.get(i) ?? {
+        monthsSinceInstall: i,
+        avgRevenue: 0,
+        locationCount: 0,
+      },
   );
 }
 

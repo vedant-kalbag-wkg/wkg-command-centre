@@ -35,6 +35,9 @@ interface PerformanceTableProps {
   thresholdConfig?: ThresholdConfig;
   flags?: LocationFlag[];
   onFlagCreated?: () => void;
+  // ISO YYYY-MM-DD — reference date for maturity bucket calculation (D3:
+  // never NOW(); always the user-selected reporting window's end).
+  referenceDate: string;
 }
 
 function scoreColorClass(score: number): string {
@@ -51,8 +54,9 @@ const trafficLightLabel: Record<string, string> = {
 
 const EM_DASH = "—";
 
-export function PerformanceTable({ data, title, thresholdConfig, flags = [], onFlagCreated }: PerformanceTableProps) {
+export function PerformanceTable({ data, title, thresholdConfig, flags = [], onFlagCreated, referenceDate }: PerformanceTableProps) {
   const metricLabel = useMetricLabel();
+  const refDate = new Date(referenceDate);
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
     const existing = flagsByLocation.get(f.locationId) ?? [];
@@ -114,6 +118,7 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                   {(() => {
                     const bucket = calculateMaturityBucket(
                       row.liveDate ? new Date(row.liveDate) : null,
+                      refDate,
                     );
                     return bucket ? (
                       <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-xs font-medium">

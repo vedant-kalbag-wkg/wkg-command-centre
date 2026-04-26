@@ -31,6 +31,9 @@ interface OutletTiersProps {
   thresholdConfig?: ThresholdConfig;
   flags?: LocationFlag[];
   onFlagCreated?: () => void;
+  // ISO YYYY-MM-DD — reference date for maturity bucket calculation (D3:
+  // never NOW(); always the user-selected reporting window's end).
+  referenceDate: string;
 }
 
 const tierStyles: Record<OutletTier, string> = {
@@ -49,7 +52,7 @@ const trafficLightLabel: Record<string, string> = {
 
 const EM_DASH = "—";
 
-export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }: OutletTiersProps) {
+export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated, referenceDate }: OutletTiersProps) {
   const metricLabel = useMetricLabel();
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
@@ -57,6 +60,7 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }
     existing.push(f);
     flagsByLocation.set(f.locationId, existing);
   }
+  const refDate = new Date(referenceDate);
 
   return (
     <div className="overflow-x-auto">
@@ -90,6 +94,7 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }
                 {(() => {
                   const bucket = calculateMaturityBucket(
                     row.liveDate ? new Date(row.liveDate) : null,
+                    refDate,
                   );
                   return bucket ? (
                     <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-xs font-medium">

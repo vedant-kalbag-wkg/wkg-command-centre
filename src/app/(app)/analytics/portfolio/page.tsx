@@ -377,6 +377,7 @@ export default function PortfolioPage() {
                 thresholdConfig={thresholdConfig}
                 flags={flags}
                 onFlagCreated={loadData}
+                referenceDate={filters.dateTo}
               />
             )}
           </ChartCard>

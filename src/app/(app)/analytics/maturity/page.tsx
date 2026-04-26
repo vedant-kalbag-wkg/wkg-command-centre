@@ -22,21 +22,24 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchMaturityAnalysis } from "./actions";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
 import { useMetricLabel } from "@/lib/analytics/metric-label";
-import { DETAILED_MATURITY_BUCKETS } from "@/lib/analytics/maturity";
+import { MATURITY_BUCKETS } from "@/lib/analytics/maturity";
 import type { AnalyticsFilters, MaturityAnalysis } from "@/lib/analytics/types";
 
+// Plateau insight compares "young but settled" (1-3mo) vs "mature" (9+mo)
+// average revenue. Same intent as the old 31-60d vs 90+d test, re-anchored
+// to the canonical 5-bucket convention (D3).
 function getPlateauInsight(
   bucketMetrics: MaturityAnalysis["bucketMetrics"],
   metricLabel: string,
 ): { text: string; color: string } {
-  const bucket3160 = bucketMetrics.find((b) => b.bucket === "31-60d");
-  const bucket90 = bucketMetrics.find((b) => b.bucket === "90+d");
+  const youngBucket = bucketMetrics.find((b) => b.bucket === "1-3mo");
+  const matureBucket = bucketMetrics.find((b) => b.bucket === "9+mo");
 
   if (
-    !bucket3160 ||
-    !bucket90 ||
-    bucket3160.locationCount === 0 ||
-    bucket90.locationCount === 0
+    !youngBucket ||
+    !matureBucket ||
+    youngBucket.locationCount === 0 ||
+    matureBucket.locationCount === 0
   ) {
     return {
       text: "Insufficient data to determine maturity trend",
@@ -44,17 +47,17 @@ function getPlateauInsight(
     };
   }
 
-  const avg3160 = bucket3160.avgRevenue;
-  const avg90 = bucket90.avgRevenue;
+  const avgYoung = youngBucket.avgRevenue;
+  const avgMature = matureBucket.avgRevenue;
 
-  if (avg3160 === 0) {
+  if (avgYoung === 0) {
     return {
       text: "Insufficient data to determine maturity trend",
       color: "#6B7280",
     };
   }
 
-  const pctChange = ((avg90 - avg3160) / avg3160) * 100;
+  const pctChange = ((avgMature - avgYoung) / avgYoung) * 100;
 
   if (pctChange > 10) {
     return {
@@ -69,7 +72,7 @@ function getPlateauInsight(
     };
   }
   return {
-    text: `${metricLabel} plateaus after 90 days`,
+    text: `${metricLabel} plateaus after 9 months`,
     color: "#6B7280",
   };
 }
@@ -110,7 +113,7 @@ export default function MaturityPage() {
   }, [loadData]);
 
   const bucketLabel = (value: string) =>
-    DETAILED_MATURITY_BUCKETS.find((b) => b.value === value)?.label ?? value;
+    MATURITY_BUCKETS.find((b) => b.value === value)?.label ?? value;
 
   const hasBucketData =
     !!data && data.bucketMetrics.some((b) => b.totalRevenue > 0);
@@ -197,13 +200,21 @@ export default function MaturityPage() {
         {data && hasRampData && (
           <ChartWrapper>
             <LineChart
-              data={data.rampCurve.map((p) => ({
-                ...p,
-                label:
-                  p.monthsSinceInstall === 6
-                    ? "6+"
-                    : String(p.monthsSinceInstall),
-              }))}
+              data={data.rampCurve.map((p) => {
+                // monthsSinceInstall is the lower edge of the canonical
+                // 5-bucket scheme (D3): 0,1,3,6,9. Map it to its bucket key.
+                const bucketKey =
+                  p.monthsSinceInstall === 0
+                    ? "0-1mo"
+                    : p.monthsSinceInstall === 1
+                      ? "1-3mo"
+                      : p.monthsSinceInstall === 3
+                        ? "3-6mo"
+                        : p.monthsSinceInstall === 6
+                          ? "6-9mo"
+                          : "9+mo";
+                return { ...p, label: bucketLabel(bucketKey) };
+              })}
               margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -226,9 +237,7 @@ export default function MaturityPage() {
                   formatCurrency(Number(value)),
                   "Avg Revenue",
                 ]}
-                labelFormatter={(label) =>
-                  `Month ${label}${label === "6+" ? " (and beyond)" : ""}`
-                }
+                labelFormatter={(label) => String(label)}
               />
               <Line
                 type="monotone"
@@ -294,7 +303,7 @@ export default function MaturityPage() {
       {/* D. Plateau Detection */}
       <ChartCard
         title="Plateau Detection"
-        description="Comparing 90+ day avg revenue vs 31-60 day avg revenue"
+        description="Comparing 9+ month avg revenue vs 1-3 month avg revenue"
         loading={loading}
         empty={!loading && !data}
         emptyMessage="No plateau data available"
@@ -317,7 +326,7 @@ export default function MaturityPage() {
                   {insight.text}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Comparing 90+ day average revenue vs 31-60 day average revenue
+                  Comparing 9+ month average revenue vs 1-3 month average revenue
                 </p>
               </div>
             );
