@@ -59,9 +59,9 @@ describe("ALLOWED_COLUMNS", () => {
     expect(ALLOWED_COLUMNS.get("__proto__")).toBeUndefined();
   });
 
-  it("rejects columns dropped in migration 0022", () => {
-    // gross_amount, quantity, sale_commission, discount_amount were removed
-    // from sales_records; locations.region was removed. These must not
+  it("rejects columns that are not in the schema", () => {
+    // gross_amount, quantity, sale_commission, discount_amount, region are
+    // not on the current sales_records / locations schema. They must not
     // resolve, otherwise the pivot SQL will reference non-existent columns
     // and Postgres will 42703.
     expect(ALLOWED_COLUMNS.get("gross_amount")).toBeUndefined();

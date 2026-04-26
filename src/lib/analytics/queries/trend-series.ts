@@ -83,11 +83,7 @@ function metricExpression(metric: TrendMetric): SQL {
     case "avg_basket_value":
       return sql`SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(*), 0)`;
     case "booking_fee":
-      // NetSuite ETL (2026-04-24): booking fees are their own rows. Use the
-      // shared buildIsFeeCondition() so the predicate matches both 9991
-      // (isBookingFee=true) AND 9992 (Cash Handling Fee, flag still false
-      // pending the D10 backfill) — otherwise the series silently drops
-      // every cash-handling-fee row.
+      // matches both 9991 (Booking Fee) and 9992 (Cash Handling Fee)
       return sql`SUM(CASE WHEN ${buildIsFeeCondition()} THEN ${salesRecords.netAmount}::numeric ELSE 0 END)`;
   }
 }
