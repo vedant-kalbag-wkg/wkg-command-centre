@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "__Secure-better-auth.session_token",
+      "value": "LkjkuXr7fBr7Y80Pdx6vZud2ReqlcVyC.97W7Kyu8of1Sw1F51yRNSaBb8QpdxWQGIWqktdlYkME%3D",
+      "domain": "wkg-command-centre.vercel.app",
+      "path": "/",
+      "expires": 1779765965.402677,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}
