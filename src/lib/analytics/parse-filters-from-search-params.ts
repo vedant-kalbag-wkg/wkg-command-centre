@@ -1,25 +1,10 @@
-import type { AnalyticsFilters, LocationType, MetricMode } from '@/lib/analytics/types';
-import { LOCATION_TYPES } from '@/lib/analytics/types';
+import { toLocalISODate } from '@/lib/analytics/formatters';
+import { parseUrlFilters } from '@/lib/analytics/url-filters';
+import type { AnalyticsFilters } from '@/lib/analytics/types';
 
 export type NextSearchParams =
   | URLSearchParams
   | Record<string, string | string[] | undefined>;
-
-function getScalar(sp: NextSearchParams, key: string): string | undefined {
-  if (sp instanceof URLSearchParams) {
-    const v = sp.get(key);
-    return v === null ? undefined : v;
-  }
-  const raw = sp[key];
-  if (raw === undefined) return undefined;
-  return Array.isArray(raw) ? raw[0] : raw;
-}
-
-function getIds(sp: NextSearchParams, key: string): string[] | undefined {
-  const raw = getScalar(sp, key);
-  if (!raw) return undefined;
-  return raw.split(',').filter(Boolean);
-}
 
 function defaultYtdRange(): { dateFrom: string; dateTo: string } {
   const now = new Date();
@@ -40,31 +25,32 @@ function defaultYtdRange(): { dateFrom: string; dateTo: string } {
  * Defaults mirror the store's `ytd` preset so a fresh page load with an
  * empty URL renders current-year data (not the previous calendar year,
  * which hides live operational data for 12 months after rollover).
+ *
+ * Boundary validation lives in `parseUrlFilters` (Zod): UUIDs are checked,
+ * enum values are whitelisted, malformed dates are dropped. Bad values
+ * silently fall through here and reach SQL only as the empty default —
+ * RSC has no UI surface to toast from, so dropped values aren't surfaced.
+ * The client-side FilterBar mirrors the same validation and does toast.
  */
 export function parseAnalyticsFiltersFromSearchParams(
   sp: NextSearchParams,
 ): AnalyticsFilters {
-  const from = getScalar(sp, 'from');
-  const to = getScalar(sp, 'to');
+  const { filters } = parseUrlFilters(sp);
   const { dateFrom: defaultFrom, dateTo: defaultTo } = defaultYtdRange();
-  const rawMode = getScalar(sp, 'mode');
-  const metricMode: MetricMode =
-    rawMode === 'revenue' ? 'revenue' : 'sales';
 
-  const rawTypes = getIds(sp, 'types');
-  const validTypes = new Set<string>(LOCATION_TYPES);
-  const locationTypes = rawTypes?.filter((t): t is LocationType => validTypes.has(t));
+  const dateFrom = filters.dateRange ? toLocalISODate(filters.dateRange.from) : defaultFrom;
+  const dateTo = filters.dateRange ? toLocalISODate(filters.dateRange.to) : defaultTo;
 
   return {
-    dateFrom: from ?? defaultFrom,
-    dateTo: to ?? defaultTo,
-    hotelIds: getIds(sp, 'hotels'),
-    regionIds: getIds(sp, 'regions'),
-    productIds: getIds(sp, 'products'),
-    hotelGroupIds: getIds(sp, 'hgroups'),
-    locationGroupIds: getIds(sp, 'lgroups'),
-    maturityBuckets: getIds(sp, 'maturity'),
-    locationTypes: locationTypes?.length ? locationTypes : undefined,
-    metricMode,
+    dateFrom,
+    dateTo,
+    hotelIds: filters.hotelFilter,
+    regionIds: filters.regionFilter,
+    productIds: filters.productFilter,
+    hotelGroupIds: filters.hotelGroupFilter,
+    locationGroupIds: filters.locationGroupFilter,
+    maturityBuckets: filters.maturityFilter as string[] | undefined,
+    locationTypes: filters.locationTypeFilter,
+    metricMode: filters.metricMode ?? 'sales',
   };
 }

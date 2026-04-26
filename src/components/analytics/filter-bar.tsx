@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 import { getDimensionOptions } from "@/app/(app)/analytics/actions";
 import {
   useAnalyticsFilterStore,
   filtersToSearchParams,
   searchParamsToFilters,
 } from "@/lib/stores/analytics-filter-store";
+import { formatDroppedMessage } from "@/lib/analytics/url-filters";
 import { MultiSelectFilter } from "./multi-select-filter";
 import { DateRangePicker } from "./date-range-picker";
 import { Button } from "@/components/ui/button";
@@ -56,7 +58,11 @@ export function AnalyticsFilterBar({
   useEffect(() => {
     const parsed = searchParamsToFilters(searchParams);
     if (parsed) {
-      useAnalyticsFilterStore.setState(parsed);
+      useAnalyticsFilterStore.setState(parsed.state);
+      const message = formatDroppedMessage(parsed.dropped);
+      if (message) {
+        toast.warning(message);
+      }
     }
     hasHydratedRef.current = true;
     // Only run once on mount

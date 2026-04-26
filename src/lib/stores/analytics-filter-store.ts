@@ -7,7 +7,7 @@ import type {
   LocationType,
   MetricMode,
 } from "@/lib/analytics/types";
-import { LOCATION_TYPES } from "@/lib/analytics/types";
+import { parseUrlFilters, type DroppedParam } from "@/lib/analytics/url-filters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -182,51 +182,47 @@ export function filtersToSearchParams(state: FilterState): URLSearchParams {
   return params;
 }
 
-export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<FilterState, "dateRange" | "hotelFilter" | "regionFilter" | "productFilter" | "hotelGroupFilter" | "locationGroupFilter" | "maturityFilter" | "locationTypeFilter" | "metricMode">> | null {
-  const hasFilterParams =
-    params.has("from") || params.has("hotels") || params.has("regions") ||
-    params.has("products") || params.has("hgroups") || params.has("lgroups") ||
-    params.has("maturity") || params.has("types") || params.has("mode");
+export type SearchParamsToFiltersResult = {
+  state: Partial<
+    Pick<
+      FilterState,
+      | "dateRange"
+      | "hotelFilter"
+      | "regionFilter"
+      | "productFilter"
+      | "hotelGroupFilter"
+      | "locationGroupFilter"
+      | "maturityFilter"
+      | "locationTypeFilter"
+      | "metricMode"
+    >
+  >;
+  dropped: DroppedParam[];
+};
+
+// Boundary parser for the FilterBar URL hydration. Delegates value-level
+// validation to parseUrlFilters (Zod) and adapts the result to the store
+// shape — `maturityFilter`/`locationTypeFilter` widen to string[] because
+// the store keys are typed as such; the schema has already proved each
+// element belongs to its enum so the cast is sound.
+export function searchParamsToFilters(
+  params: URLSearchParams,
+): SearchParamsToFiltersResult | null {
+  const { filters, dropped, hasFilterParams } = parseUrlFilters(params);
   if (!hasFilterParams) return null;
 
-  const result: Record<string, unknown> = {};
+  const state: SearchParamsToFiltersResult["state"] = {};
+  if (filters.dateRange) state.dateRange = filters.dateRange;
+  if (filters.hotelFilter) state.hotelFilter = filters.hotelFilter;
+  if (filters.regionFilter) state.regionFilter = filters.regionFilter;
+  if (filters.productFilter) state.productFilter = filters.productFilter;
+  if (filters.hotelGroupFilter) state.hotelGroupFilter = filters.hotelGroupFilter;
+  if (filters.locationGroupFilter) state.locationGroupFilter = filters.locationGroupFilter;
+  if (filters.maturityFilter) state.maturityFilter = filters.maturityFilter as string[];
+  if (filters.locationTypeFilter) state.locationTypeFilter = filters.locationTypeFilter as string[];
+  if (filters.metricMode) state.metricMode = filters.metricMode;
 
-  const from = params.get("from");
-  const to = params.get("to");
-  if (from && to) {
-    result.dateRange = { from: new Date(from), to: new Date(to) };
-  }
-
-  const hotels = params.get("hotels");
-  if (hotels) result.hotelFilter = hotels.split(",");
-
-  const regions = params.get("regions");
-  if (regions) result.regionFilter = regions.split(",");
-
-  const products = params.get("products");
-  if (products) result.productFilter = products.split(",");
-
-  const hgroups = params.get("hgroups");
-  if (hgroups) result.hotelGroupFilter = hgroups.split(",");
-
-  const lgroups = params.get("lgroups");
-  if (lgroups) result.locationGroupFilter = lgroups.split(",");
-
-  const maturity = params.get("maturity");
-  if (maturity) result.maturityFilter = maturity.split(",");
-
-  const types = params.get("types");
-  if (types) {
-    const valid = new Set<string>(LOCATION_TYPES);
-    result.locationTypeFilter = types.split(",").filter((t) => valid.has(t));
-  }
-
-  const mode = params.get("mode");
-  if (mode === "revenue" || mode === "sales") {
-    result.metricMode = mode as MetricMode;
-  }
-
-  return result as ReturnType<typeof searchParamsToFilters>;
+  return { state, dropped };
 }
 
 export function storeStateToAnalyticsFilters(state: FilterState): AnalyticsFilters {
