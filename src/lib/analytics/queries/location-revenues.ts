@@ -6,10 +6,10 @@ import { db } from "@/db";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  buildAmountModeCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildNonFeeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -81,13 +81,14 @@ export const getLocationRevenuesForRequest = cache(
   ): Promise<LocationRevenueRow[]> => {
     const whereClause = await buildWhere(filters, userCtx);
 
-    // High-performer tiering ranks by customer sales (non-fee). Fee rows would
-    // give locations with many fee events an unfair boost.
+    // High-performer tiering ranks by the active metric mode (sales = customer
+    // non-fee SUM; revenue = WKG fee SUM). Toggling the global metric switch
+    // flips the tier order accordingly.
     return executeRows<LocationRevenueRow>(sql`
       SELECT
         ${salesRecords.locationId} AS location_id,
         ${locations.name} AS location_name,
-        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${buildNonFeeCondition()}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${buildAmountModeCondition(filters)}), 0) AS revenue,
         ${locations.numRooms}::text AS num_rooms
       FROM ${salesRecords}
         INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
