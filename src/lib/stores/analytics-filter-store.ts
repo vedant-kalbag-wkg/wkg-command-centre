@@ -7,7 +7,7 @@ import type {
   LocationType,
   MetricMode,
 } from "@/lib/analytics/types";
-import { LOCATION_TYPES } from "@/lib/analytics/types";
+import { parseUrlFilters, type DroppedParam } from "@/lib/analytics/url-filters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,11 +105,15 @@ type FilterState = {
   maturityFilter: string[];
   locationTypeFilter: string[];
   metricMode: MetricMode;
+  // D9 / Task 4.6 — admin escape hatch. Default false → internal-type
+  // locations (BK refund-handling) are excluded from leaderboards.
+  includeInternalAccounts: boolean;
 
   setDateRange: (range: FilterDateRange) => void;
   applyPreset: (preset: DatePreset) => void;
   setFilter: (dimension: FilterDimensionKey, values: string[]) => void;
   setMetricMode: (mode: MetricMode) => void;
+  setIncludeInternalAccounts: (v: boolean) => void;
   resetDimensionFilters: () => void;
   clearAllFilters: () => void;
 };
@@ -127,11 +131,13 @@ function createFullFilterStore() {
     maturityFilter: [],
     locationTypeFilter: [],
     metricMode: "sales",
+    includeInternalAccounts: false,
 
     setDateRange: (range) => set({ dateRange: range }),
     applyPreset: (preset) => set({ dateRange: getPresetRange(preset) }),
     setFilter: (dimension, values) => set({ [dimension]: values }),
     setMetricMode: (mode) => set({ metricMode: mode }),
+    setIncludeInternalAccounts: (v) => set({ includeInternalAccounts: v }),
     resetDimensionFilters: () =>
       set({
         hotelFilter: [],
@@ -153,6 +159,7 @@ function createFullFilterStore() {
         maturityFilter: [],
         locationTypeFilter: [],
         metricMode: "sales",
+        includeInternalAccounts: false,
       }),
   }));
 }
@@ -160,7 +167,6 @@ function createFullFilterStore() {
 // ─── Stores ───────────────────────────────────────────────────────────────────
 
 export const useAnalyticsFilterStore = createFullFilterStore();
-export const usePivotFilterStore = createFullFilterStore();
 
 // ─── URL Sync Utilities ──────────────────────────────────────────────────────
 
@@ -178,55 +184,54 @@ export function filtersToSearchParams(state: FilterState): URLSearchParams {
   if (state.locationTypeFilter.length > 0) params.set("types", state.locationTypeFilter.join(","));
   // Only serialize when non-default so URLs stay clean for the common case.
   if (state.metricMode === "revenue") params.set("mode", "revenue");
+  if (state.includeInternalAccounts) params.set("internal", "1");
 
   return params;
 }
 
-export function searchParamsToFilters(params: URLSearchParams): Partial<Pick<FilterState, "dateRange" | "hotelFilter" | "regionFilter" | "productFilter" | "hotelGroupFilter" | "locationGroupFilter" | "maturityFilter" | "locationTypeFilter" | "metricMode">> | null {
-  const hasFilterParams =
-    params.has("from") || params.has("hotels") || params.has("regions") ||
-    params.has("products") || params.has("hgroups") || params.has("lgroups") ||
-    params.has("maturity") || params.has("types") || params.has("mode");
+export type SearchParamsToFiltersResult = {
+  state: Partial<
+    Pick<
+      FilterState,
+      | "dateRange"
+      | "hotelFilter"
+      | "regionFilter"
+      | "productFilter"
+      | "hotelGroupFilter"
+      | "locationGroupFilter"
+      | "maturityFilter"
+      | "locationTypeFilter"
+      | "metricMode"
+      | "includeInternalAccounts"
+    >
+  >;
+  dropped: DroppedParam[];
+};
+
+// Boundary parser for the FilterBar URL hydration. Delegates value-level
+// validation to parseUrlFilters (Zod) and adapts the result to the store
+// shape — `maturityFilter`/`locationTypeFilter` widen to string[] because
+// the store keys are typed as such; the schema has already proved each
+// element belongs to its enum so the cast is sound.
+export function searchParamsToFilters(
+  params: URLSearchParams,
+): SearchParamsToFiltersResult | null {
+  const { filters, dropped, hasFilterParams } = parseUrlFilters(params);
   if (!hasFilterParams) return null;
 
-  const result: Record<string, unknown> = {};
+  const state: SearchParamsToFiltersResult["state"] = {};
+  if (filters.dateRange) state.dateRange = filters.dateRange;
+  if (filters.hotelFilter) state.hotelFilter = filters.hotelFilter;
+  if (filters.regionFilter) state.regionFilter = filters.regionFilter;
+  if (filters.productFilter) state.productFilter = filters.productFilter;
+  if (filters.hotelGroupFilter) state.hotelGroupFilter = filters.hotelGroupFilter;
+  if (filters.locationGroupFilter) state.locationGroupFilter = filters.locationGroupFilter;
+  if (filters.maturityFilter) state.maturityFilter = filters.maturityFilter as string[];
+  if (filters.locationTypeFilter) state.locationTypeFilter = filters.locationTypeFilter as string[];
+  if (filters.metricMode) state.metricMode = filters.metricMode;
+  if (filters.includeInternalAccounts) state.includeInternalAccounts = filters.includeInternalAccounts;
 
-  const from = params.get("from");
-  const to = params.get("to");
-  if (from && to) {
-    result.dateRange = { from: new Date(from), to: new Date(to) };
-  }
-
-  const hotels = params.get("hotels");
-  if (hotels) result.hotelFilter = hotels.split(",");
-
-  const regions = params.get("regions");
-  if (regions) result.regionFilter = regions.split(",");
-
-  const products = params.get("products");
-  if (products) result.productFilter = products.split(",");
-
-  const hgroups = params.get("hgroups");
-  if (hgroups) result.hotelGroupFilter = hgroups.split(",");
-
-  const lgroups = params.get("lgroups");
-  if (lgroups) result.locationGroupFilter = lgroups.split(",");
-
-  const maturity = params.get("maturity");
-  if (maturity) result.maturityFilter = maturity.split(",");
-
-  const types = params.get("types");
-  if (types) {
-    const valid = new Set<string>(LOCATION_TYPES);
-    result.locationTypeFilter = types.split(",").filter((t) => valid.has(t));
-  }
-
-  const mode = params.get("mode");
-  if (mode === "revenue" || mode === "sales") {
-    result.metricMode = mode as MetricMode;
-  }
-
-  return result as ReturnType<typeof searchParamsToFilters>;
+  return { state, dropped };
 }
 
 export function storeStateToAnalyticsFilters(state: FilterState): AnalyticsFilters {
@@ -243,6 +248,8 @@ export function storeStateToAnalyticsFilters(state: FilterState): AnalyticsFilte
       state.locationTypeFilter.length > 0
         ? (state.locationTypeFilter as LocationType[])
         : undefined,
+    // D9 — only set when true; undefined applies the default-exclude.
+    includeInternalAccounts: state.includeInternalAccounts ? true : undefined,
     metricMode: state.metricMode,
   };
 }
@@ -253,8 +260,10 @@ export function useAnalyticsFilters(): AnalyticsFilters {
   );
 }
 
+// Alias kept so pivot-table callers don't need to rename; reads the same
+// global store the AnalyticsFilterBar writes to.
 export function usePivotFilters(): AnalyticsFilters {
-  return usePivotFilterStore(
+  return useAnalyticsFilterStore(
     useShallow((state) => storeStateToAnalyticsFilters(state)),
   );
 }

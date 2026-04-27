@@ -30,12 +30,12 @@ async function main() {
       console.log(`  ${String(r.netsuite_code).padEnd(10)} ${String(r.c).padStart(6)}  netAmt=${r.net_sum}`);
     }
 
-    console.log("\n=== Booking-fee & fee-class checks ===");
+    console.log("\n=== WKG-fee & fee-class checks ===");
     const bf = await pool.query(
       `SELECT count(*)::int AS c FROM sales_records
-       WHERE is_booking_fee = true AND netsuite_code = '9991'`,
+       WHERE is_weknow_fee = true AND netsuite_code = '9991'`,
     );
-    console.log(`  is_booking_fee=true AND netsuite_code=9991: ${bf.rows[0].c}  (expect 1273)`);
+    console.log(`  is_weknow_fee=true AND netsuite_code=9991: ${bf.rows[0].c}  (expect 1273)`);
     const ch = await pool.query(
       `SELECT count(*)::int AS c FROM sales_records
        WHERE netsuite_code = '9992'`,

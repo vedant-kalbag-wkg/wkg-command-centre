@@ -26,9 +26,35 @@ vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
-import { getHotelGroupsList } from "./hotel-groups";
+import { getHotelGroupsList, getHotelGroupDetail } from "./hotel-groups";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
+
+/**
+ * Recursively flatten Drizzle's nested queryChunks tree into a literal SQL
+ * skeleton. Drizzle interleaves literal string fragments with column/table
+ * refs and (crucially) child sql`...` objects; we recurse into nested
+ * `queryChunks`/`chunks` arrays and concat every literal fragment. This is
+ * enough to assert structural rewrites (presence of EXISTS, absence of an
+ * INNER JOIN onto the membership table) regardless of how deeply nested the
+ * predicate has been combined.
+ */
+function chunksToSql(arg: unknown): string {
+  if (arg == null) return "";
+  if (typeof arg === "string") return arg;
+  if (Array.isArray(arg)) return arg.map(chunksToSql).join("");
+  if (typeof arg === "object") {
+    const obj = arg as Record<string, unknown>;
+    // Literal string fragment chunk: { value: [string] }
+    if (Array.isArray(obj.value) && typeof obj.value[0] === "string") {
+      return obj.value[0];
+    }
+    // Nested SQL object: walk queryChunks/chunks if present
+    if (Array.isArray(obj.queryChunks)) return chunksToSql(obj.queryChunks);
+    if (Array.isArray(obj.chunks)) return chunksToSql(obj.chunks);
+  }
+  return "";
+}
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -161,5 +187,104 @@ describe("getHotelGroupsList – shape + delta wiring", () => {
     const result = await getHotelGroupsList(filters, userCtx);
 
     expect(result).toEqual([]);
+  });
+});
+
+// ─── D5 Part E — multi-group fan-out guard ──────────────────────────────────
+//
+// Hotel groups stay N:N with locations (Resolved Decision D5). The previous
+// `getHotelGroupDetail` body INNER JOIN'd through location_hotel_group_
+// memberships and filtered by `hotel_groups.id IN (selectedGroupIds)`,
+// which fanned a multi-group location's sales out across each matching
+// membership and double-counted them inside the response. The rewrite
+// replaces that JOIN+IN with a WHERE EXISTS predicate against the membership
+// table — semantically equivalent for single-group locations, but qualifies
+// each sales row exactly once for multi-group locations regardless of how
+// many of the selected groups they belong to.
+//
+// We need the real `combineConditions` here so the EXISTS predicate actually
+// makes it into the emitted SQL skeleton (the suite-level mock returns
+// undefined and would elide the entire WHERE clause). Behavioural assertions
+// then verify the rewritten query body returns one row per location, not
+// one row per (location, matching-group) pair.
+describe("getHotelGroupDetail – multi-group fan-out guard (D5 Part E)", () => {
+  beforeEach(async () => {
+    mockExecute.mockReset();
+    // Restore the real combineConditions for these structural assertions.
+    const sharedActual =
+      await vi.importActual<typeof import("@/lib/analytics/queries/shared")>(
+        "@/lib/analytics/queries/shared",
+      );
+    const sharedMock = await import("@/lib/analytics/queries/shared");
+    (sharedMock as unknown as { combineConditions: typeof sharedActual.combineConditions })
+      .combineConditions = sharedActual.combineConditions;
+  });
+
+  it("emits EXISTS membership predicate (not INNER JOIN onto memberships) in the summary query", async () => {
+    // Four queries in getHotelGroupDetail: summary, hotel breakdown, daily
+    // trends, prev-period summary. Mock all four with empty/zero results.
+    mockExecute
+      .mockResolvedValueOnce([{ revenue: "0", transactions: "0", hotel_count: "0" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ revenue: "0", transactions: "0" }]);
+
+    await getHotelGroupDetail(["hg-1", "hg-2"], filters, userCtx);
+
+    // First call = summary query.
+    const summarySql = chunksToSql(mockExecute.mock.calls[0]![0]);
+    // Membership filter must now be an EXISTS predicate, not a JOIN onto
+    // the membership table followed by an IN filter.
+    expect(summarySql).toMatch(/EXISTS\s*\(\s*SELECT\s+1\s+FROM/i);
+    // The rewritten FROM is just sales_records + locations — no join onto
+    // location_hotel_group_memberships in the FROM clause.
+    expect(summarySql).not.toMatch(/INNER JOIN\s+"location_hotel_group_memberships"/i);
+  });
+
+  it("does not multi-count a location membered to multiple selected groups (single GROUP BY row per location in hotel breakdown)", async () => {
+    // Mock a single per-location row from the hotel breakdown query — the
+    // rewrite GROUP BY's by location_id with EXISTS in WHERE, so a location
+    // membered to both selected groups appears once with its full revenue,
+    // not twice with revenue split or duplicated.
+    mockExecute
+      .mockResolvedValueOnce([{ revenue: "100", transactions: "1", hotel_count: "1" }])
+      .mockResolvedValueOnce([
+        {
+          location_id: "loc-jv",
+          outlet_code: "JV1",
+          hotel_name: "JV Hotel",
+          revenue: "100",
+          transactions: "1",
+          rooms: "50",
+          kiosks: "2",
+          star_rating: "4",
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ revenue: "0", transactions: "0" }]);
+
+    const result = await getHotelGroupDetail(["hg-hilton", "hg-marriott"], filters, userCtx);
+
+    // Behavioural check: the response surfaces the JV hotel exactly once
+    // even though it belongs to both selected groups, and the summary
+    // hotel_count is 1 (not 2). The SQL engine guarantees this via the
+    // EXISTS+GROUP BY rewrite; the structural assertion below catches a
+    // regression to the JOIN+IN pattern that would re-introduce the
+    // membership table in the FROM clause.
+    expect(result.hotels).toHaveLength(1);
+    expect(result.hotels[0]!.locationId).toBe("loc-jv");
+    expect(result.hotels[0]!.revenue).toBe(100);
+    // Task 4.8 / PR-24 — kiosks is now sourced from a real
+    // active-kiosk subquery; quantity is dropped from HotelInGroup.
+    expect(result.hotels[0]!.kiosks).toBe(2);
+    expect(result.hotels[0]).not.toHaveProperty("quantity");
+    expect(result.metrics.hotelCount).toBe(1);
+
+    // Structural guard on the hotel-breakdown query (call #2): it must
+    // GROUP BY and use EXISTS, not an INNER JOIN onto memberships.
+    const breakdownSql = chunksToSql(mockExecute.mock.calls[1]![0]);
+    expect(breakdownSql).toMatch(/EXISTS\s*\(\s*SELECT\s+1\s+FROM/i);
+    expect(breakdownSql).not.toMatch(/INNER JOIN\s+"location_hotel_group_memberships"/i);
+    expect(breakdownSql).toMatch(/GROUP BY/i);
   });
 });

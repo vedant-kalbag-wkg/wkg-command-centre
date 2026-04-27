@@ -106,8 +106,12 @@ export function autoGranularity(from: Date, to: Date): Granularity {
   const diffDays = Math.ceil(
     (to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24),
   );
-  if (diffDays <= 31) return "daily";
-  if (diffDays <= 90) return "weekly";
+  // Task 4.16 — smoother thresholds. The previous cliffs (31 → 90) caused a
+  // visible discontinuity at the boundary (30 daily buckets → 5 weekly
+  // buckets). 60 daily / 200 weekly keeps each granularity readable on a
+  // typical chart width while avoiding jarring transitions.
+  if (diffDays <= 60) return "daily";
+  if (diffDays <= 200) return "weekly";
   return "monthly";
 }
 
@@ -141,4 +145,16 @@ export function formatNullValue(
 ): string {
   if (value == null || Number.isNaN(value)) return "\u2014";
   return formatter ? formatter(value) : String(value);
+}
+
+// ─── Hotel name display ──────────────────────────────────────────────────────
+
+// Multi-POS hotels register each physical kiosk as its own `locations` row,
+// distinguished by a trailing " b"/" B" suffix on the name (e.g. "Heathrow
+// Terminal 4 b"). Cosmetic only — strip the suffix so analyst-facing tables
+// show the natural name. The underlying row is preserved for the Phase 5.6
+// multi-POS bulk merge to consume.
+// TODO(5.6): remove once the multi-POS bulk merge eliminates the suffix.
+export function formatHotelDisplayName(name: string): string {
+  return name.replace(/\s[bB]$/, "");
 }

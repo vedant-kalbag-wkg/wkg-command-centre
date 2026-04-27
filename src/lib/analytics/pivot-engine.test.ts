@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ALLOWED_COLUMNS,
   DERIVED_GROUP_COLUMNS,
+  derivedGroupColumns,
   validatePivotConfig,
   buildPivotSQL,
   formatPivotResults,
@@ -19,15 +20,52 @@ describe("ALLOWED_COLUMNS", () => {
     expect(ALLOWED_COLUMNS.get("product_name")).toBe("products.name");
     expect(ALLOWED_COLUMNS.get("outlet_code")).toBe("locations.outlet_code");
     expect(ALLOWED_COLUMNS.get("hotel_name")).toBe("locations.name");
-    expect(ALLOWED_COLUMNS.get("gross_amount")).toBe(
-      "sales_records.gross_amount::numeric",
+    expect(ALLOWED_COLUMNS.get("net_amount")).toBe(
+      "sales_records.net_amount::numeric",
     );
+    expect(ALLOWED_COLUMNS.get("booking_fee")).toContain("is_weknow_fee");
+  });
+
+  it("booking_fee predicate matches both 9991 and 9992 fee rows", () => {
+    // Symmetry with buildIsFeeCondition() in queries/shared.ts: pivot's
+    // booking_fee value/metric must include 9991 (Booking Fee) AND 9992
+    // (Cash Handling Fee). Post-D10 both are flagged via is_weknow_fee=true
+    // by the parser, so the predicate is a single column check.
+    const expr = ALLOWED_COLUMNS.get("booking_fee")!;
+    expect(expr).toContain("sales_records.is_weknow_fee = true");
+  });
+
+  it("booking_fee SUM aggregates over both 9991 and 9992 rows", () => {
+    // End-to-end check: the SUM expression generated for the booking_fee
+    // metric should include net_amount for any row matching the fee predicate
+    // and 0 otherwise. is_weknow_fee=true covers both NetSuite codes 9991 and
+    // 9992 by virtue of the parser's per-code assignment (D10).
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "booking_fee", aggregation: "sum" }],
+    });
+    expect(sql).toContain("SUM(COALESCE((CASE WHEN");
+    expect(sql).toContain("sales_records.is_weknow_fee = true");
+    expect(sql).toContain("THEN sales_records.net_amount::numeric ELSE 0 END)");
   });
 
   it("rejects unknown columns", () => {
     expect(ALLOWED_COLUMNS.get("unknown_field")).toBeUndefined();
     expect(ALLOWED_COLUMNS.get("category_name")).toBeUndefined();
     expect(ALLOWED_COLUMNS.get("__proto__")).toBeUndefined();
+  });
+
+  it("rejects columns that are not in the schema", () => {
+    // gross_amount, quantity, sale_commission, discount_amount, region are
+    // not on the current sales_records / locations schema. They must not
+    // resolve, otherwise the pivot SQL will reference non-existent columns
+    // and Postgres will 42703.
+    expect(ALLOWED_COLUMNS.get("gross_amount")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("quantity")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("sale_commission")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("discount_amount")).toBeUndefined();
+    expect(ALLOWED_COLUMNS.get("region")).toBeUndefined();
   });
 });
 
@@ -39,13 +77,89 @@ describe("DERIVED_GROUP_COLUMNS", () => {
   });
 });
 
+// ─── derivedGroupColumns(displayTz) — D6 / Task 2.12 ────────────────────────
+//
+// `sale_hour` MUST be timezone-aware so the Pivot Table's hour-of-day grouping
+// matches the Hourly Distribution widget. The same SQL pattern is used in
+// both places: reconstruct (date + time) as a UTC timestamptz, then convert
+// into the target zone with a second AT TIME ZONE.
+
+describe("derivedGroupColumns (D6 timezone awareness)", () => {
+  it("default ('local') buckets sale_hour by per-row locations.iana_timezone", () => {
+    const map = derivedGroupColumns();
+    const expr = map.get("sale_hour")!;
+    expect(expr).toContain("EXTRACT(HOUR FROM");
+    // (date + time) reconstruction landing in UTC timestamptz.
+    expect(expr).toContain(
+      "(sales_records.transaction_date + sales_records.transaction_time) AT TIME ZONE 'UTC'",
+    );
+    // Per-row zone — locations.iana_timezone resolves to each property's IANA zone.
+    expect(expr).toContain("AT TIME ZONE locations.iana_timezone");
+    expect(expr).toMatch(/::TEXT$/);
+  });
+
+  it("'utc' mode pins the second AT TIME ZONE to the UTC literal", () => {
+    const map = derivedGroupColumns("utc");
+    const expr = map.get("sale_hour")!;
+    expect(expr).toContain("AT TIME ZONE 'UTC'"); // both sides use 'UTC'
+    expect(expr).not.toContain("locations.iana_timezone");
+  });
+
+  it("sale_month / sale_year are unchanged across modes (date-only, no zone)", () => {
+    const local = derivedGroupColumns("local");
+    const utc = derivedGroupColumns("utc");
+    expect(local.get("sale_month")).toBe(utc.get("sale_month"));
+    expect(local.get("sale_year")).toBe(utc.get("sale_year"));
+    expect(local.get("sale_month")).toContain("TO_CHAR");
+    expect(local.get("sale_year")).toContain(
+      "EXTRACT(YEAR FROM sales_records.transaction_date)",
+    );
+  });
+});
+
+describe("buildPivotSQL — sale_hour timezone wiring", () => {
+  const config: PivotConfig = {
+    rowFields: ["sale_hour"],
+    columnFields: [],
+    values: [{ field: "net_amount", aggregation: "sum" }],
+  };
+
+  it("emits per-row iana_timezone when displayTz is 'local' (default)", () => {
+    const sql = buildPivotSQL(config);
+    expect(sql).toContain("AT TIME ZONE locations.iana_timezone");
+    // The SELECT also aliases by the logical name so the engine can map
+    // back to the dimension at format time.
+    expect(sql).toContain('AS "sale_hour"');
+  });
+
+  it("emits the constant 'UTC' both sides when displayTz is 'utc'", () => {
+    const sql = buildPivotSQL(config, undefined, "utc");
+    // The pivot SQL repeats the dimension expression in SELECT, GROUP BY and
+    // ORDER BY (3×), and each occurrence carries both AT-TIME-ZONE steps —
+    // so we expect at least 6 'UTC' literals in 'utc' mode and zero
+    // references to per-row iana_timezone.
+    expect((sql.match(/AT TIME ZONE 'UTC'/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(sql).not.toContain("locations.iana_timezone");
+  });
+
+  it("keeps sale_month emission timezone-agnostic in either mode", () => {
+    const cfg: PivotConfig = {
+      rowFields: ["sale_month"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    };
+    expect(buildPivotSQL(cfg, undefined, "local")).toContain("TO_CHAR");
+    expect(buildPivotSQL(cfg, undefined, "utc")).toContain("TO_CHAR");
+  });
+});
+
 // ─── validatePivotConfig ────────────────────────────────────────────────────
 
 describe("validatePivotConfig", () => {
   const validConfig: PivotConfig = {
     rowFields: ["product_name"],
     columnFields: ["sale_month"],
-    values: [{ field: "gross_amount", aggregation: "sum" }],
+    values: [{ field: "net_amount", aggregation: "sum" }],
   };
 
   it("accepts a valid config", () => {
@@ -67,7 +181,7 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: ["bogus_field"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(errors.some((e) => e.message.includes("bogus_field"))).toBe(true);
   });
@@ -76,7 +190,7 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: [],
       columnFields: ["no_such_col"],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(errors.some((e) => e.message.includes("no_such_col"))).toBe(true);
   });
@@ -94,7 +208,7 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "median" as never }],
+      values: [{ field: "net_amount", aggregation: "median" as never }],
     });
     expect(errors.some((e) => e.message.includes("median"))).toBe(true);
   });
@@ -103,7 +217,7 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: ["product_name"],
       columnFields: ["product_name"],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(
       errors.some((e) => e.message.includes("both rows and columns")),
@@ -114,16 +228,16 @@ describe("validatePivotConfig", () => {
     const errors = validatePivotConfig({
       rowFields: ["sale_month"],
       columnFields: ["sale_year"],
-      values: [{ field: "quantity", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(errors).toEqual([]);
   });
 
   it("rejects metric columns used as dimensions", () => {
     const errors = validatePivotConfig({
-      rowFields: ["gross_amount"],
+      rowFields: ["net_amount"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
     expect(errors.some((e) => e.field === "rowFields")).toBe(true);
   });
@@ -136,13 +250,13 @@ describe("buildPivotSQL", () => {
     const sql = buildPivotSQL({
       rowFields: ["hotel_name"],
       columnFields: ["sale_month"],
-      values: [{ field: "gross_amount", aggregation: "sum" }],
+      values: [{ field: "net_amount", aggregation: "sum" }],
     });
 
     expect(sql).toContain("SELECT");
     expect(sql).toContain('locations.name AS "hotel_name"');
     expect(sql).toContain(
-      "SUM(COALESCE(sales_records.gross_amount::numeric, 0))",
+      "SUM(COALESCE(sales_records.net_amount::numeric, 0))",
     );
     expect(sql).toContain(
       "INNER JOIN locations ON sales_records.location_id = locations.id",
@@ -159,7 +273,7 @@ describe("buildPivotSQL", () => {
       {
         rowFields: ["product_name"],
         columnFields: [],
-        values: [{ field: "quantity", aggregation: "count" }],
+        values: [{ field: "net_amount", aggregation: "count" }],
       },
       `"sales_records"."transaction_date" >= '2025-01-01'`,
     );
@@ -168,20 +282,23 @@ describe("buildPivotSQL", () => {
     );
   });
 
-  it("uses COUNT for count aggregation", () => {
+  it("uses COUNT scoped to non-fee, non-reversal rows for count aggregation (D1)", () => {
     const sql = buildPivotSQL({
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "quantity", aggregation: "count" }],
+      values: [{ field: "net_amount", aggregation: "count" }],
     });
-    expect(sql).toContain("COUNT(sales_records.quantity)::numeric");
+    // D1: "Transactions" count = real customer transactions only.
+    expect(sql).toContain(
+      "COUNT(sales_records.net_amount::numeric) FILTER (WHERE sales_records.is_weknow_fee = false AND sales_records.is_reversal = false)",
+    );
   });
 
   it("handles derived column in group by", () => {
     const sql = buildPivotSQL({
       rowFields: ["sale_month"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "avg" }],
+      values: [{ field: "net_amount", aggregation: "avg" }],
     });
     expect(sql).toContain(
       "TO_CHAR(sales_records.transaction_date, 'Mon YYYY')",
@@ -193,27 +310,27 @@ describe("buildPivotSQL", () => {
 
 describe("buildPivotData", () => {
   const values: PivotValueConfig[] = [
-    { field: "gross_amount", aggregation: "sum" },
+    { field: "net_amount", aggregation: "sum" },
   ];
 
   it("builds flat rows when no column fields", () => {
     const rawRows = [
-      { hotel_name: "Hotel A", sum_gross_amount: 1000 },
-      { hotel_name: "Hotel B", sum_gross_amount: 2000 },
+      { hotel_name: "Hotel A", sum_net_amount: 1000 },
+      { hotel_name: "Hotel B", sum_net_amount: 2000 },
     ];
     const result = buildPivotData(rawRows, ["hotel_name"], [], values);
 
     expect(result).toHaveLength(2);
     expect(result[0].dimensions.hotel_name).toBe("Hotel A");
-    expect(result[0].cells["sum_gross_amount"].value).toBe(1000);
+    expect(result[0].cells["sum_net_amount"].value).toBe(1000);
     expect(result[1].dimensions.hotel_name).toBe("Hotel B");
   });
 
   it("builds crosstab when column fields present", () => {
     const rawRows = [
-      { hotel_name: "Hotel A", sale_month: "Jan 2025", sum_gross_amount: 500 },
-      { hotel_name: "Hotel A", sale_month: "Feb 2025", sum_gross_amount: 700 },
-      { hotel_name: "Hotel B", sale_month: "Jan 2025", sum_gross_amount: 300 },
+      { hotel_name: "Hotel A", sale_month: "Jan 2025", sum_net_amount: 500 },
+      { hotel_name: "Hotel A", sale_month: "Feb 2025", sum_net_amount: 700 },
+      { hotel_name: "Hotel B", sale_month: "Jan 2025", sum_net_amount: 300 },
     ];
     const result = buildPivotData(
       rawRows,
@@ -245,18 +362,18 @@ describe("formatPivotResults", () => {
   const config: PivotConfig = {
     rowFields: ["hotel_name"],
     columnFields: [],
-    values: [{ field: "gross_amount", aggregation: "sum" }],
+    values: [{ field: "net_amount", aggregation: "sum" }],
   };
 
   it("formats flat results with headers and grand totals", () => {
     const rawRows = [
-      { hotel_name: "Hotel A", sum_gross_amount: 1000 },
-      { hotel_name: "Hotel B", sum_gross_amount: 2500 },
+      { hotel_name: "Hotel A", sum_net_amount: 1000 },
+      { hotel_name: "Hotel B", sum_net_amount: 2500 },
     ];
     const result = formatPivotResults(rawRows, config);
 
     expect(result.headers).toContain("Hotel");
-    expect(result.headers).toContain("Sum of gross amount");
+    expect(result.headers).toContain("Sum of Revenue");
     expect(result.rows).toHaveLength(2);
     expect(result.rowCount).toBe(2);
     expect(result.truncated).toBe(false);
@@ -264,67 +381,67 @@ describe("formatPivotResults", () => {
 
   it("calculates sum grand total", () => {
     const rawRows = [
-      { hotel_name: "A", sum_gross_amount: 1000 },
-      { hotel_name: "B", sum_gross_amount: 3000 },
+      { hotel_name: "A", sum_net_amount: 1000 },
+      { hotel_name: "B", sum_net_amount: 3000 },
     ];
     const result = formatPivotResults(rawRows, config);
-    expect(result.grandTotals["sum_gross_amount"].value).toBe(4000);
+    expect(result.grandTotals["sum_net_amount"].value).toBe(4000);
   });
 
   it("calculates avg grand total", () => {
     const avgConfig: PivotConfig = {
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "avg" }],
+      values: [{ field: "net_amount", aggregation: "avg" }],
     };
     const rawRows = [
-      { hotel_name: "A", avg_gross_amount: 100 },
-      { hotel_name: "B", avg_gross_amount: 200 },
+      { hotel_name: "A", avg_net_amount: 100 },
+      { hotel_name: "B", avg_net_amount: 200 },
     ];
     const result = formatPivotResults(rawRows, avgConfig);
-    expect(result.grandTotals["avg_gross_amount"].value).toBe(150);
+    expect(result.grandTotals["avg_net_amount"].value).toBe(150);
   });
 
   it("calculates count grand total", () => {
     const countConfig: PivotConfig = {
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "quantity", aggregation: "count" }],
+      values: [{ field: "net_amount", aggregation: "count" }],
     };
     const rawRows = [
-      { hotel_name: "A", count_quantity: 10 },
-      { hotel_name: "B", count_quantity: 15 },
+      { hotel_name: "A", count_net_amount: 10 },
+      { hotel_name: "B", count_net_amount: 15 },
     ];
     const result = formatPivotResults(rawRows, countConfig);
-    expect(result.grandTotals["count_quantity"].value).toBe(25);
+    expect(result.grandTotals["count_net_amount"].value).toBe(25);
   });
 
   it("calculates min grand total", () => {
     const minConfig: PivotConfig = {
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "min" }],
+      values: [{ field: "net_amount", aggregation: "min" }],
     };
     const rawRows = [
-      { hotel_name: "A", min_gross_amount: 500 },
-      { hotel_name: "B", min_gross_amount: 200 },
+      { hotel_name: "A", min_net_amount: 500 },
+      { hotel_name: "B", min_net_amount: 200 },
     ];
     const result = formatPivotResults(rawRows, minConfig);
-    expect(result.grandTotals["min_gross_amount"].value).toBe(200);
+    expect(result.grandTotals["min_net_amount"].value).toBe(200);
   });
 
   it("calculates max grand total", () => {
     const maxConfig: PivotConfig = {
       rowFields: ["hotel_name"],
       columnFields: [],
-      values: [{ field: "gross_amount", aggregation: "max" }],
+      values: [{ field: "net_amount", aggregation: "max" }],
     };
     const rawRows = [
-      { hotel_name: "A", max_gross_amount: 500 },
-      { hotel_name: "B", max_gross_amount: 800 },
+      { hotel_name: "A", max_net_amount: 500 },
+      { hotel_name: "B", max_net_amount: 800 },
     ];
     const result = formatPivotResults(rawRows, maxConfig);
-    expect(result.grandTotals["max_gross_amount"].value).toBe(800);
+    expect(result.grandTotals["max_net_amount"].value).toBe(800);
   });
 
   it("handles empty results", () => {
@@ -332,17 +449,154 @@ describe("formatPivotResults", () => {
     expect(result.rows).toEqual([]);
     expect(result.rowCount).toBe(0);
     expect(result.truncated).toBe(false);
-    expect(result.grandTotals["sum_gross_amount"].value).toBe(0);
+    expect(result.grandTotals["sum_net_amount"].value).toBe(0);
   });
 
   it("marks truncated when over limit", () => {
     // Build more than 10_000 rows
     const rawRows = Array.from({ length: 10_002 }, (_, i) => ({
       hotel_name: `Hotel ${i}`,
-      sum_gross_amount: i * 10,
+      sum_net_amount: i * 10,
     }));
     const result = formatPivotResults(rawRows, config);
     expect(result.truncated).toBe(true);
     expect(result.rows).toHaveLength(10_000);
+  });
+
+  // ─── Task 2.4 — AVG grand total uses weighted recombination ───────────────
+  // Without this fix the engine averages per-row averages (Simpson's
+  // paradox). buildPivotSQL projects __avg_sum_<field> + __avg_count_<field>
+  // companions specifically so formatPivotResults can recompute
+  // SUM(numerators) / SUM(denominators).
+  it("avg grand total: weighted recombination from sum + count companions (Task 2.4)", () => {
+    const avgConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "avg" }],
+    };
+    // Hotel A: avg basket £10 over 1000 transactions (sum=10000, count=1000).
+    // Hotel B: avg basket £20 over 5 transactions    (sum=100,   count=5).
+    // True weighted avg = 10100 / 1005 ≈ 10.0497 — NOT (10+20)/2 = 15.
+    const rawRows = [
+      {
+        hotel_name: "A",
+        avg_net_amount: 10,
+        __avg_sum_net_amount: 10000,
+        __avg_count_net_amount: 1000,
+      },
+      {
+        hotel_name: "B",
+        avg_net_amount: 20,
+        __avg_sum_net_amount: 100,
+        __avg_count_net_amount: 5,
+      },
+    ];
+    const result = formatPivotResults(rawRows, avgConfig);
+    expect(result.grandTotals["avg_net_amount"].value).toBeCloseTo(
+      10100 / 1005,
+      4,
+    );
+    // Sanity: explicitly NOT the broken mean-of-means.
+    expect(result.grandTotals["avg_net_amount"].value).not.toBe(15);
+  });
+
+  it("avg grand total: falls back to mean-of-means when companions absent", () => {
+    // Existing callers / tests that synthesize raw rows without companions
+    // must not regress to NaN or zero.
+    const avgConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "avg" }],
+    };
+    const rawRows = [
+      { hotel_name: "A", avg_net_amount: 100 },
+      { hotel_name: "B", avg_net_amount: 200 },
+    ];
+    const result = formatPivotResults(rawRows, avgConfig);
+    expect(result.grandTotals["avg_net_amount"].value).toBe(150);
+  });
+
+  it("buildPivotSQL projects __avg_sum_/__avg_count_ companions for avg (Task 2.4)", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "avg" }],
+    });
+    expect(sql).toContain('AS "__avg_sum_net_amount"');
+    expect(sql).toContain('AS "__avg_count_net_amount"');
+    // Companions only emitted for avg, not for sum.
+    const sumSql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    });
+    expect(sumSql).not.toContain("__avg_sum_");
+    expect(sumSql).not.toContain("__avg_count_");
+  });
+
+  // ─── Task 2.5 — Grand totals row populated under column-pivoting ──────────
+  // Previously grandTotals was keyed by `${aggregation}_${field}` (e.g.
+  // "sum_net_amount") while crosstab cells were keyed by colKey (e.g.
+  // "Jan 2025"). The UI looks up grand totals by the same cellKey it uses
+  // for headers, so every cell rendered as "—".
+  it("grand totals are keyed by crosstab cell keys when column-pivoting (Task 2.5)", () => {
+    const crosstabConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: ["sale_month"],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    };
+    const rawRows = [
+      { hotel_name: "A", sale_month: "Jan 2025", sum_net_amount: 500 },
+      { hotel_name: "A", sale_month: "Feb 2025", sum_net_amount: 700 },
+      { hotel_name: "B", sale_month: "Jan 2025", sum_net_amount: 300 },
+      { hotel_name: "B", sale_month: "Feb 2025", sum_net_amount: 900 },
+    ];
+    const result = formatPivotResults(rawRows, crosstabConfig);
+
+    // Headers (after the row dimension) match crosstab cell keys.
+    expect(result.headers).toContain("Jan 2025");
+    expect(result.headers).toContain("Feb 2025");
+
+    // Grand totals are now keyed by the same crosstab keys, with weighted
+    // (here: SUM) totals across hotels per month.
+    expect(result.grandTotals["Jan 2025"].value).toBe(800); // 500 + 300
+    expect(result.grandTotals["Feb 2025"].value).toBe(1600); // 700 + 900
+
+    // No header should resolve to "—" via the engine — every header
+    // returned has a matching grand total cell.
+    for (const header of result.headers.slice(1)) {
+      expect(result.grandTotals[header]).toBeDefined();
+      expect(result.grandTotals[header].formatted).not.toBe("—");
+    }
+  });
+
+  it("grand totals key by `${colKey} | ${alias}` with multiple values (Task 2.5)", () => {
+    const multiConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: ["sale_month"],
+      values: [
+        { field: "net_amount", aggregation: "sum" },
+        { field: "net_amount", aggregation: "count" },
+      ],
+    };
+    const rawRows = [
+      {
+        hotel_name: "A",
+        sale_month: "Jan 2025",
+        sum_net_amount: 500,
+        count_net_amount: 5,
+      },
+      {
+        hotel_name: "B",
+        sale_month: "Jan 2025",
+        sum_net_amount: 300,
+        count_net_amount: 3,
+      },
+    ];
+    const result = formatPivotResults(rawRows, multiConfig);
+
+    // Cell keys + grand-total keys must match the multi-value composer.
+    expect(result.grandTotals["Jan 2025 | sum_net_amount"].value).toBe(800);
+    expect(result.grandTotals["Jan 2025 | count_net_amount"].value).toBe(8);
   });
 });

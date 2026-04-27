@@ -28,18 +28,24 @@ import { locations, outletExclusions, salesRecords } from "@/db/schema";
  */
 export const getActiveLocationIds = cache(async (): Promise<string[]> => {
   // Mirror `buildExclusionCondition`'s logic: an outlet is excluded iff there
-  // is at least one matching exclusion rule (exact or regex). We evaluate
-  // that with EXISTS over the exclusions table so new patterns don't require
-  // any code changes.
+  // is at least one matching exclusion rule (exact or regex) IN THE SAME
+  // REGION. Per Task 1.9 (PR-6 Part F), exclusions are region-scoped — outlet
+  // codes are unique per region, not globally, so 'Q5' in UK and 'Q5' in AU
+  // are distinct outlets and an exclusion targeting one must not match the
+  // other.
   const rows = await executeRows<{ id: string }>(sql`
     SELECT ${locations.id} AS id
     FROM ${locations}
-    WHERE NOT EXISTS (
-      SELECT 1
-      FROM ${outletExclusions} oe
-      WHERE (oe.pattern_type = 'exact' AND ${locations.outletCode} = oe.outlet_code)
-         OR (oe.pattern_type = 'regex' AND ${locations.outletCode} ~ oe.outlet_code)
-    )
+    WHERE ${locations.archivedAt} IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ${outletExclusions} oe
+        WHERE oe.region_id = ${locations.primaryRegionId}
+          AND (
+            (oe.pattern_type = 'exact' AND ${locations.outletCode} = oe.outlet_code)
+            OR (oe.pattern_type = 'regex' AND ${locations.outletCode} ~ oe.outlet_code)
+          )
+      )
   `);
 
   return rows.map((r) => r.id);

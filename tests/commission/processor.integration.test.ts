@@ -31,7 +31,7 @@ import {
 
 /**
  * Phase 7 (NetSuite ETL rewrite): commission base = SUM(netAmount) WHERE
- * isBookingFee = true. Principal rows must NOT produce ledger entries and
+ * isWeknowFee = true. Principal rows must NOT produce ledger entries and
  * must NOT contribute to the cumulative-before SUM.
  */
 describe("commission processor — booking-fee semantics (integration)", () => {
@@ -115,8 +115,8 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         productId,
         netAmount: "100.00",
         vatAmount: "20.00",
-        isBookingFee: true,
-        netsuiteCode: "BF-001",
+        isWeknowFee: true,
+        netsuiteCode: "9991",
       })
       .returning({ id: salesRecords.id });
 
@@ -131,7 +131,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         productId,
         netAmount: "500.00",
         vatAmount: "100.00",
-        isBookingFee: false,
+        isWeknowFee: false,
         netsuiteCode: "P-001",
       })
       .returning({ id: salesRecords.id });
@@ -194,7 +194,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
       productId,
       netAmount: "999999.00",
       vatAmount: "0.00",
-      isBookingFee: false,
+      isWeknowFee: false,
       netsuiteCode: "P-PRE",
     });
 
@@ -209,8 +209,8 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         productId,
         netAmount: "100.00",
         vatAmount: "20.00",
-        isBookingFee: true,
-        netsuiteCode: "BF-002",
+        isWeknowFee: true,
+        netsuiteCode: "9991",
       })
       .returning({ id: salesRecords.id });
 
@@ -248,8 +248,8 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         productId,
         netAmount: "200.00",
         vatAmount: "40.00",
-        isBookingFee: true,
-        netsuiteCode: "BF-003",
+        isWeknowFee: true,
+        netsuiteCode: "9991",
       },
       {
         regionId,
@@ -260,7 +260,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         productId,
         netAmount: "700.00",
         vatAmount: "140.00",
-        isBookingFee: false,
+        isWeknowFee: false,
         netsuiteCode: "P-003",
       },
     ]);

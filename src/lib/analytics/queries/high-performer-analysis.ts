@@ -15,6 +15,7 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
+  buildNonFeeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
@@ -191,7 +192,7 @@ async function computePerformerPatterns(
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
         WHERE ${salesRecords.locationId} = ANY(${sql.param(tierIds)}::uuid[])
-          AND ${salesRecords.isBookingFee} = false
+          AND ${buildNonFeeCondition()}
           ${whereClause ? sql`AND ${whereClause}` : sql``}
         GROUP BY ${products.name}
         ORDER BY revenue DESC
@@ -200,11 +201,24 @@ async function computePerformerPatterns(
     ]);
 
   // 4. Build distributions
+  // Task 2.13 — clamp at 100% defensively (post-Phase-1 PR-6 the data is 1:1
+  // but the floor protects against future multi-region drift), and surface
+  // tier members with zero region memberships as an explicit "Untagged" row
+  // so the percentages sum to ≤ 100% across visible rows.
+  const taggedCount = regionRows.reduce((sum, r) => sum + Number(r.count), 0);
+  const untaggedCount = Math.max(0, count - taggedCount);
   const regionDistribution = regionRows.map((r) => ({
     name: r.name,
     count: Number(r.count),
-    percentage: count > 0 ? (Number(r.count) / count) * 100 : 0,
+    percentage: Math.min(100, (Number(r.count) / count) * 100),
   }));
+  if (untaggedCount > 0) {
+    regionDistribution.push({
+      name: "Untagged",
+      count: untaggedCount,
+      percentage: (untaggedCount / count) * 100,
+    });
+  }
 
   const avgKioskCount =
     kioskRows[0]?.avg_kiosks != null ? Number(kioskRows[0].avg_kiosks) : null;

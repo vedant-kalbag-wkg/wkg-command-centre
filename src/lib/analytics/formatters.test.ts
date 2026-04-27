@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatCurrency,
+  formatHotelDisplayName,
   formatNumber,
   formatCompactNumber,
   formatPercentChange,
@@ -92,17 +93,39 @@ describe("toLocalISODate", () => {
 });
 
 describe("autoGranularity", () => {
-  it("<=31 days -> daily", () => {
+  // Task 4.16 — thresholds are 60 / 200 days. Boundary cases asserted to
+  // pin the cliffs against accidental drift.
+  it("<=60 days -> daily", () => {
     const from = new Date("2025-06-01");
     const to = new Date("2025-06-30");
     expect(autoGranularity(from, to)).toBe("daily");
   });
-  it("<=90 days -> weekly", () => {
+  it("60 days exactly -> daily", () => {
+    const from = new Date("2025-01-01");
+    const to = new Date("2025-03-02"); // 60 days
+    expect(autoGranularity(from, to)).toBe("daily");
+  });
+  it("61 days -> weekly", () => {
+    const from = new Date("2025-01-01");
+    const to = new Date("2025-03-03"); // 61 days
+    expect(autoGranularity(from, to)).toBe("weekly");
+  });
+  it("<=200 days -> weekly", () => {
     const from = new Date("2025-04-01");
     const to = new Date("2025-06-15");
     expect(autoGranularity(from, to)).toBe("weekly");
   });
-  it(">90 days -> monthly", () => {
+  it("200 days exactly -> weekly", () => {
+    const from = new Date("2025-01-01");
+    const to = new Date("2025-07-20"); // 200 days
+    expect(autoGranularity(from, to)).toBe("weekly");
+  });
+  it("201 days -> monthly", () => {
+    const from = new Date("2025-01-01");
+    const to = new Date("2025-07-21"); // 201 days
+    expect(autoGranularity(from, to)).toBe("monthly");
+  });
+  it(">200 days -> monthly", () => {
     const from = new Date("2025-01-01");
     const to = new Date("2025-12-31");
     expect(autoGranularity(from, to)).toBe("monthly");
@@ -115,5 +138,25 @@ describe("formatNullValue", () => {
   });
   it("value passes through formatter", () => {
     expect(formatNullValue(100, (v) => `${v}%`)).toBe("100%");
+  });
+});
+
+describe("formatHotelDisplayName", () => {
+  it("strips trailing ' b' suffix (multi-POS site indicator)", () => {
+    expect(formatHotelDisplayName("Heathrow Terminal 4 b")).toBe(
+      "Heathrow Terminal 4",
+    );
+  });
+  it("strips trailing ' B' (uppercase variant)", () => {
+    expect(formatHotelDisplayName("T2 Mobile desk B")).toBe("T2 Mobile desk");
+  });
+  it("leaves names without the suffix unchanged", () => {
+    expect(formatHotelDisplayName("Heathrow Terminal 5")).toBe(
+      "Heathrow Terminal 5",
+    );
+  });
+  it("does not strip 'b' without a leading space", () => {
+    expect(formatHotelDisplayName("Hotel Bombay")).toBe("Hotel Bombay");
+    expect(formatHotelDisplayName("HotelB")).toBe("HotelB");
   });
 });

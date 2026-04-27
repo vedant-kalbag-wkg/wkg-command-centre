@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "patch-package",
     "dev": "next dev --port 3003",
-    "build": "next build",
+    "build": "tsx scripts/preflight-env.ts && next build",
     "start": "next start",
     "lint": "eslint",
     "db:seed": "npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed.ts",

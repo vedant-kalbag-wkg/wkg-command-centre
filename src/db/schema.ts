@@ -209,6 +209,12 @@ export const locations = pgTable(
     keyContactName: text("key_contact_name"),
     keyContactEmail: text("key_contact_email"),
     financeContact: text("finance_contact"),
+    // D6 / Task 2.12 — IANA zone (e.g. 'Europe/London') used by hour-of-day
+    // analytics to bucket sales by local time. NOT NULL so SQL never falls
+    // back to UTC silently; backfilled per-region in migration 0033 and
+    // editable on the location detail form. Default 'UTC' is safe (matches
+    // pre-D6 naïve behaviour) for any row that escapes the backfill.
+    ianaTimezone: text("iana_timezone").notNull().default("UTC"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -485,6 +491,9 @@ export const markets = pgTable("markets", {
 
 // Hotel groups — hierarchical grouping of hotel locations (e.g. Dalata Hotels).
 // Supports nesting via self-referential parentGroupId.
+// `archivedAt` (D5 PR-6 Part C, migration 0031) marks comma-encoded JV rows
+// that were rewritten into proper multi-memberships and should no longer
+// appear in selectors / filters.
 export const hotelGroups = pgTable("hotel_groups", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
@@ -492,6 +501,7 @@ export const hotelGroups = pgTable("hotel_groups", {
     (): AnyPgColumn => hotelGroups.id,
     { onDelete: "set null" },
   ),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   createdBy: text("created_by").references(() => user.id),
 });
@@ -554,6 +564,12 @@ export const locationRegionMemberships = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.locationId, t.regionId] }),
     byRegion: index("lrm_region_idx").on(t.regionId),
+    // 1-per-location invariant per Resolved Decision D5 (migration 0029).
+    // Composite PK above blocks (loc,region) duplicates; this UNIQUE blocks a
+    // location from belonging to two different regions at once.
+    locationUniq: unique("location_region_memberships_location_id_unique").on(
+      t.locationId,
+    ),
   }),
 );
 
@@ -571,6 +587,12 @@ export const locationGroupMemberships = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.locationId, t.locationGroupId] }),
     byLocationGroup: index("lgm_location_group_idx").on(t.locationGroupId),
+    // 1-per-location invariant per Resolved Decision D5 (migration 0030).
+    // Composite PK above blocks (loc,group) duplicates; this UNIQUE blocks a
+    // location from belonging to two different location groups at once.
+    locationUniq: unique("location_group_memberships_location_id_unique").on(
+      t.locationId,
+    ),
   }),
 );
 
@@ -637,6 +659,14 @@ export const importStagings = pgTable(
 // is now guaranteed by blob-level idempotency (sales_blob_ingestions) + the
 // feed's "no overlap between days" guarantee; reversal pairs legitimately
 // share (saleRef, refNo, transactionDate) with opposite-signed amounts.
+//
+// Reversal columns (D2, migration 0027): isReversal / isPartialReversal /
+// originalRecordId / processedAtLocationId. Populated at CSV ingest by
+// matching (refNo, opposite sign, equal magnitude). For matched refunds the
+// row's locationId is rewritten to the original's locationId so cancellations
+// attribute to the booking outlet, and processedAtLocationId retains the CSV
+// attribution. Unmatched ("orphan") refunds keep the CSV's location_id and
+// originalRecordId stays NULL.
 export const salesRecords = pgTable(
   "sales_records",
   {
@@ -657,7 +687,7 @@ export const salesRecords = pgTable(
     vatAmount: numeric("vat_amount", { precision: 12, scale: 2 }).notNull(),
     vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
     currency: text("currency").notNull().default("GBP"),
-    isBookingFee: boolean("is_booking_fee").notNull().default(false),
+    isWeknowFee: boolean("is_weknow_fee").notNull().default(false),
     netsuiteCode: text("netsuite_code").notNull(),
     agent: text("agent"),
     businessDivision: text("business_division"),
@@ -668,6 +698,14 @@ export const salesRecords = pgTable(
     country: text("country"),
     customerCode: text("customer_code"),
     customerName: text("customer_name"),
+    isReversal: boolean("is_reversal").notNull().default(false),
+    isPartialReversal: boolean("is_partial_reversal").notNull().default(false),
+    originalRecordId: uuid("original_record_id").references((): AnyPgColumn => salesRecords.id, {
+      onDelete: "set null",
+    }),
+    processedAtLocationId: uuid("processed_at_location_id").references(() => locations.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -678,6 +716,8 @@ export const salesRecords = pgTable(
     prodDateIdx: index("sales_prod_date_idx").on(t.productId, t.transactionDate),
     provDateIdx: index("sales_prov_date_idx").on(t.providerId, t.transactionDate),
     txnDateIdx: index("sales_txn_date_idx").on(t.transactionDate),
+    isReversalIdx: index("sales_records_is_reversal_idx").on(t.isReversal),
+    originalRecordIdx: index("sales_records_original_record_id_idx").on(t.originalRecordId),
     // No natural unique — idempotency enforced at blob level.
   }),
 );
@@ -751,6 +791,9 @@ export const productCodeFallbacks = pgTable("product_code_fallbacks", {
 // =============================================================================
 
 // outletExclusions — admin-managed outlet exclusion rules with exact/regex patterns.
+// Per Task 1.9 (PR-6 Part F) exclusions are scoped to a single region: outlet
+// codes are unique per (region_id, outlet_code) but not globally, so an
+// exclusion that targets one region's 'Q5' must not silently apply to AU/DE/ES.
 export const outletExclusions = pgTable(
   "outlet_exclusions",
   {
@@ -760,12 +803,15 @@ export const outletExclusions = pgTable(
       .notNull()
       .default("exact"),
     label: text("label"),
+    regionId: uuid("region_id")
+      .notNull()
+      .references(() => regions.id, { onDelete: "restrict" }),
     createdBy: text("created_by").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    uniq: unique().on(t.outletCode, t.patternType),
+    uniq: unique().on(t.outletCode, t.patternType, t.regionId),
     byPatternType: index("outlet_exclusions_pattern_type_idx").on(t.patternType),
     byOutletCode: index("outlet_exclusions_outlet_code_idx").on(t.outletCode),
   }),

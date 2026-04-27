@@ -211,11 +211,11 @@ describe("runAzureEtl (integration)", () => {
     const allSales = await ctx.db.select().from(salesRecords);
     expect(allSales).toHaveLength(3);
 
-    const bookingFees = await ctx.db
+    const weknowFees = await ctx.db
       .select()
       .from(salesRecords)
-      .where(eq(salesRecords.isBookingFee, true));
-    expect(bookingFees).toHaveLength(1);
+      .where(eq(salesRecords.isWeknowFee, true));
+    expect(weknowFees).toHaveLength(2);
 
     const code9991 = await ctx.db
       .select()

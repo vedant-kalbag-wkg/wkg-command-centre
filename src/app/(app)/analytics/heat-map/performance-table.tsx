@@ -11,6 +11,7 @@ import {
 import { EmptyState } from "@/components/analytics/empty-state";
 import {
   formatCurrency,
+  formatHotelDisplayName,
   formatNumber,
   formatNullValue,
 } from "@/lib/analytics/formatters";
@@ -35,7 +36,15 @@ interface PerformanceTableProps {
   thresholdConfig?: ThresholdConfig;
   flags?: LocationFlag[];
   onFlagCreated?: () => void;
+  // ISO YYYY-MM-DD — reference date for maturity bucket calculation (D3:
+  // never NOW(); always the user-selected reporting window's end).
+  referenceDate: string;
 }
+
+// Score-band defaults for the composite-score traffic light (D7 / Task 2.9).
+// `classifyTrafficLight` uses `redMax` (≤ → red) and `greenMin` (≥ → green);
+// scores in (33, 66) fall through to amber.
+const HEAT_MAP_SCORE_THRESHOLDS: ThresholdConfig = { redMax: 33, greenMin: 66 };
 
 function scoreColorClass(score: number): string {
   if (score >= 70) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
@@ -51,8 +60,9 @@ const trafficLightLabel: Record<string, string> = {
 
 const EM_DASH = "—";
 
-export function PerformanceTable({ data, title, thresholdConfig, flags = [], onFlagCreated }: PerformanceTableProps) {
+export function PerformanceTable({ data, title, thresholdConfig, flags = [], onFlagCreated, referenceDate }: PerformanceTableProps) {
   const metricLabel = useMetricLabel();
+  const refDate = new Date(referenceDate);
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
     const existing = flagsByLocation.get(f.locationId) ?? [];
@@ -101,7 +111,7 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                 </TableCell>
                 <TableCell className="sticky left-12 z-10 bg-background">
                   <div className="flex flex-col">
-                    <span className="font-medium">{row.hotelName}</span>
+                    <span className="font-medium">{formatHotelDisplayName(row.hotelName)}</span>
                     {row.outletCode && (
                       <span className="font-mono text-xs text-muted-foreground">
                         {row.outletCode}
@@ -114,6 +124,7 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                   {(() => {
                     const bucket = calculateMaturityBucket(
                       row.liveDate ? new Date(row.liveDate) : null,
+                      refDate,
                     );
                     return bucket ? (
                       <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
@@ -163,7 +174,18 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                   </span>
                 </TableCell>
                 {thresholdConfig && (() => {
-                  const light = classifyTrafficLight(row.revenue, thresholdConfig);
+                  // Task 2.9 / D7: traffic light reflects the composite SCORE
+                  // (0-100), not raw revenue. The DB-backed `thresholdConfig`
+                  // (settings/thresholds page) is still on the £-revenue
+                  // scale — its values (e.g. 500/1500) are meaningless on
+                  // a 0-100 score, so we use score-band constants here.
+                  // TODO: migrate the settings UI + DB defaults to score
+                  // bands (e.g. add `score_threshold_*` keys) so admins
+                  // can re-tune. Tracked alongside Phase 2 audit follow-ups.
+                  const light = classifyTrafficLight(
+                    row.compositeScore,
+                    HEAT_MAP_SCORE_THRESHOLDS,
+                  );
                   return (
                     <TableCell className="text-center">
                       <span
@@ -192,7 +214,7 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                     ))}
                     <FlagDialog
                       locationId={row.locationId}
-                      locationName={row.hotelName}
+                      locationName={formatHotelDisplayName(row.hotelName)}
                       onFlagCreated={onFlagCreated}
                     />
                   </div>

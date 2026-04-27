@@ -11,6 +11,7 @@ import {
 import { EmptyState } from "@/components/analytics/empty-state";
 import {
   formatCurrency,
+  formatHotelDisplayName,
   formatNumber,
   formatNullValue,
 } from "@/lib/analytics/formatters";
@@ -35,8 +36,8 @@ export function HotelBreakdown({ hotels }: HotelBreakdownProps) {
             <TableHead className="min-w-[180px]">Hotel</TableHead>
             <TableHead className="text-right">{metricLabel}</TableHead>
             <TableHead className="text-right">Transactions</TableHead>
-            <TableHead className="text-right">Quantity</TableHead>
             <TableHead className="text-right">Rooms</TableHead>
+            <TableHead className="text-right">Kiosks</TableHead>
             <TableHead className="text-right">Stars</TableHead>
             <TableHead className="text-right">{metricLabel === "Revenue" ? "Rev" : "Sales"} / Room</TableHead>
           </TableRow>
@@ -46,7 +47,7 @@ export function HotelBreakdown({ hotels }: HotelBreakdownProps) {
             <TableRow key={hotel.locationId}>
               <TableCell>
                 <div className="flex flex-col">
-                  <span className="font-medium">{hotel.hotelName}</span>
+                  <span className="font-medium">{formatHotelDisplayName(hotel.hotelName)}</span>
                   {hotel.outletCode && (
                     <span className="font-mono text-xs text-muted-foreground">
                       {hotel.outletCode}
@@ -61,10 +62,10 @@ export function HotelBreakdown({ hotels }: HotelBreakdownProps) {
                 {formatNumber(hotel.transactions)}
               </TableCell>
               <TableCell className="text-right">
-                {formatNumber(hotel.quantity)}
+                {formatNullValue(hotel.rooms, formatNumber)}
               </TableCell>
               <TableCell className="text-right">
-                {formatNullValue(hotel.rooms, formatNumber)}
+                {formatNullValue(hotel.kiosks, formatNumber)}
               </TableCell>
               <TableCell className="text-right">
                 {formatNullValue(hotel.starRating, formatNumber)}

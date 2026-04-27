@@ -36,6 +36,7 @@ export function ExclusionsList({
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>Region</TableHead>
           <TableHead>Pattern</TableHead>
           <TableHead>Type</TableHead>
           <TableHead>Label</TableHead>
@@ -46,6 +47,11 @@ export function ExclusionsList({
       <TableBody>
         {exclusions.map((excl) => (
           <TableRow key={excl.id}>
+            <TableCell>
+              <Badge variant="outline" className="font-mono text-xs">
+                {excl.regionCode}
+              </Badge>
+            </TableCell>
             <TableCell className="font-mono text-sm">{excl.outletCode}</TableCell>
             <TableCell>
               <Badge variant={excl.patternType === "regex" ? "default" : "secondary"}>

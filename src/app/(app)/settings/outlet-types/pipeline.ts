@@ -22,6 +22,7 @@ import { auditLogs, locations, regions, salesRecords } from "@/db/schema";
 import { suggestLocationType } from "@/lib/locations/suggest-location-type";
 import type { LocationType } from "@/lib/analytics/types";
 import { writeAuditLog } from "@/lib/audit";
+import { buildSalesTxnCondition } from "@/lib/analytics/queries/shared";
 
 // Loose db type so callers can inject a testcontainers node-pg drizzle
 // instance OR rely on the production postgres-js default.
@@ -124,8 +125,8 @@ export async function _listUnclassifiedOutletsForActor(
       locationType: locations.locationType,
       primaryRegionId: locations.primaryRegionId,
       primaryRegionCode: regions.code,
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}), 0)`,
-      transactions: sql<string>`COALESCE(COUNT(${salesRecords.id}), 0)`,
+      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
+      transactions: sql<string>`COALESCE(COUNT(${salesRecords.id}) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
     })
     .from(locations)
     .innerJoin(regions, eq(regions.id, locations.primaryRegionId))

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { parseAnalyticsFiltersFromSearchParams } from '../parse-filters-from-search-params';
 
+const UUID_A = '11111111-1111-4111-8111-111111111111';
+const UUID_B = '22222222-2222-4222-8222-222222222222';
+const UUID_C = '33333333-3333-4333-8333-333333333333';
+
 describe('parseAnalyticsFiltersFromSearchParams', () => {
   it('reads from/to as YYYY-MM-DD strings', () => {
     const result = parseAnalyticsFiltersFromSearchParams({
@@ -11,23 +15,23 @@ describe('parseAnalyticsFiltersFromSearchParams', () => {
     expect(result.dateTo).toBe('2026-03-31');
   });
 
-  it('parses comma-separated id lists into arrays', () => {
+  it('parses comma-separated UUID lists into arrays', () => {
     const result = parseAnalyticsFiltersFromSearchParams({
       from: '2026-01-01',
       to: '2026-03-31',
-      hotels: 'h-1,h-2',
-      regions: 'r-a',
-      products: 'p-1,p-2,p-3',
-      hgroups: 'hg-1',
-      lgroups: 'lg-1,lg-2',
-      maturity: 'mature,emerging',
+      hotels: `${UUID_A},${UUID_B}`,
+      regions: UUID_A,
+      products: `${UUID_A},${UUID_B},${UUID_C}`,
+      hgroups: UUID_A,
+      lgroups: `${UUID_A},${UUID_B}`,
+      maturity: '0-1mo,3-6mo',
     });
-    expect(result.hotelIds).toEqual(['h-1', 'h-2']);
-    expect(result.regionIds).toEqual(['r-a']);
-    expect(result.productIds).toEqual(['p-1', 'p-2', 'p-3']);
-    expect(result.hotelGroupIds).toEqual(['hg-1']);
-    expect(result.locationGroupIds).toEqual(['lg-1', 'lg-2']);
-    expect(result.maturityBuckets).toEqual(['mature', 'emerging']);
+    expect(result.hotelIds).toEqual([UUID_A, UUID_B]);
+    expect(result.regionIds).toEqual([UUID_A]);
+    expect(result.productIds).toEqual([UUID_A, UUID_B, UUID_C]);
+    expect(result.hotelGroupIds).toEqual([UUID_A]);
+    expect(result.locationGroupIds).toEqual([UUID_A, UUID_B]);
+    expect(result.maturityBuckets).toEqual(['0-1mo', '3-6mo']);
   });
 
   it('omits id fields when URL params are absent', () => {
@@ -54,6 +58,24 @@ describe('parseAnalyticsFiltersFromSearchParams', () => {
     expect(result.regionIds).toBeUndefined();
   });
 
+  it('drops non-UUID values silently and leaves the field undefined', () => {
+    const result = parseAnalyticsFiltersFromSearchParams({
+      from: '2026-01-01',
+      to: '2026-03-31',
+      hotels: 'not-a-uuid',
+    });
+    expect(result.hotelIds).toBeUndefined();
+  });
+
+  it('drops unknown maturity values, keeps valid ones', () => {
+    const result = parseAnalyticsFiltersFromSearchParams({
+      from: '2026-01-01',
+      to: '2026-03-31',
+      maturity: '0-1mo,12mo+',
+    });
+    expect(result.maturityBuckets).toEqual(['0-1mo']);
+  });
+
   it('falls back to default date range when from/to absent', () => {
     const result = parseAnalyticsFiltersFromSearchParams({});
     // default is ytd preset: Jan 1 of current year → today (local date)
@@ -71,21 +93,21 @@ describe('parseAnalyticsFiltersFromSearchParams', () => {
     const result = parseAnalyticsFiltersFromSearchParams({
       from: ['2026-01-01', '2026-02-01'],
       to: '2026-03-31',
-      hotels: ['h-1,h-2'],
+      hotels: [`${UUID_A},${UUID_B}`],
     });
     expect(result.dateFrom).toBe('2026-01-01');
     expect(result.dateTo).toBe('2026-03-31');
-    expect(result.hotelIds).toEqual(['h-1', 'h-2']);
+    expect(result.hotelIds).toEqual([UUID_A, UUID_B]);
   });
 
   it('accepts URLSearchParams instance', () => {
     const sp = new URLSearchParams();
     sp.set('from', '2026-01-01');
     sp.set('to', '2026-03-31');
-    sp.set('hotels', 'h-1,h-2');
+    sp.set('hotels', `${UUID_A},${UUID_B}`);
     const result = parseAnalyticsFiltersFromSearchParams(sp);
     expect(result.dateFrom).toBe('2026-01-01');
     expect(result.dateTo).toBe('2026-03-31');
-    expect(result.hotelIds).toEqual(['h-1', 'h-2']);
+    expect(result.hotelIds).toEqual([UUID_A, UUID_B]);
   });
 });

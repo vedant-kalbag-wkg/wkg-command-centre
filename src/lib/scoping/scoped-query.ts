@@ -6,9 +6,12 @@
  * SQL WHERE condition for sales_records queries.
  *
  * INVARIANTS (enforced here):
- *   - userType='internal' && role='admin' → no filter (unrestricted).
- *   - userType='internal' (member/viewer) with 0 scopes → no filter.
- *   - userType='external' with 0 scopes → THROW. External users must be scoped.
+ *   - userType='internal' && role IN ('admin', 'system') → no filter
+ *     (unrestricted). 'system' covers automation actors (e.g. ETL) which
+ *     legitimately operate outside any scope assignment.
+ *   - Any other user with 0 scopes → THROW. This includes internal
+ *     member/viewer (previously silently unrestricted — security bug) and
+ *     all external users.
  *   - Multiple scopes of the same dimension = UNION (IN (…)).
  *   - Multiple scopes across dimensions = UNION across dimensions
  *     (OR in SQL).
@@ -17,9 +20,11 @@
  *     is used for scope decisions.
  */
 
+import { cache } from 'react';
 import { eq, inArray, or, type SQL, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
+  locations,
   salesRecords,
   userScopes,
   locationHotelGroupMemberships,
@@ -46,7 +51,7 @@ export type Scope = {
 export type UserCtx = {
   id: string;
   userType: 'internal' | 'external';
-  role: 'admin' | 'member' | 'viewer' | null;
+  role: 'admin' | 'system' | 'member' | 'viewer' | null;
 };
 
 export type Session = {
@@ -81,15 +86,18 @@ export function buildScopeFilter(
 
   const user = resolveUser(input, options);
 
-  if (user.userType === 'internal' && user.role === 'admin') {
+  if (
+    user.userType === 'internal' &&
+    (user.role === 'admin' || user.role === 'system')
+  ) {
     return null;
   }
 
-  if (user.userType === 'external' && scopes.length === 0) {
-    throw new Error('External user must have at least one scope row');
+  if (scopes.length === 0) {
+    throw new Error(
+      "User has no analytics scopes assigned. Either assign scopes via /settings/users, or change the user's role to 'admin' or 'system' if unrestricted access is intended.",
+    );
   }
-
-  if (scopes.length === 0) return null;
 
   const byDim = new Map<DimensionType, Set<string>>();
   for (const s of scopes) {
@@ -135,12 +143,18 @@ type DrizzleDb = NodePgDatabase<any>;
  *   - product        → sales_records.product_id IN (…)
  *   - provider       → sales_records.provider_id IN (…)
  *   - union          → OR of the above
+ *
+ * Wrapped in React.cache so a request that runs N analytics queries in
+ * parallel only fires the user_scopes SELECT once (was N round-trips).
+ * Cache key is the (db, input, options) tuple by reference. In non-React
+ * contexts (tests, scripts) cache() is a no-op, so this is safe to wrap
+ * unconditionally.
  */
-export async function scopedSalesCondition(
+export const scopedSalesCondition = cache(async (
   db: DrizzleDb,
   input: UserCtx | Session,
   options?: BuildScopeFilterOptions,
-): Promise<SQL | undefined> {
+): Promise<SQL | undefined> => {
   const user = resolveUser(input, options);
 
   const rows = await db
@@ -156,7 +170,7 @@ export async function scopedSalesCondition(
   if (filter === null) return undefined;
 
   return translateFilterToSalesSql(filter);
-}
+});
 
 function translateFilterToSalesSql(filter: ScopeFilter): SQL {
   if (filter === null) {
@@ -204,6 +218,94 @@ function translateSingleDimension(single: ScopeFilterSingle): SQL {
         FROM ${locationGroupMemberships}
         WHERE ${inArray(locationGroupMemberships.locationGroupId, ids)}
       )`;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`Unhandled dimension: ${exhaustive as string}`);
+    }
+  }
+}
+
+// =============================================================================
+// Locations-side binding (Task 3.6)
+// =============================================================================
+
+/**
+ * Sibling of `scopedSalesCondition` for queries that select FROM `locations`
+ * directly (e.g. cohort/location pickers). Emits a `locations.id`-relative
+ * scope predicate instead of a `sales_records.location_id`-relative one.
+ *
+ * `product` and `provider` scopes have no clean projection onto
+ * `locations.id` (they constrain rows in `sales_records`, not the location
+ * universe) and are not valid inputs to a locations-only query — callers must
+ * either restrict the picker upstream or rely on a sales-side filter.
+ */
+export const scopedLocationsCondition = cache(async (
+  db: DrizzleDb,
+  input: UserCtx | Session,
+  options?: BuildScopeFilterOptions,
+): Promise<SQL | undefined> => {
+  const user = resolveUser(input, options);
+
+  const rows = await db
+    .select({
+      dimensionType: userScopes.dimensionType,
+      dimensionId: userScopes.dimensionId,
+    })
+    .from(userScopes)
+    .where(eq(userScopes.userId, user.id));
+
+  const scopes = rows as Scope[];
+  const filter = buildScopeFilter(input, scopes, options);
+  if (filter === null) return undefined;
+
+  return translateFilterToLocationsSql(filter);
+});
+
+function translateFilterToLocationsSql(filter: ScopeFilter): SQL {
+  if (filter === null) {
+    throw new Error('translateFilterToLocationsSql called with null filter');
+  }
+
+  if (filter.kind === 'union') {
+    const sqls = filter.parts.map((p) => translateSingleDimensionLocations(p));
+    const combined = or(...sqls);
+    if (!combined) {
+      throw new Error('translateFilterToLocationsSql: empty union parts');
+    }
+    return combined;
+  }
+
+  return translateSingleDimensionLocations(filter);
+}
+
+function translateSingleDimensionLocations(single: ScopeFilterSingle): SQL {
+  const { kind, ids } = single;
+  switch (kind) {
+    case 'location':
+      return inArray(locations.id, ids);
+    case 'hotel_group':
+      return sql`${locations.id} IN (
+        SELECT ${locationHotelGroupMemberships.locationId}
+        FROM ${locationHotelGroupMemberships}
+        WHERE ${inArray(locationHotelGroupMemberships.hotelGroupId, ids)}
+      )`;
+    case 'region':
+      return sql`${locations.id} IN (
+        SELECT ${locationRegionMemberships.locationId}
+        FROM ${locationRegionMemberships}
+        WHERE ${inArray(locationRegionMemberships.regionId, ids)}
+      )`;
+    case 'location_group':
+      return sql`${locations.id} IN (
+        SELECT ${locationGroupMemberships.locationId}
+        FROM ${locationGroupMemberships}
+        WHERE ${inArray(locationGroupMemberships.locationGroupId, ids)}
+      )`;
+    case 'product':
+    case 'provider':
+      throw new Error(
+        'product/provider scope not applicable to locations-only queries',
+      );
     default: {
       const exhaustive: never = kind;
       throw new Error(`Unhandled dimension: ${exhaustive as string}`);

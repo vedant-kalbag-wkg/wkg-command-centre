@@ -113,7 +113,7 @@ export default function PortfolioPage() {
         await Promise.all([
           fetchPortfolio(parsed, comparisonMode),
           fetchThresholdConfig(),
-          fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo).catch(() => []),
+          fetchPortfolioEvents(parsed.dateFrom, parsed.dateTo, parsed).catch(() => []),
           fetchHighPerformerPatterns(parsed, greenCutoff).catch(() => null),
           fetchLowPerformerPatterns(parsed, redCutoff).catch(() => null),
           fetchActiveFlags().catch(() => []),
@@ -377,6 +377,7 @@ export default function PortfolioPage() {
                 thresholdConfig={thresholdConfig}
                 flags={flags}
                 onFlagCreated={loadData}
+                referenceDate={filters.dateTo}
               />
             )}
           </ChartCard>

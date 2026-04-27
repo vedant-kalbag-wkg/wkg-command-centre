@@ -59,6 +59,12 @@ vi.mock('@/lib/analytics/active-locations', () => ({
   getActiveLocationIds: vi.fn(async () => []),
   buildActiveLocationCondition: vi.fn(async () => undefined),
 }));
+// D6 / Task 2.12 — Hourly Distribution now consults the admin display-tz
+// setting. Stub it to avoid hitting the DB from a unit test.
+vi.mock('@/lib/analytics/display-timezone-server', () => ({
+  getAnalyticsDisplayTimezone: vi.fn(async () => 'local' as const),
+  DISPLAY_TIMEZONE_TAG: 'analytics:display-timezone',
+}));
 
 const canonical = canonicaliseFilters({
   dateFrom: '2026-01-01',

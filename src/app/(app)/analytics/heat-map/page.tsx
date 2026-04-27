@@ -117,6 +117,7 @@ export default function HeatMapPage() {
             thresholdConfig={thresholdConfig}
             flags={flags}
             onFlagCreated={loadData}
+            referenceDate={filters.dateTo}
           />
         </ChartCard>
 
@@ -134,6 +135,7 @@ export default function HeatMapPage() {
             thresholdConfig={thresholdConfig}
             flags={flags}
             onFlagCreated={loadData}
+            referenceDate={filters.dateTo}
           />
         </ChartCard>
       </div>
@@ -153,6 +155,7 @@ export default function HeatMapPage() {
           thresholdConfig={thresholdConfig}
           flags={flags}
           onFlagCreated={loadData}
+          referenceDate={filters.dateTo}
         />
       </ChartCard>
     </div>

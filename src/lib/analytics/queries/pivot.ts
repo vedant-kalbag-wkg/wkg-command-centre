@@ -14,7 +14,6 @@ import {
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationConditionForRawContext } from "@/lib/analytics/active-locations";
@@ -24,6 +23,7 @@ import {
   buildPivotSQL,
   formatPivotResults,
 } from "@/lib/analytics/pivot-engine";
+import { getAnalyticsDisplayTimezone } from "@/lib/analytics/display-timezone-server";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
@@ -57,14 +57,14 @@ async function buildPivotWhereString(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // metricMode applied per-aggregate via FILTER on the SUM/COUNT clauses inside
+  // the pivot engine (D1 — counts mode-invariant; SUM swaps fee/non-fee).
   const combined = combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 
@@ -131,11 +131,17 @@ export async function executePivot(
     );
   }
 
-  // 2. Build WHERE clause
-  const whereClause = await buildPivotWhereString(filters, userCtx);
+  // 2. Build WHERE clause + resolve display-timezone mode in parallel.
+  //    `displayTz` controls whether `sale_hour` (the only zone-sensitive
+  //    derived column) buckets by per-row `locations.iana_timezone` ('local',
+  //    default) or constant 'UTC' (debug). See D6 / Task 2.12.
+  const [whereClause, displayTz] = await Promise.all([
+    buildPivotWhereString(filters, userCtx),
+    getAnalyticsDisplayTimezone(),
+  ]);
 
   // 3. Build SQL
-  const pivotSQL = buildPivotSQL(config, whereClause);
+  const pivotSQL = buildPivotSQL(config, whereClause, displayTz);
 
   // 4. Execute query
   const rawRows = await executeRows(sql.raw(pivotSQL));
@@ -180,116 +186,77 @@ async function addPeriodComparison(
     periodComparison: null,
   };
 
-  const prevWhereClause = await buildPivotWhereString(prevFilters, userCtx);
-  const prevSQL = buildPivotSQL(prevConfig, prevWhereClause);
+  const [prevWhereClause, displayTz] = await Promise.all([
+    buildPivotWhereString(prevFilters, userCtx),
+    getAnalyticsDisplayTimezone(),
+  ]);
+  const prevSQL = buildPivotSQL(prevConfig, prevWhereClause, displayTz);
   const prevRawRows = await executeRows(sql.raw(prevSQL));
   const prevResult = formatPivotResults(
     prevRawRows as unknown as Record<string, unknown>[],
     prevConfig,
   );
 
-  // Build lookup of previous period row → cells by dimension key
+  return mergeComparisonResults(currentResult, prevResult, config.rowFields);
+}
+
+/**
+ * Merge a previous-period PivotResponse into the current one, appending
+ * `<cellKey>_change` cells that show % delta against the prev row at the
+ * same dimension key.
+ *
+ * Exported for unit testing (Task 2.6). Pure function — no DB access. Pairs
+ * current/prev cells by key, NOT by position. The previous positional
+ * fallback misattributed prev-period values whenever the two periods had
+ * different cell sets (e.g. a column-pivoted month present in current but
+ * not prev, or different row sets between periods).
+ */
+export function mergeComparisonResults(
+  currentResult: PivotResponse,
+  prevResult: PivotResponse,
+  rowFields: string[],
+): PivotResponse {
+  // Build lookup of previous period row → cells by dimension key.
   const prevRowMap = new Map<string, Record<string, PivotCell>>();
   for (const row of prevResult.rows) {
-    const key = config.rowFields
-      .map((f) => row.dimensions[f] ?? "")
-      .join("|||");
+    const key = rowFields.map((f) => row.dimensions[f] ?? "").join("|||");
     prevRowMap.set(key, row.cells);
   }
 
-  // Merge change columns into current result
+  // Merge change columns into current result.
   const mergedRows = currentResult.rows.map((row) => {
-    const key = config.rowFields
-      .map((f) => row.dimensions[f] ?? "")
-      .join("|||");
+    const key = rowFields.map((f) => row.dimensions[f] ?? "").join("|||");
     const prevCells = prevRowMap.get(key);
 
     const changeCells: Record<string, PivotCell> = {};
 
     if (prevCells) {
-      const curKeys = Object.keys(row.cells);
-      const prevKeys = Object.keys(prevCells);
-
-      for (let i = 0; i < curKeys.length; i++) {
-        const cellKey = curKeys[i];
+      for (const cellKey of Object.keys(row.cells)) {
         const cur = row.cells[cellKey].value;
-
-        // Try exact key match first, then positional match
-        const prevCell =
-          prevCells[cellKey] ??
-          (prevKeys[i] ? prevCells[prevKeys[i]] : undefined);
-
-        if (prevCell != null && prevCell.value !== 0) {
-          const change = ((cur - prevCell.value) / prevCell.value) * 100;
-          changeCells[`${cellKey}_change`] = {
-            value: change,
-            formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
-          };
-        } else if (prevCell != null && prevCell.value === 0) {
-          // Previous was zero — can't calculate meaningful %
-          changeCells[`${cellKey}_change`] = {
-            value: cur > 0 ? 100 : 0,
-            formatted: cur > 0 ? "New" : "—",
-          };
-        } else {
-          // No comparison data available
-          changeCells[`${cellKey}_change`] = {
-            value: 0,
-            formatted: "—",
-          };
-        }
+        // 2.6: exact-key match only (no positional fallback).
+        const prevCell = prevCells[cellKey];
+        changeCells[`${cellKey}_change`] = computeChangeCell(cur, prevCell);
       }
     } else {
-      // No matching row in previous period at all
+      // No matching row in previous period at all.
       for (const cellKey of Object.keys(row.cells)) {
-        changeCells[`${cellKey}_change`] = {
-          value: 0,
-          formatted: "—",
-        };
+        changeCells[`${cellKey}_change`] = { value: 0, formatted: "—" };
       }
     }
 
-    return {
-      ...row,
-      cells: { ...row.cells, ...changeCells },
-    };
+    return { ...row, cells: { ...row.cells, ...changeCells } };
   });
 
-  // Add change headers
+  // Add change headers.
   const changeHeaders = currentResult.headers
-    .slice(config.rowFields.length)
+    .slice(rowFields.length)
     .map((h) => `${h} (% Change)`);
 
-  // Add change grand totals
+  // Add change grand totals (same key-match policy).
   const changeGrandTotals: Record<string, PivotCell> = {};
-  const curTotalKeys = Object.keys(currentResult.grandTotals);
-  const prevTotalKeys = Object.keys(prevResult.grandTotals);
-
-  for (let i = 0; i < curTotalKeys.length; i++) {
-    const key = curTotalKeys[i];
-    const cell = currentResult.grandTotals[key];
-    // Try exact key match first, then positional match
-    const prevCell =
-      prevResult.grandTotals[key] ??
-      (prevTotalKeys[i] ? prevResult.grandTotals[prevTotalKeys[i]] : undefined);
-
-    if (prevCell != null && prevCell.value !== 0) {
-      const change = ((cell.value - prevCell.value) / prevCell.value) * 100;
-      changeGrandTotals[`${key}_change`] = {
-        value: change,
-        formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
-      };
-    } else if (prevCell != null && prevCell.value === 0) {
-      changeGrandTotals[`${key}_change`] = {
-        value: cell.value > 0 ? 100 : 0,
-        formatted: cell.value > 0 ? "New" : "—",
-      };
-    } else {
-      changeGrandTotals[`${key}_change`] = {
-        value: 0,
-        formatted: "—",
-      };
-    }
+  for (const [key, cell] of Object.entries(currentResult.grandTotals)) {
+    const prevCell = prevResult.grandTotals[key];
+    changeGrandTotals[`${key}_change`] = computeChangeCell(cell.value, prevCell);
   }
 
   return {
@@ -298,6 +265,24 @@ async function addPeriodComparison(
     grandTotals: { ...currentResult.grandTotals, ...changeGrandTotals },
     rowCount: mergedRows.length,
     truncated: currentResult.truncated,
+  };
+}
+
+/** Format a single % change cell from a current value and a (possibly missing) previous cell. */
+function computeChangeCell(cur: number, prevCell: PivotCell | undefined): PivotCell {
+  if (prevCell == null) {
+    return { value: 0, formatted: "—" };
+  }
+  if (prevCell.value === 0) {
+    return {
+      value: cur > 0 ? 100 : 0,
+      formatted: cur > 0 ? "New" : "—",
+    };
+  }
+  const change = ((cur - prevCell.value) / prevCell.value) * 100;
+  return {
+    value: change,
+    formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
   };
 }
 

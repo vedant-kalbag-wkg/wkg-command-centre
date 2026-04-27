@@ -12,6 +12,7 @@ import { getCacheScopeKey } from "@/lib/analytics/cache-scope";
 import { getComparisonDates } from "@/lib/analytics/metrics";
 import { fetchWeatherData as fetchWeatherFromApi } from "@/lib/weather/open-meteo";
 import type {
+  AnalyticsFilters,
   TrendMetric,
   SeriesFilters,
   TrendDataPoint,
@@ -21,12 +22,13 @@ import type {
 
 export async function fetchTrendSeriesData(
   metric: TrendMetric,
-  filters: SeriesFilters,
+  seriesFilters: SeriesFilters,
+  globalFilters: AnalyticsFilters,
   dateFrom: string,
   dateTo: string,
 ): Promise<TrendDataPoint[]> {
   const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
-  return getTrendSeriesDataCached(metric, filters, dateFrom, dateTo, scopeKey);
+  return getTrendSeriesDataCached(metric, seriesFilters, globalFilters, dateFrom, dateTo, scopeKey);
 }
 
 export async function fetchWeatherData(
@@ -70,6 +72,10 @@ export async function fetchWeatherForLocationGroup(
         isNotNull(locations.longitude),
       ),
     )
+    // Deterministic pick (Task 4.18): ORDER BY locations.id so the same group
+    // always resolves to the same lat/lng across runs. Without this, Postgres
+    // is free to return any matching row and the chosen coordinates can shift.
+    .orderBy(locations.id)
     .limit(1);
 
   const first = rows[0];
@@ -81,10 +87,18 @@ export async function fetchWeatherForLocationGroup(
 export async function fetchBusinessEvents(
   dateFrom: string,
   dateTo: string,
+  globalFilters: AnalyticsFilters,
 ): Promise<BusinessEventDisplay[]> {
-  const userCtx = await getUserCtx();
+  const [userCtx, scopeKey] = await Promise.all([
+    getUserCtx(),
+    getCacheScopeKey(),
+  ]);
   if (userCtx.userType === "external") return [];
-  return getBusinessEventsCached(dateFrom, dateTo);
+  // Task 4.17 — pass the user's global FilterBar so the events query can
+  // apply hierarchical scope-type visibility against the effective location
+  // set. scopeKey participates in the cache key so admin/system collapse
+  // while external scopes (when supported) isolate.
+  return getBusinessEventsCached(dateFrom, dateTo, globalFilters, scopeKey);
 }
 
 /**
@@ -94,13 +108,14 @@ export async function fetchBusinessEvents(
  */
 export async function fetchTrendSeriesDataYoY(
   metric: TrendMetric,
-  filters: SeriesFilters,
+  seriesFilters: SeriesFilters,
+  globalFilters: AnalyticsFilters,
   dateFrom: string,
   dateTo: string,
 ): Promise<TrendDataPoint[]> {
   const [, scopeKey] = await Promise.all([getUserCtx(), getCacheScopeKey()]);
   const { prevFrom, prevTo } = getComparisonDates(dateFrom, dateTo, "yoy");
-  const data = await getTrendSeriesDataCached(metric, filters, prevFrom, prevTo, scopeKey);
+  const data = await getTrendSeriesDataCached(metric, seriesFilters, globalFilters, prevFrom, prevTo, scopeKey);
 
   // Shift dates forward by 1 year so they align with the current period on the chart
   return data.map((pt) => {

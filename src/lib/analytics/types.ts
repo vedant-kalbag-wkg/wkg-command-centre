@@ -10,15 +10,19 @@ export type FilterDimension =
 
 export type MetricMode = "sales" | "revenue"
 
-// Matches the locations.location_type enum — mirrored here so the client
-// store + URL parser agree with what the DB accepts. 'null' is valid on
-// the column ("not yet mapped") but isn't a filter value.
+// Matches the locations.location_type text column (constrained by a CHECK,
+// not a PG enum) — mirrored here so the client store + URL parser agree
+// with what the DB accepts. 'null' is valid on the column ("not yet mapped")
+// but isn't a filter value. 'internal' is D9 / Task 4.6 — refund-handling
+// outlets (e.g. BK 'Customer Service') that are excluded from analytics
+// leaderboards by default.
 export type LocationType =
   | "hotel"
   | "retail_desk"
   | "online"
   | "airport"
   | "hex_kiosk"
+  | "internal"
 
 export const LOCATION_TYPES: readonly LocationType[] = [
   "hotel",
@@ -26,6 +30,7 @@ export const LOCATION_TYPES: readonly LocationType[] = [
   "online",
   "airport",
   "hex_kiosk",
+  "internal",
 ] as const
 
 // UI-facing labels; keep in sync with LocationType above.
@@ -35,6 +40,7 @@ export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
   online: "Online",
   airport: "Airport",
   hex_kiosk: "HEX Kiosk",
+  internal: "Internal",
 }
 
 export type AnalyticsFilters = {
@@ -47,9 +53,13 @@ export type AnalyticsFilters = {
   locationGroupIds?: string[]
   maturityBuckets?: string[]
   locationTypes?: LocationType[]
+  // D9 / Task 4.6 — when true, internal-type locations appear in queries
+  // (admin audit mode). When false/undefined, they are excluded by default.
+  // Wired in buildDimensionFilters; see also analytics-filter-store.
+  includeInternalAccounts?: boolean
   // "sales"   — every row (gross transaction volume, default)
   // "revenue" — only booking-fee + cash-handling-fee rows (WKG's take).
-  //             Identified by salesRecords.isBookingFee = true; by construction
+  //             Identified by salesRecords.isWeknowFee = true; by construction
   //             this matches netsuite_code IN ('9991', '9992').
   metricMode?: MetricMode
 }
@@ -202,6 +212,13 @@ export type SeriesConfig = {
 export type TrendDataPoint = {
   date: string           // YYYY-MM-DD
   value: number
+  // Populated only for `avg_basket_value` series (Task 2.7). Bucketing daily
+  // averages by SUM gives a wrong weekly/monthly mean — instead we accumulate
+  // the per-day numerator (non-fee revenue) and denominator (sales-txn count)
+  // separately and compute `numerator / denominator` per bucket. Other metrics
+  // (revenue / transactions / booking_fee) are additive and leave these unset.
+  numerator?: number
+  denominator?: number
 }
 
 export type TrendGranularity = "auto" | "daily" | "weekly" | "monthly"
@@ -265,7 +282,6 @@ export type HotelInGroup = {
   hotelName: string
   revenue: number
   transactions: number
-  quantity: number
   rooms: number | null
   kiosks: number | null
   starRating: number | null
@@ -402,6 +418,8 @@ export type ExperimentCohort = {
 export type CohortComparison = {
   cohortMetrics: { revenue: number; transactions: number; avgRevenue: number };
   controlMetrics: { revenue: number; transactions: number; avgRevenue: number };
+  cohortSize: number;
+  controlSize: number;
   delta: { revenue: number; transactions: number; avgRevenue: number };
 };
 

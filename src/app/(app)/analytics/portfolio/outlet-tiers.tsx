@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { formatCurrency, formatHotelDisplayName, formatNumber } from "@/lib/analytics/formatters";
 import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { cn } from "@/lib/utils";
 import {
@@ -31,6 +31,9 @@ interface OutletTiersProps {
   thresholdConfig?: ThresholdConfig;
   flags?: LocationFlag[];
   onFlagCreated?: () => void;
+  // ISO YYYY-MM-DD — reference date for maturity bucket calculation (D3:
+  // never NOW(); always the user-selected reporting window's end).
+  referenceDate: string;
 }
 
 const tierStyles: Record<OutletTier, string> = {
@@ -49,7 +52,7 @@ const trafficLightLabel: Record<string, string> = {
 
 const EM_DASH = "—";
 
-export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }: OutletTiersProps) {
+export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated, referenceDate }: OutletTiersProps) {
   const metricLabel = useMetricLabel();
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
@@ -57,6 +60,7 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }
     existing.push(f);
     flagsByLocation.set(f.locationId, existing);
   }
+  const refDate = new Date(referenceDate);
 
   return (
     <div className="overflow-x-auto">
@@ -84,12 +88,13 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }
               <TableCell className="font-mono text-xs">
                 {row.outletCode || EM_DASH}
               </TableCell>
-              <TableCell className="font-medium">{row.hotelName}</TableCell>
+              <TableCell className="font-medium">{formatHotelDisplayName(row.hotelName)}</TableCell>
               <TableCell>{row.hotelGroupName ?? EM_DASH}</TableCell>
               <TableCell>
                 {(() => {
                   const bucket = calculateMaturityBucket(
                     row.liveDate ? new Date(row.liveDate) : null,
+                    refDate,
                   );
                   return bucket ? (
                     <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
@@ -160,7 +165,7 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated }
                   ))}
                   <FlagDialog
                     locationId={row.locationId}
-                    locationName={row.hotelName}
+                    locationName={formatHotelDisplayName(row.hotelName)}
                     onFlagCreated={onFlagCreated}
                   />
                 </div>

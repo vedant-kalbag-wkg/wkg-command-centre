@@ -94,14 +94,20 @@ export async function fetchThresholdConfig(): Promise<ThresholdConfig> {
 /**
  * Fetch business events for the portfolio daily trends chart.
  * Gated to internal users only — external users get an empty array.
+ *
+ * Task 4.17 — events are now scoped hierarchically against the user's
+ * effective location set. The portfolio FilterBar's full AnalyticsFilters
+ * shape feeds the visibility predicate so a UK-scoped chart no longer
+ * shows AU events.
  */
 export async function fetchPortfolioEvents(
   dateFrom: string,
   dateTo: string,
+  filters: AnalyticsFilters,
 ): Promise<BusinessEventDisplay[]> {
   const userCtx = await getUserCtx();
   if (userCtx.userType === "external") return [];
-  return getBusinessEvents(dateFrom, dateTo);
+  return getBusinessEvents(dateFrom, dateTo, filters, userCtx);
 }
 
 export async function fetchHighPerformerPatterns(

@@ -10,11 +10,13 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  activeKioskCountFragment,
+  buildAmountModeCondition,
   buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
+  buildSalesTxnCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
@@ -45,41 +47,48 @@ async function buildHotelGroupWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // metricMode applied per-aggregate via FILTER (D1 — counts mode-invariant).
   return combineConditions([
     dateCondition,
     scopeCondition,
     exclusionCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
 
-// ─── Internal: base FROM with hotel group join ──────────────────────────────
-
-function baseFromWithHotelGroups(): SQL {
-  return sql`${salesRecords}
-    INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
-    INNER JOIN ${locationHotelGroupMemberships} ON ${locations.id} = ${locationHotelGroupMemberships.locationId}
-    INNER JOIN ${hotelGroups} ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}`;
-}
-
-// ─── Internal: per-location aggregate FROM (no membership join) ─────────────
+// ─── Internal: base FROM (sales + locations only, no membership join) ──────
 //
-// Used by getHotelGroupsList to pre-aggregate sales_records by location_id
-// BEFORE joining location_hotel_group_memberships. The membership join is
-// many-to-many (a location can belong to multiple hotel groups), so joining
-// first explodes the working set from ~124k rows to ~148k and forces a 9 MB
-// external merge sort on the outer COUNT(DISTINCT location_id).
-//
-// Pre-aggregating collapses 124k rows to ~200 (one per location) — the
-// membership fan-out then happens at ~200→~240 rows, and the outer
-// GROUP BY hotel_group sorts ~240 rows in memory. See Phase 1 diagnosis #8.
+// Used by:
+//   - getHotelGroupsList: pre-aggregates sales_records by location_id in a
+//     CTE BEFORE joining location_hotel_group_memberships. The membership
+//     join is many-to-many (a location can belong to multiple hotel groups),
+//     so joining first explodes the working set from ~124k rows to ~148k
+//     and forces a 9 MB external merge sort on the outer
+//     COUNT(DISTINCT location_id). Pre-aggregating collapses 124k rows to
+//     ~200 (one per location) — the membership fan-out then happens at
+//     ~200→~240 rows, and the outer GROUP BY hotel_group sorts ~240 rows
+//     in memory. See Phase 1 diagnosis #8.
+//   - getHotelGroupDetail (D5 Part E): pairs with the EXISTS predicate from
+//     inSelectedHotelGroupsCondition. Hotel groups are N:N with locations
+//     (Resolved Decision D5); joining through
+//     location_hotel_group_memberships fans a multi-group location's sales
+//     out across each matching membership and double-counts them in the
+//     detail's summary, hotel breakdown, and daily trend. EXISTS qualifies
+//     each sales row exactly once regardless of how many groups in the
+//     selected IN list the location belongs to.
 function baseFromLocationsOnly(): SQL {
   return sql`${salesRecords}
     INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}`;
+}
+
+function inSelectedHotelGroupsCondition(idList: SQL): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM ${locationHotelGroupMemberships}
+    WHERE ${locationHotelGroupMemberships.locationId} = ${salesRecords.locationId}
+      AND ${locationHotelGroupMemberships.hotelGroupId} IN ${idList}
+  )`;
 }
 
 // ─── 1. Hotel Groups List ───────────────────────────────────────────────────
@@ -89,6 +98,8 @@ export async function getHotelGroupsList(
   userCtx: UserCtx,
 ): Promise<HotelGroupData[]> {
   const whereClause = await buildHotelGroupWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   // Current period — pre-aggregate by location in a CTE, then join memberships
   // + hotel_groups. The inner aggregate keeps every filter the original query
@@ -96,7 +107,7 @@ export async function getHotelGroupsList(
   // group columns), so the result set is semantically identical:
   //
   //   outer revenue      = SUM(per-location revenue) per hotel_group
-  //                      = SUM(sales_records.gross_amount) per hotel_group
+  //                      = SUM(sales_records.net_amount) per hotel_group
   //   outer transactions = SUM(per-location txn count) per hotel_group
   //                      = COUNT(*) of sales_records per hotel_group
   //   outer hotel_count  = COUNT(DISTINCT per-location rows) per hotel_group
@@ -115,8 +126,8 @@ export async function getHotelGroupsList(
     WITH loc_agg AS (
       SELECT
         ${salesRecords.locationId} AS location_id,
-        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-        COUNT(*) AS transactions
+        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+        COUNT(*) FILTER (WHERE ${salesTxn}) AS transactions
       FROM ${baseFromLocationsOnly()}
       ${whereClause ? sql`WHERE ${whereClause}` : sql``}
       GROUP BY ${salesRecords.locationId}
@@ -149,8 +160,8 @@ export async function getHotelGroupsList(
     WITH loc_agg AS (
       SELECT
         ${salesRecords.locationId} AS location_id,
-        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-        COUNT(*) AS transactions
+        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+        COUNT(*) FILTER (WHERE ${salesTxn}) AS transactions
       FROM ${baseFromLocationsOnly()}
       ${prevWhereClause ? sql`WHERE ${prevWhereClause}` : sql``}
       GROUP BY ${salesRecords.locationId}
@@ -194,8 +205,15 @@ export async function getHotelGroupDetail(
   userCtx: UserCtx,
 ): Promise<HotelGroupDetail> {
   const whereClause = await buildHotelGroupWhere(filters, userCtx);
-  const groupFilter = sql`${hotelGroups.id} IN ${sql.raw(`(${groupIds.map((id) => `'${id}'`).join(",")})`)}`;
-  const fullWhere = combineConditions([whereClause, groupFilter]);
+  const idList = sql.raw(`(${groupIds.map((id) => `'${id}'`).join(",")})`);
+  // D5 Part E — replaces the previous `hotel_groups.id IN (...)` filter that
+  // sat on top of an INNER JOIN through location_hotel_group_memberships.
+  // EXISTS dedupes per-location sales across multiple selected groups; see
+  // inSelectedHotelGroupsCondition.
+  const groupMembershipFilter = inSelectedHotelGroupsCondition(idList);
+  const fullWhere = combineConditions([whereClause, groupMembershipFilter]);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   // Summary metrics
   const summaryRows = await executeRows<{
@@ -204,10 +222,10 @@ export async function getHotelGroupDetail(
     hotel_count: string;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(DISTINCT ${salesRecords.locationId})::text AS hotel_count
-    FROM ${baseFromWithHotelGroups()}
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
+      COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count
+    FROM ${baseFromLocationsOnly()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
   `);
 
@@ -216,14 +234,14 @@ export async function getHotelGroupDetail(
   const transactions = Number(summary.transactions);
   const hotelCount = Number(summary.hotel_count);
 
-  // Hotel breakdown
+  // Hotel breakdown — one row per location regardless of how many of the
+  // selected hotel groups it belongs to (EXISTS, not JOIN).
   const hotelRows = await executeRows<{
     location_id: string;
     outlet_code: string;
     hotel_name: string;
     revenue: string;
     transactions: string;
-    quantity: string;
     rooms: string | null;
     kiosks: string | null;
     star_rating: string | null;
@@ -232,13 +250,12 @@ export async function getHotelGroupDetail(
       ${salesRecords.locationId} AS location_id,
       COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(*)::text AS quantity,
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       ${locations.numRooms}::text AS rooms,
-      NULL::text AS kiosks,
+      ${activeKioskCountFragment()}::text AS kiosks,
       ${locations.starRating}::text AS star_rating
-    FROM ${baseFromWithHotelGroups()}
+    FROM ${baseFromLocationsOnly()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
     GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}, ${locations.starRating}
     ORDER BY revenue DESC
@@ -253,7 +270,6 @@ export async function getHotelGroupDetail(
       hotelName: row.hotel_name,
       revenue: hotelRevenue,
       transactions: Number(row.transactions),
-      quantity: Number(row.quantity),
       rooms,
       kiosks: row.kiosks ? Number(row.kiosks) : null,
       starRating: row.star_rating ? Number(row.star_rating) : null,
@@ -269,9 +285,9 @@ export async function getHotelGroupDetail(
   }>(sql`
     SELECT
       ${salesRecords.transactionDate}::text AS date,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions
-    FROM ${baseFromWithHotelGroups()}
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
+    FROM ${baseFromLocationsOnly()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
     GROUP BY ${salesRecords.transactionDate}
     ORDER BY ${salesRecords.transactionDate} ASC
@@ -287,7 +303,7 @@ export async function getHotelGroupDetail(
   const { prevFrom, prevTo } = getPreviousPeriodDates(filters.dateFrom, filters.dateTo);
   const prevFilters: AnalyticsFilters = { ...filters, dateFrom: prevFrom, dateTo: prevTo };
   const prevWhereClause = await buildHotelGroupWhere(prevFilters, userCtx);
-  const prevFullWhere = combineConditions([prevWhereClause, groupFilter]);
+  const prevFullWhere = combineConditions([prevWhereClause, groupMembershipFilter]);
 
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
@@ -296,9 +312,9 @@ export async function getHotelGroupDetail(
       transactions: string;
     }>(sql`
       SELECT
-        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-        COUNT(*)::text AS transactions
-      FROM ${baseFromWithHotelGroups()}
+        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+        COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
+      FROM ${baseFromLocationsOnly()}
       ${prevFullWhere ? sql`WHERE ${prevFullWhere}` : sql``}
     `);
     previousMetrics = {

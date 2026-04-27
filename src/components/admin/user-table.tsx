@@ -43,6 +43,7 @@ function RoleBadge({ role }: { role: string }) {
 
   const styles: Record<string, string> = {
     admin: "bg-secondary text-secondary-foreground",
+    system: "bg-[#121212] text-white",
     member: "bg-[#F4F4F4] text-foreground",
     viewer: "bg-[#E5F1F9] text-[#575A5C]",
   };

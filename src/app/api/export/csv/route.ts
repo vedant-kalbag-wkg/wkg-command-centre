@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     userType:
       (session.user as unknown as { userType: "internal" | "external" })
         .userType ?? "internal",
-    role: (session.user.role ?? null) as "admin" | "member" | "viewer" | null,
+    role: (session.user.role ?? null) as "admin" | "system" | "member" | "viewer" | null,
   };
 
   try {

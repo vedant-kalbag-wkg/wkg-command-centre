@@ -18,6 +18,7 @@ describe('remaining analytics tables (M1 Task 1.8)', () => {
   let ctx: TestDbContext;
   let userId: string;
   let locationId: string;
+  let ukRegionId: string;
 
   beforeAll(async () => {
     ctx = await setupTestDb();
@@ -31,6 +32,7 @@ describe('remaining analytics tables (M1 Task 1.8)', () => {
       .select()
       .from(regions)
       .where(eq(regions.code, 'UK'));
+    ukRegionId = uk.id;
     const [loc] = await ctx.db
       .insert(locations)
       .values({
@@ -47,24 +49,24 @@ describe('remaining analytics tables (M1 Task 1.8)', () => {
   });
 
   // ----- outletExclusions -----
-  it('outletExclusions: insert + unique (outletCode, patternType)', async () => {
+  it('outletExclusions: insert + unique (outletCode, patternType, regionId)', async () => {
     await ctx.db
       .insert(outletExclusions)
-      .values({ outletCode: 'EXCL-001', patternType: 'exact', label: 'test outlet', createdBy: userId });
+      .values({ outletCode: 'EXCL-001', patternType: 'exact', regionId: ukRegionId, label: 'test outlet', createdBy: userId });
     await expect(
-      ctx.db.insert(outletExclusions).values({ outletCode: 'EXCL-001', patternType: 'exact' }),
+      ctx.db.insert(outletExclusions).values({ outletCode: 'EXCL-001', patternType: 'exact', regionId: ukRegionId }),
     ).rejects.toThrow();
     // Same code with a different patternType is allowed
     await ctx.db
       .insert(outletExclusions)
-      .values({ outletCode: 'EXCL-001', patternType: 'regex' });
+      .values({ outletCode: 'EXCL-001', patternType: 'regex', regionId: ukRegionId });
   });
 
   it('outletExclusions: rejects invalid patternType', async () => {
     await expect(
       ctx.db
         .insert(outletExclusions)
-        .values({ outletCode: 'EXCL-BAD', patternType: 'fuzzy' as unknown as 'exact' }),
+        .values({ outletCode: 'EXCL-BAD', patternType: 'fuzzy' as unknown as 'exact', regionId: ukRegionId }),
     ).rejects.toThrow();
   });
 

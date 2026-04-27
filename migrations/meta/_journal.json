@@ -183,6 +183,69 @@
       "when": 1777336801003,
       "tag": "0025_au_region",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1777336801004,
+      "tag": "0026_add_system_role_and_etl_promotion",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1777336801005,
+      "tag": "0027_sales_reversal_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1777336801006,
+      "tag": "0028_rename_is_booking_fee_to_is_weknow_fee",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1777336801007,
+      "tag": "0029_region_membership_dedup",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1777336801008,
+      "tag": "0030_location_group_membership_dedup",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1777336801009,
+      "tag": "0031_hotel_groups_archived_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1777336801010,
+      "tag": "0032_outlet_exclusions_region_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1777336801011,
+      "tag": "0033_locations_iana_timezone_and_admin_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1777336801012,
+      "tag": "0034_locations_location_type_internal",
+      "breakpoints": true
     }
   ]
 }

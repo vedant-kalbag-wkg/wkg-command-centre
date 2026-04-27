@@ -6,10 +6,11 @@ import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
   activeKioskCountFragment,
+  buildAmountModeCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
-  buildMetricModeCondition,
+  buildSalesTxnCondition,
   canonicalHotelGroupNameFragment,
   combineConditions,
   kioskLiveDateSubquery,
@@ -81,24 +82,59 @@ async function buildHeatMapWhere(
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
   const maturityCondition = buildMaturityCondition(filters);
-  const metricModeCondition = buildMetricModeCondition(filters);
 
+  // metricMode is applied per-aggregate via FILTER (D1 — counts mode-invariant).
   return combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     maturityCondition,
-    metricModeCondition,
     ...dimensionConditions,
   ]);
 }
 
-// ─── Internal: min-max normalize to 0-100 ───────────────────────────────────
+// ─── Internal: percentile rank to 0-100 ─────────────────────────────────────
+//
+// D7: Per-metric normalisation uses percentile rank, not min-max. This
+// matches Postgres `PERCENT_RANK()` semantics — `(min_rank_among_ties - 1)
+// / (n - 1)` — so tied values share the better (higher) rank. Higher is
+// better for every Heat Map metric (revenue, transactions, rev/room,
+// txn/kiosk, avg basket), so no inversion is needed.
+//
+// Computed in JS rather than SQL because two of the five metrics
+// (revenuePerRoom, txnPerKiosk) are derived from a separate kiosk-count
+// query and aren't available in the aggregation CTE without a larger
+// restructure. Result is mathematically identical to Postgres PERCENT_RANK().
+function percentRanks(values: (number | null)[]): (number | null)[] {
+  // Build (originalIndex, value) pairs for non-null entries, sort by value.
+  const indexed = values
+    .map((v, i) => ({ i, v }))
+    .filter((p): p is { i: number; v: number } => p.v !== null)
+    .sort((a, b) => a.v - b.v);
 
-function minMaxNormalize(value: number | null, min: number, max: number): number | null {
-  if (value === null) return null;
-  if (max === min) return 50; // all equal — midpoint
-  return ((value - min) / (max - min)) * 100;
+  const n = indexed.length;
+  // Singleton or empty cohort: PERCENT_RANK is undefined (division by zero).
+  // Return midpoint so a lone hotel scores 50, matching the prior min-max
+  // "all equal" behaviour.
+  if (n <= 1) {
+    return values.map((v) => (v === null ? null : 50));
+  }
+
+  // Assign each value its min-rank-among-ties (1-indexed). Walk sorted
+  // pairs; whenever the value changes, the rank jumps to the current
+  // position. This is the "min" tie-handling Postgres PERCENT_RANK uses.
+  const ranks = new Array<number>(values.length);
+  let currentRank = 1;
+  for (let pos = 0; pos < n; pos++) {
+    if (pos > 0 && indexed[pos].v !== indexed[pos - 1].v) {
+      currentRank = pos + 1;
+    }
+    ranks[indexed[pos].i] = currentRank;
+  }
+
+  return values.map((v, i) =>
+    v === null ? null : ((ranks[i] - 1) / (n - 1)) * 100,
+  );
 }
 
 // ─── Heat Map Query ─────────────────────────────────────────────────────────
@@ -110,6 +146,8 @@ export async function getHeatMapData(
 ): Promise<HeatMapData> {
   const SCORE_WEIGHTS = resolveWeights(weightsInput);
   const whereClause = await buildHeatMapWhere(filters, userCtx);
+  const amountMode = buildAmountModeCondition(filters);
+  const salesTxn = buildSalesTxnCondition();
 
   // 1. Query sales grouped by location
   //
@@ -141,9 +179,9 @@ export async function getHeatMapData(
       ${kioskLiveDateSubquery}::text AS live_date,
       ${canonicalHotelGroupNameFragment()} AS hotel_group_name,
       ${activeKioskCountFragment()} AS kiosk_count,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
-      COUNT(*)::text AS transactions,
-      COUNT(*)::text AS quantity
+      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS quantity
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -214,46 +252,22 @@ export async function getHeatMapData(
     };
   });
 
-  // 3. Min-max normalize each metric to 0-100
-  const revenueValues = rawHotels.map((h) => h.revenue);
-  const txnValues = rawHotels.map((h) => h.transactions);
-  const rprValues = rawHotels.map((h) => h.revenuePerRoom).filter((v): v is number => v !== null);
-  const tpkValues = rawHotels.map((h) => h.txnPerKiosk).filter((v): v is number => v !== null);
-  const abvValues = rawHotels.map((h) => h.avgBasketValue);
-
-  const minOf = (arr: number[]) => arr.reduce((a, b) => Math.min(a, b), Infinity);
-  const maxOf = (arr: number[]) => arr.reduce((a, b) => Math.max(a, b), -Infinity);
-
-  const ranges = {
-    revenue: { min: minOf(revenueValues), max: maxOf(revenueValues) },
-    transactions: { min: minOf(txnValues), max: maxOf(txnValues) },
-    revenuePerRoom: rprValues.length > 0
-      ? { min: minOf(rprValues), max: maxOf(rprValues) }
-      : null,
-    txnPerKiosk: tpkValues.length > 0
-      ? { min: minOf(tpkValues), max: maxOf(tpkValues) }
-      : null,
-    basketValue: { min: minOf(abvValues), max: maxOf(abvValues) },
-  };
+  // 3. Percentile-rank each metric over the cohort (D7).
+  // Cohort = whatever survived the filter bar, which is exactly `rawHotels`.
+  const normRevenueAll = percentRanks(rawHotels.map((h) => h.revenue));
+  const normTxnAll = percentRanks(rawHotels.map((h) => h.transactions));
+  const normRPRAll = percentRanks(rawHotels.map((h) => h.revenuePerRoom));
+  const normTPKAll = percentRanks(rawHotels.map((h) => h.txnPerKiosk));
+  const normABVAll = percentRanks(rawHotels.map((h) => h.avgBasketValue));
 
   // 4. Calculate composite scores
-  const scored: (Omit<HeatMapHotel, "rank">)[] = rawHotels.map((hotel) => {
-    const normRevenue = minMaxNormalize(hotel.revenue, ranges.revenue.min, ranges.revenue.max);
-    const normTxn = minMaxNormalize(hotel.transactions, ranges.transactions.min, ranges.transactions.max);
-    const normRPR = ranges.revenuePerRoom
-      ? minMaxNormalize(hotel.revenuePerRoom, ranges.revenuePerRoom.min, ranges.revenuePerRoom.max)
-      : null;
-    const normTPK = ranges.txnPerKiosk
-      ? minMaxNormalize(hotel.txnPerKiosk, ranges.txnPerKiosk.min, ranges.txnPerKiosk.max)
-      : null;
-    const normABV = minMaxNormalize(hotel.avgBasketValue, ranges.basketValue.min, ranges.basketValue.max);
-
+  const scored: (Omit<HeatMapHotel, "rank">)[] = rawHotels.map((hotel, idx) => {
     const compositeScore = calculateCompositeScore([
-      { value: normRevenue, weight: SCORE_WEIGHTS.revenue },
-      { value: normTxn, weight: SCORE_WEIGHTS.transactions },
-      { value: normRPR, weight: SCORE_WEIGHTS.revenuePerRoom },
-      { value: normTPK, weight: SCORE_WEIGHTS.txnPerKiosk },
-      { value: normABV, weight: SCORE_WEIGHTS.basketValue },
+      { value: normRevenueAll[idx], weight: SCORE_WEIGHTS.revenue },
+      { value: normTxnAll[idx], weight: SCORE_WEIGHTS.transactions },
+      { value: normRPRAll[idx], weight: SCORE_WEIGHTS.revenuePerRoom },
+      { value: normTPKAll[idx], weight: SCORE_WEIGHTS.txnPerKiosk },
+      { value: normABVAll[idx], weight: SCORE_WEIGHTS.basketValue },
     ]);
 
     return {

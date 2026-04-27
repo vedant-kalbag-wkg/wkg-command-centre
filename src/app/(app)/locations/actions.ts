@@ -2,14 +2,23 @@
 
 import { z } from "zod/v4";
 import { db } from "@/db";
-import { locations, kioskAssignments, kiosks, regions, user } from "@/db/schema";
+import {
+  locations,
+  kioskAssignments,
+  kiosks,
+  regions,
+  user,
+  locationRegionMemberships,
+} from "@/db/schema";
 import {
   requireRole,
   redactSensitiveFields,
   type Role,
 } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
-import { eq, isNull, and, desc } from "drizzle-orm";
+import { eq, isNull, and, desc, inArray, sql } from "drizzle-orm";
+import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
+import type { UserCtx } from "@/lib/scoping/scoped-query";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -67,6 +76,9 @@ export type LocationWithRelations = {
   contractTerms: string | null;
   contractDocuments: Array<{ fileName: string; s3Key: string; uploadedAt: string }> | null;
   notes: string | null;
+  // D6 / Task 2.12 — NOT NULL, defaults to 'UTC' when not yet set by the
+  // backfill (e.g. a new region without a region-default mapping).
+  ianaTimezone: string;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
@@ -225,7 +237,6 @@ const EDITABLE_LOCATION_FIELDS = [
   "freeTrialEndDate",
   "hardwareAssets",
   "notes",
-  "region",
   "locationGroup",
   "internalPocId",
   "status",
@@ -236,6 +247,10 @@ const EDITABLE_LOCATION_FIELDS = [
   "keyContactName",
   "keyContactEmail",
   "financeContact",
+  // D6 / Task 2.12 — IANA timezone for hour-of-day analytics. Free-text from
+  // the form's perspective (the Select picks from a curated list); validated
+  // against the actual zone DB in the future when we add geo-tz refinement.
+  "ianaTimezone",
 ] as const;
 
 export type EditableLocationField = (typeof EDITABLE_LOCATION_FIELDS)[number];
@@ -641,10 +656,29 @@ export async function updateBankingDetails(
  */
 export async function listRegionOptions(): Promise<Array<{ id: string; name: string }>> {
   try {
-    await requireRole("admin", "member", "viewer");
+    const session = await requireRole("admin", "member", "viewer");
+    const ctx: UserCtx = {
+      id: session.user.id,
+      userType:
+        (session.user as { userType?: "internal" | "external" }).userType ??
+        "internal",
+      role: (session.user.role as UserCtx["role"]) ?? null,
+    };
+    // Only show regions that have at least one location the user is allowed
+    // to see (Task 3.9). Admin/system users get all regions because the
+    // helper returns the full active set unrestricted.
+    const scopedActiveIds = await getScopedActiveLocationIds(ctx);
+    if (scopedActiveIds.length === 0) return [];
     const rows = await db
       .select({ id: regions.id, name: regions.name })
       .from(regions)
+      .where(
+        sql`${regions.id} IN (
+          SELECT ${locationRegionMemberships.regionId}
+          FROM ${locationRegionMemberships}
+          WHERE ${inArray(locationRegionMemberships.locationId, scopedActiveIds)}
+        )`,
+      )
       .orderBy(regions.name);
     return rows;
   } catch {

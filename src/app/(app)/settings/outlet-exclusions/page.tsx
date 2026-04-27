@@ -10,28 +10,41 @@ import { ExclusionsList } from "./exclusions-list";
 import { ExclusionForm } from "./exclusion-form";
 import {
   listExclusions,
+  listRegions,
   createExclusion,
   deleteExclusion,
   testPattern,
   type ExclusionRow,
+  type RegionOption,
 } from "./actions";
 
 export default function OutletExclusionsPage() {
   const [exclusions, setExclusions] = React.useState<ExclusionRow[]>([]);
+  const [regions, setRegions] = React.useState<RegionOption[]>([]);
   const [matchCounts, setMatchCounts] = React.useState<Record<string, number>>({});
   const [loading, setLoading] = React.useState(true);
 
   const refresh = React.useCallback(async () => {
-    const result = await listExclusions();
-    if ("exclusions" in result) {
-      setExclusions(result.exclusions);
-      // Compute match counts for each exclusion
+    const [exclResult, regionsResult] = await Promise.all([
+      listExclusions(),
+      listRegions(),
+    ]);
+
+    if ("regions" in regionsResult) {
+      setRegions(regionsResult.regions);
+    }
+
+    if ("exclusions" in exclResult) {
+      setExclusions(exclResult.exclusions);
+      // Compute match counts per exclusion (region-scoped — mirrors how the
+      // exclusion is actually evaluated at query time).
       const counts: Record<string, number> = {};
       await Promise.all(
-        result.exclusions.map(async (excl) => {
+        exclResult.exclusions.map(async (excl) => {
           const testResult = await testPattern(
             excl.outletCode,
             excl.patternType,
+            excl.regionId,
           );
           if ("matches" in testResult) {
             counts[excl.id] = testResult.matches.length;
@@ -50,6 +63,7 @@ export default function OutletExclusionsPage() {
   const handleCreate = async (data: {
     outletCode: string;
     patternType: "exact" | "regex";
+    regionId: string;
     label?: string;
   }) => {
     const result = await createExclusion(data);
@@ -58,7 +72,7 @@ export default function OutletExclusionsPage() {
   };
 
   const handleDelete = async (excl: ExclusionRow) => {
-    if (!confirm(`Delete exclusion rule "${excl.outletCode}"?`)) return;
+    if (!confirm(`Delete exclusion rule "${excl.outletCode}" (${excl.regionCode})?`)) return;
     const result = await deleteExclusion(excl.id);
     if ("error" in result) {
       alert(result.error);
@@ -71,7 +85,7 @@ export default function OutletExclusionsPage() {
     <div className="flex flex-col min-h-0 flex-1">
       <PageHeader
         title="Outlet Exclusions"
-        description="Exclude outlet codes from analytics calculations using exact matches or regex patterns."
+        description="Exclude outlet codes from analytics calculations using exact matches or regex patterns. Each rule applies to a single region."
         count={loading ? undefined : exclusions.length}
         actions={
           <Link href="/settings">
@@ -84,7 +98,7 @@ export default function OutletExclusionsPage() {
       />
       <div className="flex-1 overflow-auto p-4 md:p-6">
         <div className="space-y-6">
-          <ExclusionForm onSubmit={handleCreate} />
+          <ExclusionForm regions={regions} onSubmit={handleCreate} />
 
           {loading ? (
             <EmptyState icon={Ban} title="Loading exclusions…" />

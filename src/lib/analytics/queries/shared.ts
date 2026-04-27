@@ -16,12 +16,19 @@ export async function buildExclusionCondition(): Promise<SQL | undefined> {
   const exclusions = await db.select().from(outletExclusions);
   if (exclusions.length === 0) return undefined;
 
+  // Region-scoped match (Task 1.9 / PR-6 Part F). An exclusion only applies
+  // to locations in the same region — outlet codes are unique per region, not
+  // globally, so 'Q5' in UK and 'Q5' in DE are distinct outlets.
   const conditions: SQL[] = [];
   for (const ex of exclusions) {
     if (ex.patternType === "exact") {
-      conditions.push(sql`${locations.outletCode} = ${ex.outletCode}`);
+      conditions.push(
+        sql`(${locations.outletCode} = ${ex.outletCode} AND ${locations.primaryRegionId} = ${ex.regionId})`,
+      );
     } else if (ex.patternType === "regex") {
-      conditions.push(sql`${locations.outletCode} ~ ${ex.outletCode}`);
+      conditions.push(
+        sql`(${locations.outletCode} ~ ${ex.outletCode} AND ${locations.primaryRegionId} = ${ex.regionId})`,
+      );
     }
   }
 
@@ -33,29 +40,64 @@ export function buildDateCondition(filters: AnalyticsFilters): SQL {
   return sql`${salesRecords.transactionDate} >= ${filters.dateFrom} AND ${salesRecords.transactionDate} <= ${filters.dateTo}`;
 }
 
-// Netsuite codes of all WKG-collected fee rows. 9991=Booking Fee sets
-// is_booking_fee=true; 9992=Cash Handling Fee does NOT (the flag is named
-// after its original single purpose). Keep both here so "revenue" mode and
-// the non-fee exclusion agree on what a "fee row" is.
-export const FEE_NETSUITE_CODES = ["9991", "9992"] as const;
-
-// "A fee row" — either is_booking_fee=true (covers 9991) or netsuite_code=9992.
-// Using an explicit OR keeps us future-proof: a new fee code can be added to
-// FEE_NETSUITE_CODES without requiring a schema change.
+// "A fee row" — single-column predicate post-D10. Parser sets is_weknow_fee=true
+// for NetSuite 9991 (Booking Fee) and 9992 (Cash Handling Fee).
 export function buildIsFeeCondition(): SQL {
-  return sql`(${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
+  return sql`${salesRecords.isWeknowFee} = true`;
 }
 
-// Metric-mode filter: 'revenue' restricts to fee rows (WKG's take);
-// 'sales' (default) adds no predicate so every row counts.
-export function buildMetricModeCondition(filters: AnalyticsFilters): SQL | undefined {
-  return filters.metricMode === "revenue" ? buildIsFeeCondition() : undefined;
+// Per-aggregate amount predicate (D1): in sales mode the SUM is over non-fee
+// rows ("Total Sales" = customer purchase volume); in revenue mode it's over
+// fee rows only ("Total Revenue" = WKG's take). Use as a FILTER (WHERE …)
+// arm on SUM(net_amount) so the same query can carry mode-invariant counts.
+export function buildAmountModeCondition(filters: AnalyticsFilters): SQL {
+  return filters.metricMode === "revenue"
+    ? buildIsFeeCondition()
+    : buildNonFeeCondition();
 }
 
 // Top-Products excludes fee rows unconditionally (per product-reporting spec:
 // Booking Fee / Cash Handling Fee are not "products" and skew the ranking).
 export function buildNonFeeCondition(): SQL {
-  return sql`NOT (${salesRecords.isBookingFee} = true OR ${salesRecords.netsuiteCode} IN ('9991', '9992'))`;
+  return sql`${salesRecords.isWeknowFee} = false`;
+}
+
+// Reversal helpers (D2). is_reversal is true on every refund row (net_amount<0);
+// original_record_id is set when the refund matched a positive original at
+// ingest. Together they let KPIs distinguish gross bookings from cancellations,
+// partial refunds, and orphan refunds without re-deriving the join.
+
+export function buildNonReversalCondition(): SQL {
+  return sql`${salesRecords.isReversal} = false`;
+}
+
+// Canonical "real Sales transaction" predicate — what every COUNT(*) on the
+// "Transactions" / "Bookings" KPI tile should use post-D1+D2. Excludes both
+// fee rows (not customer purchases) and reversal rows (refunds aren't new
+// bookings; PR-4 wires this into the dashboards).
+export function buildSalesTxnCondition(): SQL {
+  return sql`(${buildNonFeeCondition()}) AND (${buildNonReversalCondition()})`;
+}
+
+// Cancellations = refund rows that fully reversed a matched original.
+// Partial-refund rows are excluded so the Cancellations KPI is a pure count
+// of bookings nullified end-to-end. Callers typically wrap this with
+// COUNT(DISTINCT original_record_id) to get one cancellation per booking.
+export function buildCancellationCondition(): SQL {
+  return sql`${salesRecords.isReversal} = true AND ${salesRecords.isPartialReversal} = false AND ${salesRecords.originalRecordId} IS NOT NULL`;
+}
+
+// Partial Refunds — separate KPI tile per D2. abs(refund) < abs(original) at
+// the matched original, computed and stored at ingest time on the column.
+export function buildPartialReversalCondition(): SQL {
+  return sql`${salesRecords.isReversal} = true AND ${salesRecords.isPartialReversal} = true AND ${salesRecords.originalRecordId} IS NOT NULL`;
+}
+
+// Orphan Refunds — refunds whose original predates the data window or could
+// not be matched by ref_no/magnitude. Surfaced in the portfolio-level health
+// badge (D2.4); their amounts still net into portfolio-level revenue SUM.
+export function buildOrphanReversalCondition(): SQL {
+  return sql`${salesRecords.isReversal} = true AND ${salesRecords.originalRecordId} IS NULL`;
 }
 
 export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
@@ -105,6 +147,21 @@ export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
       )`,
     );
   }
+  // D9 / Task 4.6 — default-exclude internal-type locations (e.g. the BK
+  // 'Customer Service' refund-handling outlet) from every dashboard. The
+  // single funnel through buildDimensionFilters propagates this to portfolio,
+  // heat-map, hotel-groups, regions, location-groups, comparison, maturity,
+  // and trend-series queries. Admins can opt back in by setting
+  // includeInternalAccounts=true via the FilterBar toggle (`internal=1` URL
+  // param).
+  if (!filters.includeInternalAccounts) {
+    conditions.push(
+      sql`${salesRecords.locationId} NOT IN (
+        SELECT ${locations.id} FROM ${locations}
+        WHERE ${locations.locationType} = 'internal'
+      )`,
+    );
+  }
 
   return conditions;
 }
@@ -121,7 +178,8 @@ export function buildMaturityCondition(filters: AnalyticsFilters): SQL | undefin
 
   // Maturity buckets are relative to the user-selected reporting window's end
   // date, not NOW(). Using NOW() would shift bucket boundaries as time passes
-  // and misclassify kiosks for historical date ranges.
+  // and misclassify kiosks for historical date ranges. Buckets follow D3:
+  // left-inclusive / right-exclusive months-since-liveDate (see maturity.ts).
   const referenceDate = sql`${filters.dateTo}::timestamp`;
 
   const bucketConditions: SQL[] = [];
@@ -130,22 +188,27 @@ export function buildMaturityCondition(filters: AnalyticsFilters): SQL | undefin
     switch (bucket) {
       case "0-1mo":
         bucketConditions.push(
-          sql`${kioskLiveDateSubquery} >= (${referenceDate} - INTERVAL '1 month')`,
+          sql`${kioskLiveDateSubquery} > (${referenceDate} - INTERVAL '1 month')`,
         );
         break;
       case "1-3mo":
         bucketConditions.push(
-          sql`(${kioskLiveDateSubquery} >= (${referenceDate} - INTERVAL '3 months') AND ${kioskLiveDateSubquery} < (${referenceDate} - INTERVAL '1 month'))`,
+          sql`(${kioskLiveDateSubquery} > (${referenceDate} - INTERVAL '3 months') AND ${kioskLiveDateSubquery} <= (${referenceDate} - INTERVAL '1 month'))`,
         );
         break;
       case "3-6mo":
         bucketConditions.push(
-          sql`(${kioskLiveDateSubquery} >= (${referenceDate} - INTERVAL '6 months') AND ${kioskLiveDateSubquery} < (${referenceDate} - INTERVAL '3 months'))`,
+          sql`(${kioskLiveDateSubquery} > (${referenceDate} - INTERVAL '6 months') AND ${kioskLiveDateSubquery} <= (${referenceDate} - INTERVAL '3 months'))`,
         );
         break;
-      case "6+mo":
+      case "6-9mo":
         bucketConditions.push(
-          sql`${kioskLiveDateSubquery} < (${referenceDate} - INTERVAL '6 months')`,
+          sql`(${kioskLiveDateSubquery} > (${referenceDate} - INTERVAL '9 months') AND ${kioskLiveDateSubquery} <= (${referenceDate} - INTERVAL '6 months'))`,
+        );
+        break;
+      case "9+mo":
+        bucketConditions.push(
+          sql`${kioskLiveDateSubquery} <= (${referenceDate} - INTERVAL '9 months')`,
         );
         break;
     }
@@ -161,6 +224,54 @@ export function combineConditions(conditions: (SQL | undefined)[]): SQL | undefi
   if (valid.length === 0) return undefined;
   if (valid.length === 1) return valid[0];
   return sql.join(valid, sql` AND `);
+}
+
+/**
+ * Total `num_rooms` across the active members of a location group, as a scalar
+ * subquery. Used by location-groups.ts (list + detail) and regions.ts
+ * (location-group breakdown) to fix Tasks 2.1 + 2.2 — the original queries SUM
+ * `locations.num_rooms` over a `sales_records → locations → memberships` JOIN,
+ * which fans each location's rooms across its sales rows. SUM(DISTINCT
+ * num_rooms) doesn't help (it dedupes by VALUE, not by location). The fix
+ * computes rooms in an isolated subquery that touches `locations` exactly once
+ * per member.
+ *
+ * Semantic choice (D2.1 fix note): we count rooms for ALL active members of
+ * the group regardless of whether they had sales in the date window — i.e.
+ * "current capacity", not "active capacity in window". revenuePerRoom only
+ * makes sense when at least one member contributed sales, in which case the
+ * numerator (revenue SUM) is non-zero anyway; this matches the operator's
+ * intuition that the denominator is the group's deployable footprint.
+ *
+ * @param groupScope SQL fragment placed after `lgm.location_group_id` —
+ *   typically `= ${locationGroups.id}` for correlated subqueries inside a
+ *   GROUP BY, or `IN (...)` for an aggregate over a fixed group set.
+ * @param activeLocationIds the request-scoped active-location id list from
+ *   `getActiveLocationIds()`. Empty list → subquery returns 0.
+ * @param extraLocationFilter optional extra constraint joined with AND, used
+ *   by regions.ts to additionally scope to locations within the region.
+ */
+export function locationGroupRoomsSubquery(
+  groupScope: SQL,
+  activeLocationIds: string[],
+  extraLocationFilter?: SQL,
+): SQL {
+  // Empty active set → no rooms. Avoids emitting `ANY('{}'::uuid[])` and keeps
+  // the COALESCE → 0 fallback explicit at the call site shape.
+  if (activeLocationIds.length === 0) return sql`0`;
+  const activeFilter = sql`l.id = ANY(${sql.param(activeLocationIds)}::uuid[])`;
+  const filters: SQL[] = [
+    sql`lgm.location_group_id ${groupScope}`,
+    sql`l.archived_at IS NULL`,
+    activeFilter,
+  ];
+  if (extraLocationFilter) filters.push(extraLocationFilter);
+  return sql`COALESCE((
+    SELECT SUM(l.num_rooms)
+    FROM ${locations} l
+    INNER JOIN ${locationGroupMemberships} lgm ON lgm.location_id = l.id
+    WHERE ${sql.join(filters, sql` AND `)}
+  ), 0)`;
 }
 
 /**

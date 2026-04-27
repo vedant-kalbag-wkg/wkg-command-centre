@@ -1,12 +1,19 @@
 "use server";
 
 import { db } from "@/db";
-import { locationFlags } from "@/db/schema";
+import { actionItems, locationFlags, locations } from "@/db/schema";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { writeAuditLog } from "@/lib/audit";
-import { eq, isNull, and } from "drizzle-orm";
+import { eq, isNull, isNotNull, and, inArray, asc, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 import type { FlagType, LocationFlag } from "@/lib/analytics/types";
+
+export type FlagWithLocation = LocationFlag & {
+  locationName: string | null;
+  outletCode: string | null;
+  linkedActionCount: number;
+};
 
 const FLAGS_TAG = "analytics:flags";
 
@@ -73,6 +80,135 @@ export async function fetchLocationFlags(
 ): Promise<LocationFlag[]> {
   await getUserCtx(); // auth gate — kept OUTSIDE the cache
   return fetchLocationFlagsCached(locationId);
+}
+
+// ---------------------------------------------------------------------------
+// Flag Review page queries (Task 4.12)
+// ---------------------------------------------------------------------------
+
+type AllFlagsFilters = {
+  resolved?: boolean | "all";
+  locationIds?: string[];
+  flagTypes?: FlagType[];
+};
+
+/**
+ * Fetch flags joined with location name + outlet code, with optional
+ * resolved/type/location filters. Used by the Flag Review page.
+ *
+ * `resolved` semantics:
+ *   - `false` (default) → only active flags (resolved_at IS NULL)
+ *   - `true`            → only resolved flags (resolved_at IS NOT NULL)
+ *   - `"all"`           → both
+ *
+ * Cached with `unstable_cache` keyed on the JSON of the filter object.
+ * Mutations on this table call `revalidateTag(FLAGS_TAG)` so cache stays
+ * coherent without a separate invalidation key per filter combination.
+ */
+// Build a stable cache key regardless of caller-side key insertion order or
+// array ordering. JSON.stringify(filters) alone fragments the cache when an
+// equivalent filter object happens to serialise differently (e.g. `{a, b}`
+// vs `{b, a}`, or a `flagTypes` array passed in shuffled order).
+function canonicaliseFilterKey(
+  filters: AllFlagsFilters | undefined,
+): string {
+  return JSON.stringify({
+    resolved: filters?.resolved ?? false,
+    flagTypes: filters?.flagTypes?.slice().sort() ?? [],
+    locationIds: filters?.locationIds?.slice().sort() ?? [],
+  });
+}
+
+const fetchAllFlagsCached = unstable_cache(
+  async (filtersJson: string): Promise<FlagWithLocation[]> => {
+    const filters: AllFlagsFilters = filtersJson ? JSON.parse(filtersJson) : {};
+    const conditions: SQL[] = [];
+
+    const resolved = filters.resolved ?? false;
+    if (resolved === false) {
+      conditions.push(isNull(locationFlags.resolvedAt));
+    } else if (resolved === true) {
+      conditions.push(isNotNull(locationFlags.resolvedAt));
+    }
+    // "all" → no resolved-state filter
+
+    if (filters.locationIds && filters.locationIds.length > 0) {
+      conditions.push(inArray(locationFlags.locationId, filters.locationIds));
+    }
+    if (filters.flagTypes && filters.flagTypes.length > 0) {
+      conditions.push(inArray(locationFlags.flagType, filters.flagTypes));
+    }
+
+    const rows = await db
+      .select({
+        id: locationFlags.id,
+        locationId: locationFlags.locationId,
+        flagType: locationFlags.flagType,
+        reason: locationFlags.reason,
+        actorName: locationFlags.actorName,
+        createdAt: locationFlags.createdAt,
+        resolvedAt: locationFlags.resolvedAt,
+        resolutionNote: locationFlags.resolutionNote,
+        locationName: locations.name,
+        outletCode: locations.outletCode,
+        // Correlated subquery: count of action items linked back to this
+        // flag. Done in-query so the Flag Review page renders in a single
+        // roundtrip rather than firing N separate `fetchActionItemsForFlag`
+        // calls (one per visible flag) just to display a count badge.
+        // `action_items.source_id` is `text` while `location_flags.id` is
+        // `uuid`; the explicit `::text` cast keeps the comparison sound.
+        linkedActionCount: sql<number>`(
+          SELECT COUNT(*)::int FROM ${actionItems}
+          WHERE ${actionItems.sourceType} = 'flag'
+            AND ${actionItems.sourceId} = ${locationFlags.id}::text
+        )`.as("linked_action_count"),
+      })
+      .from(locationFlags)
+      .leftJoin(locations, eq(locationFlags.locationId, locations.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(asc(locationFlags.createdAt));
+
+    return rows.map((r) => ({
+      id: r.id,
+      locationId: r.locationId,
+      flagType: r.flagType as FlagType,
+      reason: r.reason,
+      actorName: r.actorName,
+      createdAt: r.createdAt.toISOString(),
+      resolvedAt: r.resolvedAt?.toISOString() ?? null,
+      resolutionNote: r.resolutionNote,
+      locationName: r.locationName ?? null,
+      outletCode: r.outletCode ?? null,
+      linkedActionCount: Number(r.linkedActionCount ?? 0),
+    }));
+  },
+  ["analytics", "allFlags", "v1"],
+  { revalidate: 86400, tags: ["analytics", FLAGS_TAG] },
+);
+
+export async function fetchAllFlags(
+  filters?: AllFlagsFilters,
+): Promise<FlagWithLocation[]> {
+  await getUserCtx(); // auth gate — kept OUTSIDE the cache
+  return fetchAllFlagsCached(canonicaliseFilterKey(filters));
+}
+
+/**
+ * Returns the distinct list of locations that have ever been flagged
+ * (active OR resolved) — used by the Flag Review page's location filter.
+ */
+export async function fetchFlaggedLocations(): Promise<
+  { id: string; name: string }[]
+> {
+  await getUserCtx(); // auth gate
+
+  const rows = await db
+    .selectDistinct({ id: locations.id, name: locations.name })
+    .from(locationFlags)
+    .innerJoin(locations, eq(locationFlags.locationId, locations.id))
+    .orderBy(locations.name);
+
+  return rows;
 }
 
 // ---------------------------------------------------------------------------

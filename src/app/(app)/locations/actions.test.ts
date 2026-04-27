@@ -81,12 +81,19 @@ describe("updateLocationField", () => {
       ["roomCount", "120"],
       ["starRating", "5"],
       ["address", "1 High St"],
-      ["region", "EMEA"],
       ["locationGroup", "Flagship"],
     ];
     for (const [field, value] of okFields) {
       const result = await updateLocationField("loc-1", field, value);
       expect("success" in result && result.success === true).toBe(true);
+    }
+  });
+
+  it("rejects 'region' field with a validation error (column dropped in 0022)", async () => {
+    const result = await updateLocationField("loc-1", "region", "EMEA");
+    expect("error" in result).toBe(true);
+    if ("error" in result) {
+      expect(result.error).toMatch(/Invalid field/i);
     }
   });
 

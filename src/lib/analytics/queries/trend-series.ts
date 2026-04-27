@@ -4,6 +4,7 @@ import {
   salesRecords,
   businessEvents,
   eventCategories,
+  locations,
   locationHotelGroupMemberships,
   locationRegionMemberships,
   locationGroupMemberships,
@@ -11,7 +12,15 @@ import {
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
-import { combineConditions } from "@/lib/analytics/queries/shared";
+import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
+import {
+  buildDimensionFilters,
+  buildIsFeeCondition,
+  buildMaturityCondition,
+  buildNonFeeCondition,
+  buildSalesTxnCondition,
+  combineConditions,
+} from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import { unstable_cache } from "next/cache";
 import { withStats } from "@/lib/analytics/cache-stats";
@@ -21,6 +30,7 @@ import {
   type CachedQueryScope,
 } from "@/lib/analytics/cached-query";
 import type {
+  AnalyticsFilters,
   TrendMetric,
   SeriesFilters,
   TrendDataPoint,
@@ -73,21 +83,32 @@ function buildSeriesDimensionFilters(filters: SeriesFilters): SQL[] {
 }
 
 // ─── Internal: metric aggregation expression ─────────────────────────────────
+//
+// Avg-basket numerator and denominator are split out (Task 2.7) so the chart
+// can compute a weighted weekly/monthly average — see `metricSelectColumns`.
+
+function avgBasketNumeratorExpr(): SQL {
+  return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
+}
+
+function avgBasketDenominatorExpr(): SQL {
+  return sql`COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()})`;
+}
 
 function metricExpression(metric: TrendMetric): SQL {
   switch (metric) {
     case "revenue":
-      return sql`SUM(${salesRecords.netAmount}::numeric)`;
+      // Customer-paid sales (D1 sales-mode "Total Sales") — non-fee only.
+      return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
     case "transactions":
-      return sql`COUNT(*)::numeric`;
+      // D1 mode-invariant transactions: non-fee, non-reversal.
+      return sql`COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()})::numeric`;
     case "avg_basket_value":
-      return sql`SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(*), 0)`;
+      // Avg Basket = SUM(non-fee net) / COUNT(sales txns) — see D1.
+      return sql`${avgBasketNumeratorExpr()} / NULLIF(${avgBasketDenominatorExpr()}, 0)`;
     case "booking_fee":
-      // NetSuite ETL (2026-04-24): booking fees are their own rows now
-      // (isBookingFee = true) rather than a denormalised column on the
-      // principal row. Conditional SUM keeps a single aggregate while
-      // isolating fee revenue from the same result set.
-      return sql`SUM(CASE WHEN ${salesRecords.isBookingFee} THEN ${salesRecords.netAmount}::numeric ELSE 0 END)`;
+      // Fee revenue (9991 + 9992). is_weknow_fee=true covers both post-D10.
+      return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildIsFeeCondition()})`;
   }
 }
 
@@ -95,7 +116,8 @@ function metricExpression(metric: TrendMetric): SQL {
 
 export async function getTrendSeriesData(
   metric: TrendMetric,
-  filters: SeriesFilters,
+  seriesFilters: SeriesFilters,
+  globalFilters: AnalyticsFilters,
   dateFrom: string,
   dateTo: string,
   userCtx: UserCtx,
@@ -109,14 +131,52 @@ export async function getTrendSeriesData(
   ]);
 
   const dateCondition = sql`${salesRecords.transactionDate} >= ${dateFrom} AND ${salesRecords.transactionDate} <= ${dateTo}`;
-  const seriesConditions = buildSeriesDimensionFilters(filters);
+  const seriesConditions = buildSeriesDimensionFilters(seriesFilters);
+  // Global FilterBar dimensions intersect with per-series filters (PR-18c).
+  // metricMode is intentionally not threaded — trend metrics carry their own
+  // per-metric FILTER (revenue=non-fee, booking_fee=fee).
+  const globalDimensionConditions = buildDimensionFilters(globalFilters);
+  const globalMaturityCondition = buildMaturityCondition(globalFilters);
 
   const whereClause = combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     ...seriesConditions,
+    ...globalDimensionConditions,
+    globalMaturityCondition,
   ]);
+
+  // For `avg_basket_value` we also project the per-day numerator (non-fee
+  // revenue) and denominator (sales-txn count). The chart re-weights these
+  // when bucketing into weekly/monthly granularity (Task 2.7) — without it,
+  // SUM-ing daily means produced wildly inflated values (£600 vs £15.62 in
+  // live UAT).
+  if (metric === "avg_basket_value") {
+    const rows = await executeRows<{
+      date: string;
+      value: string;
+      numerator: string;
+      denominator: string;
+    }>(sql`
+      SELECT
+        ${salesRecords.transactionDate}::text AS date,
+        COALESCE(${avgBasketNumeratorExpr()} / NULLIF(${avgBasketDenominatorExpr()}, 0), 0) AS value,
+        COALESCE(${avgBasketNumeratorExpr()}, 0) AS numerator,
+        COALESCE(${avgBasketDenominatorExpr()}, 0) AS denominator
+      FROM ${salesRecords}
+      ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      GROUP BY ${salesRecords.transactionDate}
+      ORDER BY ${salesRecords.transactionDate} ASC
+    `);
+
+    return rows.map((row) => ({
+      date: row.date,
+      value: Number(row.value),
+      numerator: Number(row.numerator),
+      denominator: Number(row.denominator),
+    }));
+  }
 
   const rows = await executeRows<{
     date: string;
@@ -139,10 +199,128 @@ export async function getTrendSeriesData(
 
 // ─── Business Events Query ───────────────────────────────────────────────────
 
+// Task 4.17 — locations.id-anchored dimension predicates for the
+// effective-locations subquery in getBusinessEvents. Mirrors the membership
+// join shape of `buildDimensionFilters` but flips the LHS to `locations.id`
+// (the sales-records-anchored helper isn't usable here because the events
+// visibility check operates over the location universe, not over rows in
+// `sales_records`).
+function buildEffectiveLocationsPredicate(filters: AnalyticsFilters): SQL[] {
+  const conditions: SQL[] = [];
+
+  if (filters.hotelIds?.length) {
+    conditions.push(inArray(locations.id, filters.hotelIds));
+  }
+  if (filters.hotelGroupIds?.length) {
+    conditions.push(
+      sql`${locations.id} IN (
+        SELECT ${locationHotelGroupMemberships.locationId}
+        FROM ${locationHotelGroupMemberships}
+        WHERE ${inArray(locationHotelGroupMemberships.hotelGroupId, filters.hotelGroupIds)}
+      )`,
+    );
+  }
+  if (filters.regionIds?.length) {
+    conditions.push(
+      sql`${locations.id} IN (
+        SELECT ${locationRegionMemberships.locationId}
+        FROM ${locationRegionMemberships}
+        WHERE ${inArray(locationRegionMemberships.regionId, filters.regionIds)}
+      )`,
+    );
+  }
+  if (filters.locationGroupIds?.length) {
+    conditions.push(
+      sql`${locations.id} IN (
+        SELECT ${locationGroupMemberships.locationId}
+        FROM ${locationGroupMemberships}
+        WHERE ${inArray(locationGroupMemberships.locationGroupId, filters.locationGroupIds)}
+      )`,
+    );
+  }
+  if (filters.locationTypes?.length) {
+    conditions.push(inArray(locations.locationType, filters.locationTypes));
+  }
+  if (!filters.includeInternalAccounts) {
+    conditions.push(sql`${locations.locationType} IS DISTINCT FROM 'internal'`);
+  }
+  return conditions;
+}
+
+/**
+ * Hierarchical visibility filter for business events (Task 4.17).
+ *
+ * An event is visible to the user iff one of:
+ *   - scope_type='global' (always visible)
+ *   - scope_type='hotel' AND scope_value is in the user's effective set
+ *   - scope_type='region' AND any location in that region is in the
+ *     effective set
+ *   - scope_type='hotel_group' AND any location in that group is in the
+ *     effective set
+ *
+ * The "effective set" is the user's scoped, active locations further
+ * restricted by any dimension filters on the global FilterBar. When no
+ * filters are set, the effective set is every scoped active location, so
+ * every event with at least one matching location remains visible.
+ *
+ * The events table is small (≤ a few hundred rows in prod), so the four
+ * scope branches each running an EXISTS / IN over a per-request
+ * effective-locations CTE is fine — index hits dominate.
+ */
 export async function getBusinessEvents(
   dateFrom: string,
   dateTo: string,
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
 ): Promise<BusinessEventDisplay[]> {
+  const scopedActiveIds = await getScopedActiveLocationIds(userCtx);
+  // No locations in scope → no events can satisfy any non-global predicate;
+  // global events still pass through, so we fall through with an effective
+  // set of `FALSE` and let the SQL handle it uniformly.
+  const effectivePredicates = buildEffectiveLocationsPredicate(filters);
+  const scopedActiveCondition =
+    scopedActiveIds.length === 0
+      ? sql`FALSE`
+      : sql`${locations.id} = ANY(${sql.param(scopedActiveIds)}::uuid[])`;
+  const effectiveWhere = combineConditions([
+    scopedActiveCondition,
+    ...effectivePredicates,
+  ]);
+
+  // CTE: effective_locations — the location set the user can "see" right
+  // now. Reused across all three non-global scope branches below.
+  const effectiveLocationsCte = sql`
+    WITH effective_locations AS (
+      SELECT ${locations.id} AS id
+      FROM ${locations}
+      WHERE ${effectiveWhere ?? sql`TRUE`}
+    )
+  `;
+
+  const visibilityPredicate = sql`(
+    ${businessEvents.scopeType} = 'global'
+    OR (
+      ${businessEvents.scopeType} = 'hotel'
+      AND ${businessEvents.scopeValue}::uuid IN (SELECT id FROM effective_locations)
+    )
+    OR (
+      ${businessEvents.scopeType} = 'region'
+      AND EXISTS (
+        SELECT 1 FROM ${locationRegionMemberships}
+        WHERE ${locationRegionMemberships.regionId} = ${businessEvents.scopeValue}::uuid
+          AND ${locationRegionMemberships.locationId} IN (SELECT id FROM effective_locations)
+      )
+    )
+    OR (
+      ${businessEvents.scopeType} = 'hotel_group'
+      AND EXISTS (
+        SELECT 1 FROM ${locationHotelGroupMemberships}
+        WHERE ${locationHotelGroupMemberships.hotelGroupId} = ${businessEvents.scopeValue}::uuid
+          AND ${locationHotelGroupMemberships.locationId} IN (SELECT id FROM effective_locations)
+      )
+    )
+  )`;
+
   const rows = await executeRows<{
     id: string;
     title: string;
@@ -155,6 +333,7 @@ export async function getBusinessEvents(
     scope_type: string | null;
     scope_value: string | null;
   }>(sql`
+    ${effectiveLocationsCte}
     SELECT
       ${businessEvents.id}::text AS id,
       ${businessEvents.title} AS title,
@@ -170,6 +349,7 @@ export async function getBusinessEvents(
       INNER JOIN ${eventCategories} ON ${businessEvents.categoryId} = ${eventCategories.id}
     WHERE ${businessEvents.startDate} <= ${dateTo}
       AND (${businessEvents.endDate} IS NULL OR ${businessEvents.endDate} >= ${dateFrom})
+      AND ${visibilityPredicate}
     ORDER BY ${businessEvents.startDate} ASC
   `);
 
@@ -193,11 +373,18 @@ export async function getBusinessEvents(
 // wrapAnalyticsQuery (which assumes `(AnalyticsFilters, UserCtx, ...rest)`):
 //
 //   getTrendSeriesData: `(metric, SeriesFilters, dateFrom, dateTo, userCtx)`
-//   getBusinessEvents:  `(dateFrom, dateTo)` — no auth/scoping
+//   getBusinessEvents:  `(dateFrom, dateTo, filters, userCtx)` — D9-scoped via
+//                       buildEffectiveLocationsPredicate; cached with the same
+//                       canonicalised filter signature + scopeKey shape as
+//                       getTrendSeriesData so different filter contexts cache
+//                       separately. Scope participation is mandatory now —
+//                       previously this fn was scope-free and returned every
+//                       event in the date range regardless of user filters
+//                       (PR-29 / Task 4.17).
 //
 // Both wrap directly with unstable_cache + withStats. Scope participates in
-// the trend-series key (via scopeKey arg) to collapse internal users while
-// isolating external scopes; getBusinessEvents is scope-free.
+// each cache key via scopeKey, collapsing internal users while isolating
+// external scopes.
 //
 // TTL = 24h, aligned with overnight UK ETL.
 // Tags: ['analytics', 'analytics:trend-builder'] — invalidate via /admin/cache.
@@ -221,12 +408,37 @@ function canonicaliseSeriesFilters(f: SeriesFilters): SeriesFilters {
   };
 }
 
+// Same idea for the global FilterBar shape. metricMode is stripped because
+// trend metrics aren't mode-aware (see getTrendSeriesData), so two requests
+// differing only in metricMode must collide on the cache key. dateFrom/dateTo
+// are also dropped — the per-series query has always owned its own date range
+// (passed positionally), so the global bar's range is irrelevant to the SQL.
+function canonicaliseGlobalFilters(g: AnalyticsFilters): Partial<AnalyticsFilters> {
+  const sortedUnique = (xs: string[] | undefined): string[] | undefined => {
+    if (!xs || xs.length === 0) return undefined;
+    const out = [...new Set(xs)].sort();
+    return out.length > 0 ? out : undefined;
+  };
+  return {
+    hotelIds: sortedUnique(g.hotelIds),
+    regionIds: sortedUnique(g.regionIds),
+    productIds: sortedUnique(g.productIds),
+    hotelGroupIds: sortedUnique(g.hotelGroupIds),
+    locationGroupIds: sortedUnique(g.locationGroupIds),
+    maturityBuckets: sortedUnique(g.maturityBuckets),
+    locationTypes: g.locationTypes && g.locationTypes.length > 0
+      ? ([...new Set(g.locationTypes)].sort() as AnalyticsFilters["locationTypes"])
+      : undefined,
+  };
+}
+
 export const getTrendSeriesDataCached = unstable_cache(
   withStats(
     'getTrendSeriesData',
     async (
       metric: TrendMetric,
-      filters: SeriesFilters,
+      seriesFilters: SeriesFilters,
+      globalFilters: AnalyticsFilters,
       dateFrom: string,
       dateTo: string,
       scopeKey: CachedQueryScope,
@@ -234,16 +446,49 @@ export const getTrendSeriesDataCached = unstable_cache(
       if (scopeKey !== INTERNAL_SCOPE_KEY) {
         throw new Error(`getTrendSeriesData: external scope not yet supported (got ${scopeKey})`);
       }
-      const canonical = canonicaliseSeriesFilters(filters);
-      return getTrendSeriesData(metric, canonical, dateFrom, dateTo, INTERNAL_USER_CTX);
+      const canonicalSeries = canonicaliseSeriesFilters(seriesFilters);
+      // Anchor maturity buckets to the per-series query window's end (dateTo
+      // arg) — the per-series window supersedes the global bar's range, so
+      // bucket boundaries must be relative to the actual analysis window.
+      const canonicalGlobal: AnalyticsFilters = {
+        ...canonicaliseGlobalFilters(globalFilters),
+        dateFrom,
+        dateTo,
+      };
+      return getTrendSeriesData(metric, canonicalSeries, canonicalGlobal, dateFrom, dateTo, INTERNAL_USER_CTX);
     },
   ),
-  ['analytics', 'getTrendSeriesData', 'v1'],
+  // v2 — global filters now part of cache key (PR-18c)
+  ['analytics', 'getTrendSeriesData', 'v2'],
   { revalidate: 86400, tags: TREND_BUILDER_TAGS },
 );
 
+// v2 — getBusinessEvents now applies hierarchical scope-type visibility
+// (Task 4.17). The filter signature participates in the cache key so two
+// distinct filter contexts cache independently.
 export const getBusinessEventsCached = unstable_cache(
-  withStats('getBusinessEvents', getBusinessEvents),
-  ['analytics', 'getBusinessEvents', 'v1'],
+  withStats(
+    'getBusinessEvents',
+    async (
+      dateFrom: string,
+      dateTo: string,
+      filters: AnalyticsFilters,
+      scopeKey: CachedQueryScope,
+    ): Promise<BusinessEventDisplay[]> => {
+      if (scopeKey !== INTERNAL_SCOPE_KEY) {
+        throw new Error(`getBusinessEvents: external scope not yet supported (got ${scopeKey})`);
+      }
+      // Strip product/maturity/dateFrom/dateTo from the filter — events
+      // visibility doesn't depend on them, so different values must collide
+      // on the cache key. Reuse the same canonicaliser as trend-series.
+      const canonicalGlobal: AnalyticsFilters = {
+        ...canonicaliseGlobalFilters(filters),
+        dateFrom,
+        dateTo,
+      };
+      return getBusinessEvents(dateFrom, dateTo, canonicalGlobal, INTERNAL_USER_CTX);
+    },
+  ),
+  ['analytics', 'getBusinessEvents', 'v2'],
   { revalidate: 86400, tags: TREND_BUILDER_TAGS },
 );

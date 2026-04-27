@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useAnalyticsFilterStore } from "@/lib/stores/analytics-filter-store";
+import {
+  useAnalyticsFilterStore,
+  useAnalyticsFilters,
+} from "@/lib/stores/analytics-filter-store";
 import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { useTrendStore } from "@/lib/stores/trend-store";
-import { toLocalISODate } from "@/lib/analytics/formatters";
+import { autoGranularity, toLocalISODate } from "@/lib/analytics/formatters";
+import type { Granularity } from "@/lib/analytics/formatters";
 import { PageHeader } from "@/components/layout/page-header";
 import { ChartCard } from "@/components/ui/chart-card";
 import { Switch } from "@/components/ui/switch";
@@ -42,6 +46,9 @@ export default function TrendBuilderPage() {
   const globalLocationGroupFilter = useAnalyticsFilterStore(
     (s) => s.locationGroupFilter,
   );
+  // Full global FilterBar shape for SQL-WHERE wiring (PR-18c). useShallow-
+  // memoised so the reference is stable unless a relevant field changed.
+  const globalFilters = useAnalyticsFilters();
   const dateFrom = toLocalISODate(dateRange.from);
   const dateTo = toLocalISODate(dateRange.to);
 
@@ -110,6 +117,26 @@ export default function TrendBuilderPage() {
     }
   }, [weatherAllowed, showWeather, setShowWeather]);
 
+  // ── Rolling-average gating (Task 4.15) ──────────────────────────────────
+  // applyRollingAverage() runs over the bucketed series, so a 7/30-day window
+  // becomes 7/30-week or 7/30-month under non-daily granularity — meaningless
+  // and mislabelled. Resolve the effective granularity (mirrors the same
+  // computation in trend-chart.tsx) and disable the toggle when not daily.
+  const resolvedGranularity: Granularity =
+    granularity === "auto"
+      ? autoGranularity(new Date(dateFrom), new Date(dateTo))
+      : granularity;
+  const rollingAverageAllowed = resolvedGranularity === "daily";
+
+  // Auto-clear stale rolling-avg state when the resolved granularity moves
+  // off daily — keeps the chart from rendering with a transformation the UI
+  // says is disabled.
+  useEffect(() => {
+    if (!rollingAverageAllowed && rollingAverage !== null) {
+      setRollingAverage(null);
+    }
+  }, [rollingAverageAllowed, rollingAverage, setRollingAverage]);
+
   // Wrap the whole batched fetch once so the monotonic req-id covers every
   // parallel sub-request within a single dispatch. Discards stale results on
   // unmount / newer dispatch.
@@ -126,6 +153,7 @@ export default function TrendBuilderPage() {
           const data = await fetchTrendSeriesData(
             s.metric,
             s.filters,
+            globalFilters,
             dateFrom,
             dateTo,
           );
@@ -137,6 +165,7 @@ export default function TrendBuilderPage() {
               const data = await fetchTrendSeriesDataYoY(
                 s.metric,
                 s.filters,
+                globalFilters,
                 dateFrom,
                 dateTo,
               );
@@ -157,7 +186,7 @@ export default function TrendBuilderPage() {
             : Promise.resolve([] as DailyWeather[]);
 
         const eventsPromise = showEvents
-          ? fetchBusinessEvents(dateFrom, dateTo)
+          ? fetchBusinessEvents(dateFrom, dateTo, globalFilters)
           : Promise.resolve([] as BusinessEventDisplay[]);
 
         const [seriesResults, yoyResults, weatherResult, eventsResult] =
@@ -173,6 +202,7 @@ export default function TrendBuilderPage() {
       [
         dateFrom,
         dateTo,
+        globalFilters,
         showWeather,
         showEvents,
         showYoY,
@@ -236,27 +266,46 @@ export default function TrendBuilderPage() {
           <div className="flex w-full flex-wrap items-center justify-end gap-2">
             <GranularitySelector value={granularity} onChange={setGranularity} />
 
-            <div className="flex items-center gap-1 rounded-md border p-0.5">
-              {([null, 7, 30] as RollingWindow[]).map((w) => {
-                const label = w === null ? "Raw" : w === 7 ? "7d Avg" : "30d Avg";
-                const isActive = rollingAverage === w;
-                return (
-                  <Button
-                    key={label}
-                    variant={isActive ? "default" : "ghost"}
-                    size="sm"
-                    className={
-                      isActive
-                        ? "h-7 px-2 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-                        : "h-7 px-2 text-xs"
-                    }
-                    onClick={() => setRollingAverage(w)}
-                  >
-                    {label}
-                  </Button>
-                );
-              })}
-            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <div
+                      className="flex items-center gap-1 rounded-md border p-0.5"
+                      data-testid="rolling-avg-wrapper"
+                      data-rolling-allowed={rollingAverageAllowed ? "true" : "false"}
+                    >
+                      {([null, 7, 30] as RollingWindow[]).map((w) => {
+                        const label =
+                          w === null ? "Raw" : w === 7 ? "7d Avg" : "30d Avg";
+                        const isActive = rollingAverage === w;
+                        return (
+                          <Button
+                            key={label}
+                            variant={isActive ? "default" : "ghost"}
+                            size="sm"
+                            disabled={!rollingAverageAllowed}
+                            className={
+                              isActive
+                                ? "h-7 px-2 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                                : "h-7 px-2 text-xs"
+                            }
+                            onClick={() => setRollingAverage(w)}
+                          >
+                            {label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  }
+                />
+                {!rollingAverageAllowed && (
+                  <TooltipContent>
+                    Rolling average only applies to daily granularity
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
 
             <TooltipProvider>
               <Tooltip>

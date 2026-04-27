@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildScopeFilter } from './scoped-query';
 
 const admin = { id: 'a1', userType: 'internal' as const, role: 'admin' as const };
+const system = { id: 's1', userType: 'internal' as const, role: 'system' as const };
 const member = { id: 'm1', userType: 'internal' as const, role: 'member' as const };
 const viewer = { id: 'v1', userType: 'internal' as const, role: 'viewer' as const };
 const external = { id: 'e1', userType: 'external' as const, role: null };
@@ -11,16 +12,20 @@ describe('buildScopeFilter', () => {
     expect(buildScopeFilter(admin, [])).toBeNull();
   });
 
-  it('returns null (unrestricted) for internal member with no scopes', () => {
-    expect(buildScopeFilter(member, [])).toBeNull();
+  it('returns null (unrestricted) for internal system with no scopes', () => {
+    expect(buildScopeFilter(system, [])).toBeNull();
   });
 
-  it('returns null (unrestricted) for internal viewer with no scopes', () => {
-    expect(buildScopeFilter(viewer, [])).toBeNull();
+  it('THROWS for internal member with no scopes', () => {
+    expect(() => buildScopeFilter(member, [])).toThrow(/no analytics scopes/i);
+  });
+
+  it('THROWS for internal viewer with no scopes', () => {
+    expect(() => buildScopeFilter(viewer, [])).toThrow(/no analytics scopes/i);
   });
 
   it('THROWS for external user with no scopes', () => {
-    expect(() => buildScopeFilter(external, [])).toThrow(/external.*scope/i);
+    expect(() => buildScopeFilter(external, [])).toThrow(/no analytics scopes/i);
   });
 
   it('builds a hotel_group filter from a single scope', () => {

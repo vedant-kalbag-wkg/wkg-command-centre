@@ -2,6 +2,10 @@ import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
+// 'system' is intentionally excluded here: it's an ETL/automation-only role
+// (see scoped-query.ts and migration 0026) that never represents an
+// interactive session, so the RBAC checks driven off this union don't need
+// to admit it. The scoping layer's UserCtx widens to include 'system'.
 export type Role = "admin" | "member" | "viewer";
 
 export type UserCtx = {
