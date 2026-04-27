@@ -82,7 +82,10 @@ export async function listConfigGroups(): Promise<ConfigGroupListItem[]> {
         .select({ count: sql<number>`count(distinct ${locationProducts.productId})::int` })
         .from(locationProducts)
         .where(
-          sql`${locationProducts.locationId} = ANY(${ids}) AND ${locationProducts.availability} = 'yes'`,
+          and(
+            inArray(locationProducts.locationId, ids),
+            eq(locationProducts.availability, "yes"),
+          ),
         );
       productCount = productCountResult[0]?.count ?? 0;
     }
