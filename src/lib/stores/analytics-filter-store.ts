@@ -160,7 +160,6 @@ function createFullFilterStore() {
 // ─── Stores ───────────────────────────────────────────────────────────────────
 
 export const useAnalyticsFilterStore = createFullFilterStore();
-export const usePivotFilterStore = createFullFilterStore();
 
 // ─── URL Sync Utilities ──────────────────────────────────────────────────────
 
@@ -249,8 +248,10 @@ export function useAnalyticsFilters(): AnalyticsFilters {
   );
 }
 
+// Alias kept so pivot-table callers don't need to rename; reads the same
+// global store the AnalyticsFilterBar writes to.
 export function usePivotFilters(): AnalyticsFilters {
-  return usePivotFilterStore(
+  return useAnalyticsFilterStore(
     useShallow((state) => storeStateToAnalyticsFilters(state)),
   );
 }
