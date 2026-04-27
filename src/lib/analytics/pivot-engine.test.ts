@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ALLOWED_COLUMNS,
   DERIVED_GROUP_COLUMNS,
+  derivedGroupColumns,
   validatePivotConfig,
   buildPivotSQL,
   formatPivotResults,
@@ -73,6 +74,82 @@ describe("DERIVED_GROUP_COLUMNS", () => {
     expect(DERIVED_GROUP_COLUMNS.get("sale_month")).toContain("TO_CHAR");
     expect(DERIVED_GROUP_COLUMNS.get("sale_year")).toContain("EXTRACT");
     expect(DERIVED_GROUP_COLUMNS.get("sale_hour")).toContain("transaction_time");
+  });
+});
+
+// ─── derivedGroupColumns(displayTz) — D6 / Task 2.12 ────────────────────────
+//
+// `sale_hour` MUST be timezone-aware so the Pivot Table's hour-of-day grouping
+// matches the Hourly Distribution widget. The same SQL pattern is used in
+// both places: reconstruct (date + time) as a UTC timestamptz, then convert
+// into the target zone with a second AT TIME ZONE.
+
+describe("derivedGroupColumns (D6 timezone awareness)", () => {
+  it("default ('local') buckets sale_hour by per-row locations.iana_timezone", () => {
+    const map = derivedGroupColumns();
+    const expr = map.get("sale_hour")!;
+    expect(expr).toContain("EXTRACT(HOUR FROM");
+    // (date + time) reconstruction landing in UTC timestamptz.
+    expect(expr).toContain(
+      "(sales_records.transaction_date + sales_records.transaction_time) AT TIME ZONE 'UTC'",
+    );
+    // Per-row zone — locations.iana_timezone resolves to each property's IANA zone.
+    expect(expr).toContain("AT TIME ZONE locations.iana_timezone");
+    expect(expr).toMatch(/::TEXT$/);
+  });
+
+  it("'utc' mode pins the second AT TIME ZONE to the UTC literal", () => {
+    const map = derivedGroupColumns("utc");
+    const expr = map.get("sale_hour")!;
+    expect(expr).toContain("AT TIME ZONE 'UTC'"); // both sides use 'UTC'
+    expect(expr).not.toContain("locations.iana_timezone");
+  });
+
+  it("sale_month / sale_year are unchanged across modes (date-only, no zone)", () => {
+    const local = derivedGroupColumns("local");
+    const utc = derivedGroupColumns("utc");
+    expect(local.get("sale_month")).toBe(utc.get("sale_month"));
+    expect(local.get("sale_year")).toBe(utc.get("sale_year"));
+    expect(local.get("sale_month")).toContain("TO_CHAR");
+    expect(local.get("sale_year")).toContain(
+      "EXTRACT(YEAR FROM sales_records.transaction_date)",
+    );
+  });
+});
+
+describe("buildPivotSQL — sale_hour timezone wiring", () => {
+  const config: PivotConfig = {
+    rowFields: ["sale_hour"],
+    columnFields: [],
+    values: [{ field: "net_amount", aggregation: "sum" }],
+  };
+
+  it("emits per-row iana_timezone when displayTz is 'local' (default)", () => {
+    const sql = buildPivotSQL(config);
+    expect(sql).toContain("AT TIME ZONE locations.iana_timezone");
+    // The SELECT also aliases by the logical name so the engine can map
+    // back to the dimension at format time.
+    expect(sql).toContain('AS "sale_hour"');
+  });
+
+  it("emits the constant 'UTC' both sides when displayTz is 'utc'", () => {
+    const sql = buildPivotSQL(config, undefined, "utc");
+    // The pivot SQL repeats the dimension expression in SELECT, GROUP BY and
+    // ORDER BY (3×), and each occurrence carries both AT-TIME-ZONE steps —
+    // so we expect at least 6 'UTC' literals in 'utc' mode and zero
+    // references to per-row iana_timezone.
+    expect((sql.match(/AT TIME ZONE 'UTC'/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(sql).not.toContain("locations.iana_timezone");
+  });
+
+  it("keeps sale_month emission timezone-agnostic in either mode", () => {
+    const cfg: PivotConfig = {
+      rowFields: ["sale_month"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    };
+    expect(buildPivotSQL(cfg, undefined, "local")).toContain("TO_CHAR");
+    expect(buildPivotSQL(cfg, undefined, "utc")).toContain("TO_CHAR");
   });
 });
 

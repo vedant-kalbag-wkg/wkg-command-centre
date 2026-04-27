@@ -18,6 +18,7 @@ import {
 } from "@/lib/analytics/queries/shared";
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
+import { getAnalyticsDisplayTimezone } from "@/lib/analytics/display-timezone-server";
 import { getComparisonDates, classifyOutletTier } from "@/lib/analytics/metrics";
 import type {
   AnalyticsFilters,
@@ -314,15 +315,48 @@ export async function getDailyTrends(
 
 // ─── 5. Hourly Distribution ──────────────────────────────────────────────────
 
+/**
+ * D6 / Task 2.12 — bucket sales by the local hour at each property.
+ *
+ * Per-row timezone resolution:
+ *   transaction_time is a naïve `time` (no zone) and transaction_date is a
+ *   plain `date`. The NetSuite/CMS ETL writes them as UTC instants without
+ *   tagging. We reconstruct the moment with `(date + time) AT TIME ZONE
+ *   'UTC'` to get a `timestamptz`, then convert into the local zone with a
+ *   second `AT TIME ZONE`. The two-step idiom is required because Postgres
+ *   has no `timestamp + zone → timestamptz` conversion that takes a
+ *   variable target zone; you have to land in `timestamptz` first.
+ *
+ * Display mode:
+ *   When the admin setting `analytics_display_timezone` is `'local'`
+ *   (default) we group by `locations.iana_timezone` per row. When set to
+ *   `'utc'` we group by the constant `'UTC'`, matching the pre-D6 naïve
+ *   behaviour for debugging. Either way we JOIN locations so the SQL shape
+ *   stays identical and the planner can use the same plan; the cost of the
+ *   join is negligible against the active-location predicate's covering
+ *   index hit.
+ */
 export async function getHourlyDistribution(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<HourlyDistributionRow[]> {
-  const baseWhere = await buildPortfolioWhere(filters, userCtx);
+  const [baseWhere, displayTz] = await Promise.all([
+    buildPortfolioWhere(filters, userCtx),
+    getAnalyticsDisplayTimezone(),
+  ]);
   const timeNotNull = sql`${salesRecords.transactionTime} IS NOT NULL`;
   const whereClause = combineConditions([baseWhere, timeNotNull]);
   const amountMode = buildAmountModeCondition(filters);
   const salesTxn = buildSalesTxnCondition();
+
+  // Pick the target-zone SQL expression once. `'UTC'::text` is a constant,
+  // `locations.iana_timezone` is per-row.
+  const targetZoneExpr =
+    displayTz === "utc" ? sql`'UTC'` : sql`${locations.ianaTimezone}`;
+  const localHourExpr = sql`EXTRACT(HOUR FROM
+    ((${salesRecords.transactionDate} + ${salesRecords.transactionTime}) AT TIME ZONE 'UTC')
+    AT TIME ZONE ${targetZoneExpr}
+  )`;
 
   const rows = await executeRows<{
     hour: string;
@@ -330,12 +364,12 @@ export async function getHourlyDistribution(
     transactions: string;
   }>(sql`
     SELECT
-      EXTRACT(HOUR FROM ${salesRecords.transactionTime})::int::text AS hour,
+      ${localHourExpr}::int::text AS hour,
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
-    FROM ${baseFrom()}
+    FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY EXTRACT(HOUR FROM ${salesRecords.transactionTime})
+    GROUP BY ${localHourExpr}
     ORDER BY hour ASC
   `);
 

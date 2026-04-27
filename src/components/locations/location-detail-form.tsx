@@ -36,6 +36,7 @@ import {
   updateBankingDetails,
 } from "@/app/(app)/locations/actions";
 import type { LocationWithRelations } from "@/app/(app)/locations/actions";
+import { COMMON_IANA_TIMEZONES } from "@/lib/locations/iana-timezones";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -376,6 +377,18 @@ function ExistingLocationForm({
     value: String(n),
   }));
 
+  // D6 / Task 2.12 — IANA timezone Select. The list is curated (see
+  // `COMMON_IANA_TIMEZONES`), but if the location has a value not on it
+  // (e.g. set by a future geo-tz refinement) we splice it in so it remains
+  // editable rather than silently swapped to the first option.
+  const timezoneOptions = (() => {
+    const values: string[] = Array.from(COMMON_IANA_TIMEZONES);
+    if (location.ianaTimezone && !values.includes(location.ianaTimezone)) {
+      values.unshift(location.ianaTimezone);
+    }
+    return values.map((v) => ({ label: v, value: v }));
+  })();
+
   return (
     <div className="space-y-6">
       {/* Archive dialog */}
@@ -492,6 +505,15 @@ function ExistingLocationForm({
             fieldName="sourcedBy"
             type="text"
             onSave={(v) => saveField("sourcedBy", v, location.sourcedBy ?? undefined)}
+          />
+        </FieldRow>
+        <FieldRow label="Timezone">
+          <InlineEditField
+            value={location.ianaTimezone}
+            fieldName="ianaTimezone"
+            type="select"
+            options={timezoneOptions}
+            onSave={(v) => saveField("ianaTimezone", v, location.ianaTimezone)}
           />
         </FieldRow>
       </DetailSection>

@@ -27,6 +27,13 @@ vi.mock("@/lib/analytics/cached-query", () => ({
   wrapAnalyticsQuery: <T>(fn: T) => fn,
 }));
 
+// D6 / Task 2.12 — stub the display-tz lookup so importing pivot.ts (which
+// reads it inside executePivot) doesn't pull next/cache + DB at module load.
+vi.mock("@/lib/analytics/display-timezone-server", () => ({
+  getAnalyticsDisplayTimezone: vi.fn(async () => "local" as const),
+  DISPLAY_TIMEZONE_TAG: "analytics:display-timezone",
+}));
+
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
 import { mergeComparisonResults } from "./pivot";

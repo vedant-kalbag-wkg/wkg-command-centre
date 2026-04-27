@@ -209,6 +209,12 @@ export const locations = pgTable(
     keyContactName: text("key_contact_name"),
     keyContactEmail: text("key_contact_email"),
     financeContact: text("finance_contact"),
+    // D6 / Task 2.12 — IANA zone (e.g. 'Europe/London') used by hour-of-day
+    // analytics to bucket sales by local time. NOT NULL so SQL never falls
+    // back to UTC silently; backfilled per-region in migration 0033 and
+    // editable on the location detail form. Default 'UTC' is safe (matches
+    // pre-D6 naïve behaviour) for any row that escapes the backfill.
+    ianaTimezone: text("iana_timezone").notNull().default("UTC"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     archivedAt: timestamp("archived_at", { withTimezone: true }),

@@ -65,12 +65,49 @@ export const ALLOWED_COLUMNS = new Map<string, string>([
   ["booking_fee", `(CASE WHEN ${IS_FEE_RAW_SQL} THEN sales_records.net_amount::numeric ELSE 0 END)`],
 ]);
 
-/** Derived group columns that require SQL expressions (not simple column refs). */
+/**
+ * Derived group columns that require SQL expressions (not simple column refs).
+ *
+ * D6 / Task 2.12: `sale_hour` is now timezone-aware. The expression is built
+ * lazily by `derivedGroupColumns(displayTz)` so the target zone (per-row
+ * `locations.iana_timezone` for `'local'` mode, constant `'UTC'` for the
+ * debug mode) can be wired in at SQL build time. We keep the static map
+ * exported for any consumer that just needs the legacy UTC form (and tests
+ * that pin the pre-D6 contract for `sale_month` / `sale_year`).
+ */
 export const DERIVED_GROUP_COLUMNS = new Map<string, string>([
   ["sale_month", "TO_CHAR(sales_records.transaction_date, 'Mon YYYY')"],
   ["sale_year", "EXTRACT(YEAR FROM sales_records.transaction_date)::TEXT"],
   ["sale_hour", "EXTRACT(HOUR FROM sales_records.transaction_time)::TEXT"],
 ]);
+
+export type PivotDisplayTimezone = "local" | "utc";
+
+/**
+ * Build the derived-column map for a given display-timezone mode. Same shape
+ * as `DERIVED_GROUP_COLUMNS` but with the `sale_hour` expression rewritten to
+ * the AT-TIME-ZONE form documented on `getHourlyDistribution`.
+ *
+ * `'utc'` reproduces the pre-D6 naïve behaviour (modulo the `(date + time)`
+ * reconstruction, which is a no-op semantically since both sides land in
+ * UTC). `'local'` is the default: each row buckets by
+ * `locations.iana_timezone`, the per-property zone seeded by migration 0033.
+ */
+export function derivedGroupColumns(
+  displayTz: PivotDisplayTimezone = "local",
+): Map<string, string> {
+  const targetZoneSql =
+    displayTz === "utc" ? "'UTC'" : "locations.iana_timezone";
+  const saleHourExpr =
+    `EXTRACT(HOUR FROM ` +
+    `((sales_records.transaction_date + sales_records.transaction_time) AT TIME ZONE 'UTC') ` +
+    `AT TIME ZONE ${targetZoneSql})::TEXT`;
+  return new Map<string, string>([
+    ["sale_month", "TO_CHAR(sales_records.transaction_date, 'Mon YYYY')"],
+    ["sale_year", "EXTRACT(YEAR FROM sales_records.transaction_date)::TEXT"],
+    ["sale_hour", saleHourExpr],
+  ]);
+}
 
 /** All columns that can appear as dimension fields (GROUP BY targets). */
 const DIMENSION_COLUMNS = new Set([
@@ -173,10 +210,14 @@ export function validatePivotConfig(config: PivotConfig): ValidationError[] {
 
 /**
  * Resolves a logical field name to a SQL expression string.
- * Checks ALLOWED_COLUMNS first, then DERIVED_GROUP_COLUMNS.
+ * Checks ALLOWED_COLUMNS first, then the derived-group map for the active
+ * display-timezone mode (D6 / Task 2.12 — `sale_hour` is zone-aware).
  */
-function resolveColumn(field: string): string | null {
-  return ALLOWED_COLUMNS.get(field) ?? DERIVED_GROUP_COLUMNS.get(field) ?? null;
+function resolveColumn(
+  field: string,
+  derived: Map<string, string>,
+): string | null {
+  return ALLOWED_COLUMNS.get(field) ?? derived.get(field) ?? null;
 }
 
 // 2.4 — Companion-column aliases for AVG. Carried in raw rows so grand totals
@@ -209,12 +250,15 @@ function pivotCellKey(colKey: string, alias: string, valueCount: number): string
  *
  * @param config  - The validated pivot configuration
  * @param whereClause - Optional raw SQL WHERE clause (without "WHERE" keyword)
+ * @param displayTz - D6 display-timezone mode for `sale_hour` (default 'local')
  * @returns SQL query string
  */
 export function buildPivotSQL(
   config: PivotConfig,
   whereClause?: string,
+  displayTz: PivotDisplayTimezone = "local",
 ): string {
+  const derived = derivedGroupColumns(displayTz);
   const allGroupFields = [...config.rowFields, ...config.columnFields];
 
   // SELECT: dimension columns + aggregated value columns
@@ -222,7 +266,7 @@ export function buildPivotSQL(
   const groupByParts: string[] = [];
 
   for (const field of allGroupFields) {
-    const expr = resolveColumn(field);
+    const expr = resolveColumn(field, derived);
     if (!expr) continue;
     selectParts.push(`${expr} AS "${field}"`);
     groupByParts.push(expr);
@@ -230,7 +274,7 @@ export function buildPivotSQL(
 
   // Value aggregations
   for (const v of config.values) {
-    const expr = resolveColumn(v.field);
+    const expr = resolveColumn(v.field, derived);
     if (!expr) continue;
     const alias = `${v.aggregation}_${v.field}`;
     if (v.aggregation === "count") {

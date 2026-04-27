@@ -67,6 +67,9 @@ export type LocationWithRelations = {
   contractTerms: string | null;
   contractDocuments: Array<{ fileName: string; s3Key: string; uploadedAt: string }> | null;
   notes: string | null;
+  // D6 / Task 2.12 — NOT NULL, defaults to 'UTC' when not yet set by the
+  // backfill (e.g. a new region without a region-default mapping).
+  ianaTimezone: string;
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
@@ -235,6 +238,10 @@ const EDITABLE_LOCATION_FIELDS = [
   "keyContactName",
   "keyContactEmail",
   "financeContact",
+  // D6 / Task 2.12 — IANA timezone for hour-of-day analytics. Free-text from
+  // the form's perspective (the Select picks from a curated list); validated
+  // against the actual zone DB in the future when we add geo-tz refinement.
+  "ianaTimezone",
 ] as const;
 
 export type EditableLocationField = (typeof EDITABLE_LOCATION_FIELDS)[number];

@@ -232,6 +232,13 @@
       "when": 1777336801010,
       "tag": "0032_outlet_exclusions_region_id",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1777336801011,
+      "tag": "0033_locations_iana_timezone_and_admin_settings",
+      "breakpoints": true
     }
   ]
 }

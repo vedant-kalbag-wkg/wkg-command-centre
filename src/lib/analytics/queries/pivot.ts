@@ -23,6 +23,7 @@ import {
   buildPivotSQL,
   formatPivotResults,
 } from "@/lib/analytics/pivot-engine";
+import { getAnalyticsDisplayTimezone } from "@/lib/analytics/display-timezone-server";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import type {
   AnalyticsFilters,
@@ -130,11 +131,17 @@ export async function executePivot(
     );
   }
 
-  // 2. Build WHERE clause
-  const whereClause = await buildPivotWhereString(filters, userCtx);
+  // 2. Build WHERE clause + resolve display-timezone mode in parallel.
+  //    `displayTz` controls whether `sale_hour` (the only zone-sensitive
+  //    derived column) buckets by per-row `locations.iana_timezone` ('local',
+  //    default) or constant 'UTC' (debug). See D6 / Task 2.12.
+  const [whereClause, displayTz] = await Promise.all([
+    buildPivotWhereString(filters, userCtx),
+    getAnalyticsDisplayTimezone(),
+  ]);
 
   // 3. Build SQL
-  const pivotSQL = buildPivotSQL(config, whereClause);
+  const pivotSQL = buildPivotSQL(config, whereClause, displayTz);
 
   // 4. Execute query
   const rawRows = await executeRows(sql.raw(pivotSQL));
@@ -179,8 +186,11 @@ async function addPeriodComparison(
     periodComparison: null,
   };
 
-  const prevWhereClause = await buildPivotWhereString(prevFilters, userCtx);
-  const prevSQL = buildPivotSQL(prevConfig, prevWhereClause);
+  const [prevWhereClause, displayTz] = await Promise.all([
+    buildPivotWhereString(prevFilters, userCtx),
+    getAnalyticsDisplayTimezone(),
+  ]);
+  const prevSQL = buildPivotSQL(prevConfig, prevWhereClause, displayTz);
   const prevRawRows = await executeRows(sql.raw(prevSQL));
   const prevResult = formatPivotResults(
     prevRawRows as unknown as Record<string, unknown>[],
