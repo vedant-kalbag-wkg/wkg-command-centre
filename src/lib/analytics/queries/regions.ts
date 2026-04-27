@@ -173,6 +173,11 @@ export async function getRegionDetail(
   `;
 
   // Hotel group breakdown within region
+  // D5 Part E — hotel groups remain N:N with locations. The previous JOIN
+  // through location_hotel_group_memberships fanned a multi-group location's
+  // sales out across each of its groups, multi-counting them in the region
+  // breakdown. EXISTS qualifies each sales row against the current group
+  // exactly once.
   const hgRows = await executeRows<{
     group_name: string;
     revenue: string;
@@ -184,10 +189,13 @@ export async function getRegionDetail(
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count
-    FROM ${salesRecords}
+    FROM ${hotelGroups}
+      INNER JOIN ${salesRecords} ON EXISTS (
+        SELECT 1 FROM ${locationHotelGroupMemberships}
+        WHERE ${locationHotelGroupMemberships.locationId} = ${salesRecords.locationId}
+          AND ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
+      )
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
-      INNER JOIN ${locationHotelGroupMemberships} ON ${locations.id} = ${locationHotelGroupMemberships.locationId}
-      INNER JOIN ${hotelGroups} ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
     WHERE ${salesRecords.locationId} IN (${locationIdsInRegion})
       ${whereClause ? sql`AND ${whereClause}` : sql``}
     GROUP BY ${hotelGroups.id}, ${hotelGroups.name}

@@ -136,6 +136,11 @@ async function getHotelGroupMetrics(
   const entityFilter = sql`${hotelGroups.id} IN ${idList}`;
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
+  // D5 Part E — hotel groups remain N:N with locations, so a JOIN through
+  // the membership table fans out a multi-group location's sales (one row
+  // per matching membership). EXISTS qualifies a sales row against the
+  // current hotel_group exactly once, keeping per-group totals correct
+  // when the same location belongs to several selected groups.
   const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
@@ -147,10 +152,13 @@ async function getHotelGroupMetrics(
       ${hotelGroups.name} AS entity_name,
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
-    FROM ${salesRecords}
+    FROM ${hotelGroups}
+      INNER JOIN ${salesRecords} ON EXISTS (
+        SELECT 1 FROM ${locationHotelGroupMemberships}
+        WHERE ${locationHotelGroupMemberships.locationId} = ${salesRecords.locationId}
+          AND ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
+      )
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
-      INNER JOIN ${locationHotelGroupMemberships} ON ${locations.id} = ${locationHotelGroupMemberships.locationId}
-      INNER JOIN ${hotelGroups} ON ${locationHotelGroupMemberships.hotelGroupId} = ${hotelGroups.id}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
     GROUP BY ${hotelGroups.id}, ${hotelGroups.name}
     ORDER BY revenue DESC
