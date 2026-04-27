@@ -4,6 +4,7 @@ import {
   calculateCompositeScore, calculateRevenuePerRoom,
   calculateTxnPerKiosk, calculateAvgBasketValue,
   classifyOutletTier, calculatePercentile,
+  getComparisonDates,
 } from "./metrics";
 
 describe("calculatePeriodChange", () => {
@@ -79,5 +80,26 @@ describe("capacity metrics", () => {
   });
   it("avg basket value with zero txns", () => {
     expect(calculateAvgBasketValue(10000, 0)).toBeNull();
+  });
+});
+
+describe("getComparisonDates — yoy Feb 29 fallback (Task 2.11)", () => {
+  it("Feb 29 2024 → Feb 28 2023 (not Mar 1)", () => {
+    const { prevFrom, prevTo } = getComparisonDates(
+      "2024-02-29",
+      "2024-02-29",
+      "yoy",
+    );
+    expect(prevFrom).toBe("2023-02-28");
+    expect(prevTo).toBe("2023-02-28");
+  });
+  it("non-Feb-29 dates shift by exactly one year", () => {
+    const { prevFrom, prevTo } = getComparisonDates(
+      "2025-06-15",
+      "2025-06-30",
+      "yoy",
+    );
+    expect(prevFrom).toBe("2024-06-15");
+    expect(prevTo).toBe("2024-06-30");
   });
 });

@@ -33,16 +33,24 @@ export function getComparisonDates(
   mode: "mom" | "yoy",
 ): { prevFrom: string; prevTo: string } {
   if (mode === "yoy") {
-    const from = new Date(dateFrom);
-    const to = new Date(dateTo);
-    from.setFullYear(from.getFullYear() - 1);
-    to.setFullYear(to.getFullYear() - 1);
     return {
-      prevFrom: from.toISOString().split("T")[0],
-      prevTo: to.toISOString().split("T")[0],
+      prevFrom: shiftYearISO(dateFrom, -1),
+      prevTo: shiftYearISO(dateTo, -1),
     };
   }
   return getPreviousPeriodDates(dateFrom, dateTo);
+}
+
+// Task 2.11 — Feb 29 + setFullYear rolls over to Mar 1 in non-leap years
+// (e.g. 2024-02-29 → 2023-03-01). Clamp the day to the target month's length
+// so YoY comparison lands on Feb 28 in non-leap years.
+function shiftYearISO(iso: string, deltaYears: number): string {
+  const d = new Date(iso);
+  const targetYear = d.getUTCFullYear() + deltaYears;
+  const targetMonth = d.getUTCMonth();
+  const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const targetDay = Math.min(d.getUTCDate(), lastDayOfTargetMonth);
+  return `${targetYear.toString().padStart(4, "0")}-${String(targetMonth + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
 }
 
 // ─── Composite Score ──────────────────────────────────────────────────────────
