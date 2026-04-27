@@ -11,6 +11,7 @@ import {
 import { EmptyState } from "@/components/analytics/empty-state";
 import {
   formatCurrency,
+  formatHotelDisplayName,
   formatNumber,
   formatNullValue,
 } from "@/lib/analytics/formatters";
@@ -110,7 +111,7 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                 </TableCell>
                 <TableCell className="sticky left-12 z-10 bg-background">
                   <div className="flex flex-col">
-                    <span className="font-medium">{row.hotelName}</span>
+                    <span className="font-medium">{formatHotelDisplayName(row.hotelName)}</span>
                     {row.outletCode && (
                       <span className="font-mono text-xs text-muted-foreground">
                         {row.outletCode}
@@ -213,7 +214,7 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                     ))}
                     <FlagDialog
                       locationId={row.locationId}
-                      locationName={row.hotelName}
+                      locationName={formatHotelDisplayName(row.hotelName)}
                       onFlagCreated={onFlagCreated}
                     />
                   </div>

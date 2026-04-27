@@ -11,6 +11,7 @@ import {
 import { EmptyState } from "@/components/analytics/empty-state";
 import {
   formatCurrency,
+  formatHotelDisplayName,
   formatNumber,
   formatNullValue,
 } from "@/lib/analytics/formatters";
@@ -46,7 +47,7 @@ export function HotelList({ hotels }: HotelListProps) {
             <TableRow key={hotel.locationId}>
               <TableCell>
                 <div className="flex flex-col">
-                  <span className="font-medium">{hotel.hotelName}</span>
+                  <span className="font-medium">{formatHotelDisplayName(hotel.hotelName)}</span>
                   {hotel.outletCode && (
                     <span className="font-mono text-xs text-muted-foreground">
                       {hotel.outletCode}

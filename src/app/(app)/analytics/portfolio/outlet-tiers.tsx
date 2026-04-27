@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import { formatCurrency, formatHotelDisplayName, formatNumber } from "@/lib/analytics/formatters";
 import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { cn } from "@/lib/utils";
 import {
@@ -88,7 +88,7 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated, 
               <TableCell className="font-mono text-xs">
                 {row.outletCode || EM_DASH}
               </TableCell>
-              <TableCell className="font-medium">{row.hotelName}</TableCell>
+              <TableCell className="font-medium">{formatHotelDisplayName(row.hotelName)}</TableCell>
               <TableCell>{row.hotelGroupName ?? EM_DASH}</TableCell>
               <TableCell>
                 {(() => {
@@ -165,7 +165,7 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated, 
                   ))}
                   <FlagDialog
                     locationId={row.locationId}
-                    locationName={row.hotelName}
+                    locationName={formatHotelDisplayName(row.hotelName)}
                     onFlagCreated={onFlagCreated}
                   />
                 </div>

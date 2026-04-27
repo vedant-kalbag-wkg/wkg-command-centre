@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatCurrency,
+  formatHotelDisplayName,
   formatNumber,
   formatCompactNumber,
   formatPercentChange,
@@ -115,5 +116,25 @@ describe("formatNullValue", () => {
   });
   it("value passes through formatter", () => {
     expect(formatNullValue(100, (v) => `${v}%`)).toBe("100%");
+  });
+});
+
+describe("formatHotelDisplayName", () => {
+  it("strips trailing ' b' suffix (multi-POS site indicator)", () => {
+    expect(formatHotelDisplayName("Heathrow Terminal 4 b")).toBe(
+      "Heathrow Terminal 4",
+    );
+  });
+  it("strips trailing ' B' (uppercase variant)", () => {
+    expect(formatHotelDisplayName("T2 Mobile desk B")).toBe("T2 Mobile desk");
+  });
+  it("leaves names without the suffix unchanged", () => {
+    expect(formatHotelDisplayName("Heathrow Terminal 5")).toBe(
+      "Heathrow Terminal 5",
+    );
+  });
+  it("does not strip 'b' without a leading space", () => {
+    expect(formatHotelDisplayName("Hotel Bombay")).toBe("Hotel Bombay");
+    expect(formatHotelDisplayName("HotelB")).toBe("HotelB");
   });
 });

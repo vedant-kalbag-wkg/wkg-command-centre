@@ -142,3 +142,15 @@ export function formatNullValue(
   if (value == null || Number.isNaN(value)) return "\u2014";
   return formatter ? formatter(value) : String(value);
 }
+
+// ─── Hotel name display ──────────────────────────────────────────────────────
+
+// Multi-POS hotels register each physical kiosk as its own `locations` row,
+// distinguished by a trailing " b"/" B" suffix on the name (e.g. "Heathrow
+// Terminal 4 b"). Cosmetic only — strip the suffix so analyst-facing tables
+// show the natural name. The underlying row is preserved for the Phase 5.6
+// multi-POS bulk merge to consume.
+// TODO(5.6): remove once the multi-POS bulk merge eliminates the suffix.
+export function formatHotelDisplayName(name: string): string {
+  return name.replace(/\s[bB]$/, "");
+}
