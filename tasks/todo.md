@@ -26,15 +26,15 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 
 ## Phase 1 — Systemic root causes (fixes cascade across many dashboards)
 
-- [ ] **1.1** Fix `getActiveLocationIds` to filter `archivedAt IS NOT NULL` (`src/lib/analytics/active-locations.ts:29-46`). Touches every dashboard. (P0)
-- [ ] **1.2** Implement reversal handling per **D2**. Add helper `buildNonReversalCondition()`; default-include in every COUNT(*); SUM(amount) keeps current behavior (nets correctly). (P0)
-- [ ] **1.3** Standardise fee handling per **D1** + **D10**: rename column if D10=rename; introduce `buildSalesTxnCondition()` (non-fee, non-reversal) used by every "Transactions" KPI; audit every `COUNT(*)` call site. (P0, biggest single cascade)
-- [ ] **1.4** Standardise maturity buckets per **D3**: pick convention; replace all client-side `calculateMaturityBucket(date)` with `calculateMaturityBucket(date, filters.dateTo)`; collapse the two parallel bucket constants. (P0)
-- [ ] **1.5** Fix membership double-counting per **D5**: rewrite `regions.ts`, `hotel-groups.ts`, `location-groups.ts`, `comparison.ts` to dedupe per location before aggregating up. (P0)
-- [ ] **1.6** Schema drift sweep: grep for `gross_amount`, `quantity`, `booking_fee` (column form), `sale_commission`, `discount_amount`, `locations.region` across `src/lib/analytics/`, `src/app/(app)/analytics/`, `src/lib/stores/pivot-store.ts`, `EDITABLE_LOCATION_FIELDS`. Replace or remove. (P0 — Pivot is fully broken until done)
-- [ ] **1.7** Internal-user-with-zero-scopes safety: change `scoped-query.ts:92` to throw (mirror external-user behavior). (P0 — silent over-permission)
-- [ ] **1.8** Validate URL filter params with Zod (`searchParamsToFilters`). (P1)
-- [ ] **1.9** Add `outlet_exclusions.region_id` (now that AU exists) and update `buildExclusionCondition` to scope by region. (P1)
+- [x] **1.1** Fix `getActiveLocationIds` to filter `archivedAt IS NOT NULL` (`src/lib/analytics/active-locations.ts:29-46`). Touches every dashboard. (P0) — PR-2 (`81659f7`)
+- [x] **1.2** Implement reversal handling per **D2**. Add helper `buildNonReversalCondition()`; default-include in every COUNT(*); SUM(amount) keeps current behavior (nets correctly). (P0) — PR-3 (`a58320e`/`a839cb9`/`bf70915`/`a175515`); migration 0027 + backfill applied to neon-dev only.
+- [x] **1.3** Standardise fee handling per **D1** + **D10**: rename column if D10=rename; introduce `buildSalesTxnCondition()` (non-fee, non-reversal) used by every "Transactions" KPI; audit every `COUNT(*)` call site. (P0, biggest single cascade) — PR-4 (`38754d1`/`156bdb4`/`59992d1`/`c0647da`); migration 0028 applied to neon-dev only.
+- [x] **1.4** Standardise maturity buckets per **D3**: pick convention; replace all client-side `calculateMaturityBucket(date)` with `calculateMaturityBucket(date, filters.dateTo)`; collapse the two parallel bucket constants. (P0) — PR-5 (`34ac5de`)
+- [x] **1.5** Fix membership double-counting per **D5**: rewrite `regions.ts`, `hotel-groups.ts`, `location-groups.ts`, `comparison.ts` to dedupe per location before aggregating up. (P0) — PR-6 Parts A–E (`d2d0aa9`/`1387e31`/`7623642`/`ef58378`/`1f31a3f`); migrations 0029/0030/0031 applied to neon-dev only.
+- [x] **1.6** Schema drift sweep: grep for `gross_amount`, `quantity`, `booking_fee` (column form), `sale_commission`, `discount_amount`, `locations.region` across `src/lib/analytics/`, `src/app/(app)/analytics/`, `src/lib/stores/pivot-store.ts`, `EDITABLE_LOCATION_FIELDS`. Replace or remove. (P0 — Pivot is fully broken until done) — PR-1 (`d37a929`/`fb99936`)
+- [x] **1.7** Internal-user-with-zero-scopes safety: change `scoped-query.ts:92` to throw (mirror external-user behavior). (P0 — silent over-permission) — PR-1 (`a6ac782`/`eaca7d1`)
+- [x] **1.8** Validate URL filter params with Zod (`searchParamsToFilters`). (P1) — PR-5 (`a7c90c0`)
+- [x] **1.9** Add `outlet_exclusions.region_id` (now that AU exists) and update `buildExclusionCondition` to scope by region. (P1) — PR-6 Part F (`93a98d0`); migration 0032 applied to neon-dev only.
 
 ## Phase 2 — Math correctness fixes (specific calculation bugs)
 
