@@ -211,6 +211,13 @@
       "when": 1777336801007,
       "tag": "0029_region_membership_dedup",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1777336801008,
+      "tag": "0030_location_group_membership_dedup",
+      "breakpoints": true
     }
   ]
 }

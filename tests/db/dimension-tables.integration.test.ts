@@ -94,4 +94,20 @@ describe('analytics dimension tables', () => {
     const rows = await ctx.db.select().from(locationGroupMemberships);
     expect(rows.find(r => r.locationId === loc.id && r.locationGroupId === lg.id)).toBeDefined();
   });
+
+  // D5 PR-6 Part B — UNIQUE(location_id) layered on top of composite PK
+  // ensures every location belongs to at most one location group
+  // (migration 0030).
+  it('locationGroupMemberships: UNIQUE(location_id) prevents two-group membership', async () => {
+    const [loc] = await ctx.db
+      .insert(locations)
+      .values({ name: 'OneGroup Test', outletCode: 'DIM-ONE-LG', primaryRegionId: ukRegionId })
+      .returning();
+    const [lg1] = await ctx.db.insert(locationGroups).values({ name: 'OneGroup A' }).returning();
+    const [lg2] = await ctx.db.insert(locationGroups).values({ name: 'OneGroup B' }).returning();
+    await ctx.db.insert(locationGroupMemberships).values({ locationId: loc.id, locationGroupId: lg1.id });
+    await expect(
+      ctx.db.insert(locationGroupMemberships).values({ locationId: loc.id, locationGroupId: lg2.id }),
+    ).rejects.toThrow();
+  });
 });

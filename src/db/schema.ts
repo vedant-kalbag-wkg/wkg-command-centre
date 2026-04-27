@@ -577,6 +577,12 @@ export const locationGroupMemberships = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.locationId, t.locationGroupId] }),
     byLocationGroup: index("lgm_location_group_idx").on(t.locationGroupId),
+    // 1-per-location invariant per Resolved Decision D5 (migration 0030).
+    // Composite PK above blocks (loc,group) duplicates; this UNIQUE blocks a
+    // location from belonging to two different location groups at once.
+    locationUniq: unique("location_group_memberships_location_id_unique").on(
+      t.locationId,
+    ),
   }),
 );
 
