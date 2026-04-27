@@ -179,6 +179,31 @@ function resolveColumn(field: string): string | null {
   return ALLOWED_COLUMNS.get(field) ?? DERIVED_GROUP_COLUMNS.get(field) ?? null;
 }
 
+// 2.4 — Companion-column aliases for AVG. Carried in raw rows so grand totals
+// can recompute SUM(sums)/SUM(counts) instead of mean-of-per-row-means.
+// Prefixed with `__` to flag them as engine-internal (never headers/cells).
+function avgSumAlias(field: string): string {
+  return `__avg_sum_${field}`;
+}
+
+function avgCountAlias(field: string): string {
+  return `__avg_count_${field}`;
+}
+
+/**
+ * Cell-key composer for crosstab pivot.
+ *
+ * Both `buildPivotData` and `formatPivotResults` (grand totals) need to agree
+ * on how cells are keyed when columnFields are present, otherwise the grand
+ * total cell never resolves and the UI renders "—" (Task 2.5).
+ *
+ * - 1 value config:    key = colKey
+ * - 2+ value configs:  key = `${colKey} | ${alias}`
+ */
+function pivotCellKey(colKey: string, alias: string, valueCount: number): string {
+  return valueCount > 1 ? `${colKey} | ${alias}` : colKey;
+}
+
 /**
  * Builds a SQL query string for the pivot config.
  *
@@ -217,6 +242,20 @@ export function buildPivotSQL(
     } else {
       selectParts.push(
         `${v.aggregation.toUpperCase()}(COALESCE(${expr}, 0)) AS "${alias}"`,
+      );
+    }
+
+    // 2.4 Simpson's-paradox fix: for AVG, also project the underlying SUM
+    // and COUNT so grand-total avg can be recomputed as SUM(sums)/SUM(counts)
+    // across rows instead of mean-of-per-row-means. These companion columns
+    // are consumed only by formatPivotResults; they are not exposed as
+    // headers or cells.
+    if (v.aggregation === "avg") {
+      selectParts.push(
+        `SUM(COALESCE(${expr}, 0)) AS "${avgSumAlias(v.field)}"`,
+      );
+      selectParts.push(
+        `COUNT(${expr}) AS "${avgCountAlias(v.field)}"`,
       );
     }
   }
@@ -331,7 +370,7 @@ export function buildPivotData(
       const alias = `${v.aggregation}_${v.field}`;
       const val = Number(raw[alias] ?? 0);
       // Cell key includes column dimension for crosstab layout
-      const cellKey = values.length > 1 ? `${colKey} | ${alias}` : colKey;
+      const cellKey = pivotCellKey(colKey, alias, values.length);
       pivotRow.cells[cellKey] = formatCell(val, v.field, v.aggregation);
     }
   }
@@ -387,25 +426,52 @@ export function formatPivotResults(
     }
   }
 
-  // Grand totals — aggregate across all raw rows per value config
+  // Grand totals — aggregate across raw rows.
+  //
+  // Two correctness fixes baked in here:
+  //   2.4 (Simpson's paradox): for `avg`, recompute as
+  //        SUM(per-row sum) / SUM(per-row count)
+  //        using the __avg_sum_<field> / __avg_count_<field> companions
+  //        projected by buildPivotSQL. Falling back to mean-of-means would
+  //        weight a 5-txn row equally with a 1000-txn row.
+  //   2.5 (column-pivot key alignment): when columnFields are present, keys
+  //        must mirror buildPivotData's `pivotCellKey(colKey, alias, n)` so
+  //        the UI can find each grand-total cell. The previous code keyed
+  //        only by `${aggregation}_${field}`, which never matches a
+  //        crosstab cell key → every grand-total cell rendered as "—".
   const grandTotals: Record<string, PivotCell> = {};
-  for (const v of config.values) {
-    const alias = `${v.aggregation}_${v.field}`;
-    const nums = trimmed.map((r) => Number(r[alias] ?? 0));
 
-    let total: number;
-    if (v.aggregation === "sum" || v.aggregation === "count") {
-      total = nums.reduce((a, b) => a + b, 0);
-    } else if (v.aggregation === "avg") {
-      total = nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
-    } else if (v.aggregation === "min") {
-      total = nums.length > 0 ? Math.min(...nums) : 0;
-    } else {
-      // max
-      total = nums.length > 0 ? Math.max(...nums) : 0;
+  if (config.columnFields.length === 0) {
+    // No column pivoting — one grand total per value config.
+    for (const v of config.values) {
+      const alias = `${v.aggregation}_${v.field}`;
+      const nums = trimmed.map((r) => Number(r[alias] ?? 0));
+      const total = aggregateGrandTotal(v, trimmed, nums);
+      grandTotals[alias] = formatCell(total, v.field, v.aggregation);
+    }
+  } else {
+    // Column pivoting — bucket raw rows by their column-key, then compute
+    // a grand total per (column-key, value) pair using cell keys that match
+    // buildPivotData's `pivotCellKey`.
+    const buckets = new Map<string, Record<string, unknown>[]>();
+    for (const raw of trimmed) {
+      const colKey = config.columnFields
+        .map((f) => String(raw[f] ?? ""))
+        .join(" | ");
+      const bucket = buckets.get(colKey);
+      if (bucket) bucket.push(raw);
+      else buckets.set(colKey, [raw]);
     }
 
-    grandTotals[alias] = formatCell(total, v.field, v.aggregation);
+    for (const [colKey, bucketRows] of buckets) {
+      for (const v of config.values) {
+        const alias = `${v.aggregation}_${v.field}`;
+        const nums = bucketRows.map((r) => Number(r[alias] ?? 0));
+        const total = aggregateGrandTotal(v, bucketRows, nums);
+        const cellKey = pivotCellKey(colKey, alias, config.values.length);
+        grandTotals[cellKey] = formatCell(total, v.field, v.aggregation);
+      }
+    }
   }
 
   return {
@@ -415,6 +481,49 @@ export function formatPivotResults(
     rowCount: rows.length,
     truncated,
   };
+}
+
+/**
+ * Compute a grand-total scalar for a single (value-config × row-set).
+ * Pulled out so the with-column-pivot and without-column-pivot paths in
+ * formatPivotResults stay identical w.r.t. avg / sum / count / min / max
+ * semantics.
+ */
+function aggregateGrandTotal(
+  v: PivotValueConfig,
+  rows: Record<string, unknown>[],
+  nums: number[],
+): number {
+  if (v.aggregation === "sum" || v.aggregation === "count") {
+    return nums.reduce((a, b) => a + b, 0);
+  }
+  if (v.aggregation === "avg") {
+    // 2.4: weighted recombination from raw sum + count companions.
+    // If the companions aren't present (e.g. tests that pass synthesized
+    // rows without them), fall back to mean-of-per-row-means so the engine
+    // still degrades gracefully rather than dividing by zero.
+    let sumNum = 0;
+    let sumDen = 0;
+    let haveCompanions = false;
+    for (const r of rows) {
+      const rs = r[avgSumAlias(v.field)];
+      const rc = r[avgCountAlias(v.field)];
+      if (rs !== undefined && rc !== undefined) {
+        haveCompanions = true;
+        sumNum += Number(rs ?? 0);
+        sumDen += Number(rc ?? 0);
+      }
+    }
+    if (haveCompanions) {
+      return sumDen > 0 ? sumNum / sumDen : 0;
+    }
+    return nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+  }
+  if (v.aggregation === "min") {
+    return nums.length > 0 ? Math.min(...nums) : 0;
+  }
+  // max
+  return nums.length > 0 ? Math.max(...nums) : 0;
 }
 
 // ─── Label Helpers ──────────────────────────────────────────────────────────

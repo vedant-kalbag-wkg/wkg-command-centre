@@ -187,108 +187,66 @@ async function addPeriodComparison(
     prevConfig,
   );
 
-  // Build lookup of previous period row → cells by dimension key
+  return mergeComparisonResults(currentResult, prevResult, config.rowFields);
+}
+
+/**
+ * Merge a previous-period PivotResponse into the current one, appending
+ * `<cellKey>_change` cells that show % delta against the prev row at the
+ * same dimension key.
+ *
+ * Exported for unit testing (Task 2.6). Pure function — no DB access. Pairs
+ * current/prev cells by key, NOT by position. The previous positional
+ * fallback misattributed prev-period values whenever the two periods had
+ * different cell sets (e.g. a column-pivoted month present in current but
+ * not prev, or different row sets between periods).
+ */
+export function mergeComparisonResults(
+  currentResult: PivotResponse,
+  prevResult: PivotResponse,
+  rowFields: string[],
+): PivotResponse {
+  // Build lookup of previous period row → cells by dimension key.
   const prevRowMap = new Map<string, Record<string, PivotCell>>();
   for (const row of prevResult.rows) {
-    const key = config.rowFields
-      .map((f) => row.dimensions[f] ?? "")
-      .join("|||");
+    const key = rowFields.map((f) => row.dimensions[f] ?? "").join("|||");
     prevRowMap.set(key, row.cells);
   }
 
-  // Merge change columns into current result
+  // Merge change columns into current result.
   const mergedRows = currentResult.rows.map((row) => {
-    const key = config.rowFields
-      .map((f) => row.dimensions[f] ?? "")
-      .join("|||");
+    const key = rowFields.map((f) => row.dimensions[f] ?? "").join("|||");
     const prevCells = prevRowMap.get(key);
 
     const changeCells: Record<string, PivotCell> = {};
 
     if (prevCells) {
-      const curKeys = Object.keys(row.cells);
-      const prevKeys = Object.keys(prevCells);
-
-      for (let i = 0; i < curKeys.length; i++) {
-        const cellKey = curKeys[i];
+      for (const cellKey of Object.keys(row.cells)) {
         const cur = row.cells[cellKey].value;
-
-        // Try exact key match first, then positional match
-        const prevCell =
-          prevCells[cellKey] ??
-          (prevKeys[i] ? prevCells[prevKeys[i]] : undefined);
-
-        if (prevCell != null && prevCell.value !== 0) {
-          const change = ((cur - prevCell.value) / prevCell.value) * 100;
-          changeCells[`${cellKey}_change`] = {
-            value: change,
-            formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
-          };
-        } else if (prevCell != null && prevCell.value === 0) {
-          // Previous was zero — can't calculate meaningful %
-          changeCells[`${cellKey}_change`] = {
-            value: cur > 0 ? 100 : 0,
-            formatted: cur > 0 ? "New" : "—",
-          };
-        } else {
-          // No comparison data available
-          changeCells[`${cellKey}_change`] = {
-            value: 0,
-            formatted: "—",
-          };
-        }
+        // 2.6: exact-key match only (no positional fallback).
+        const prevCell = prevCells[cellKey];
+        changeCells[`${cellKey}_change`] = computeChangeCell(cur, prevCell);
       }
     } else {
-      // No matching row in previous period at all
+      // No matching row in previous period at all.
       for (const cellKey of Object.keys(row.cells)) {
-        changeCells[`${cellKey}_change`] = {
-          value: 0,
-          formatted: "—",
-        };
+        changeCells[`${cellKey}_change`] = { value: 0, formatted: "—" };
       }
     }
 
-    return {
-      ...row,
-      cells: { ...row.cells, ...changeCells },
-    };
+    return { ...row, cells: { ...row.cells, ...changeCells } };
   });
 
-  // Add change headers
+  // Add change headers.
   const changeHeaders = currentResult.headers
-    .slice(config.rowFields.length)
+    .slice(rowFields.length)
     .map((h) => `${h} (% Change)`);
 
-  // Add change grand totals
+  // Add change grand totals (same key-match policy).
   const changeGrandTotals: Record<string, PivotCell> = {};
-  const curTotalKeys = Object.keys(currentResult.grandTotals);
-  const prevTotalKeys = Object.keys(prevResult.grandTotals);
-
-  for (let i = 0; i < curTotalKeys.length; i++) {
-    const key = curTotalKeys[i];
-    const cell = currentResult.grandTotals[key];
-    // Try exact key match first, then positional match
-    const prevCell =
-      prevResult.grandTotals[key] ??
-      (prevTotalKeys[i] ? prevResult.grandTotals[prevTotalKeys[i]] : undefined);
-
-    if (prevCell != null && prevCell.value !== 0) {
-      const change = ((cell.value - prevCell.value) / prevCell.value) * 100;
-      changeGrandTotals[`${key}_change`] = {
-        value: change,
-        formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
-      };
-    } else if (prevCell != null && prevCell.value === 0) {
-      changeGrandTotals[`${key}_change`] = {
-        value: cell.value > 0 ? 100 : 0,
-        formatted: cell.value > 0 ? "New" : "—",
-      };
-    } else {
-      changeGrandTotals[`${key}_change`] = {
-        value: 0,
-        formatted: "—",
-      };
-    }
+  for (const [key, cell] of Object.entries(currentResult.grandTotals)) {
+    const prevCell = prevResult.grandTotals[key];
+    changeGrandTotals[`${key}_change`] = computeChangeCell(cell.value, prevCell);
   }
 
   return {
@@ -297,6 +255,24 @@ async function addPeriodComparison(
     grandTotals: { ...currentResult.grandTotals, ...changeGrandTotals },
     rowCount: mergedRows.length,
     truncated: currentResult.truncated,
+  };
+}
+
+/** Format a single % change cell from a current value and a (possibly missing) previous cell. */
+function computeChangeCell(cur: number, prevCell: PivotCell | undefined): PivotCell {
+  if (prevCell == null) {
+    return { value: 0, formatted: "—" };
+  }
+  if (prevCell.value === 0) {
+    return {
+      value: cur > 0 ? 100 : 0,
+      formatted: cur > 0 ? "New" : "—",
+    };
+  }
+  const change = ((cur - prevCell.value) / prevCell.value) * 100;
+  return {
+    value: change,
+    formatted: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
   };
 }
 

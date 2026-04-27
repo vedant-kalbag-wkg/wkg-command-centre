@@ -385,4 +385,141 @@ describe("formatPivotResults", () => {
     expect(result.truncated).toBe(true);
     expect(result.rows).toHaveLength(10_000);
   });
+
+  // ─── Task 2.4 — AVG grand total uses weighted recombination ───────────────
+  // Without this fix the engine averages per-row averages (Simpson's
+  // paradox). buildPivotSQL projects __avg_sum_<field> + __avg_count_<field>
+  // companions specifically so formatPivotResults can recompute
+  // SUM(numerators) / SUM(denominators).
+  it("avg grand total: weighted recombination from sum + count companions (Task 2.4)", () => {
+    const avgConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "avg" }],
+    };
+    // Hotel A: avg basket £10 over 1000 transactions (sum=10000, count=1000).
+    // Hotel B: avg basket £20 over 5 transactions    (sum=100,   count=5).
+    // True weighted avg = 10100 / 1005 ≈ 10.0497 — NOT (10+20)/2 = 15.
+    const rawRows = [
+      {
+        hotel_name: "A",
+        avg_net_amount: 10,
+        __avg_sum_net_amount: 10000,
+        __avg_count_net_amount: 1000,
+      },
+      {
+        hotel_name: "B",
+        avg_net_amount: 20,
+        __avg_sum_net_amount: 100,
+        __avg_count_net_amount: 5,
+      },
+    ];
+    const result = formatPivotResults(rawRows, avgConfig);
+    expect(result.grandTotals["avg_net_amount"].value).toBeCloseTo(
+      10100 / 1005,
+      4,
+    );
+    // Sanity: explicitly NOT the broken mean-of-means.
+    expect(result.grandTotals["avg_net_amount"].value).not.toBe(15);
+  });
+
+  it("avg grand total: falls back to mean-of-means when companions absent", () => {
+    // Existing callers / tests that synthesize raw rows without companions
+    // must not regress to NaN or zero.
+    const avgConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "avg" }],
+    };
+    const rawRows = [
+      { hotel_name: "A", avg_net_amount: 100 },
+      { hotel_name: "B", avg_net_amount: 200 },
+    ];
+    const result = formatPivotResults(rawRows, avgConfig);
+    expect(result.grandTotals["avg_net_amount"].value).toBe(150);
+  });
+
+  it("buildPivotSQL projects __avg_sum_/__avg_count_ companions for avg (Task 2.4)", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "avg" }],
+    });
+    expect(sql).toContain('AS "__avg_sum_net_amount"');
+    expect(sql).toContain('AS "__avg_count_net_amount"');
+    // Companions only emitted for avg, not for sum.
+    const sumSql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    });
+    expect(sumSql).not.toContain("__avg_sum_");
+    expect(sumSql).not.toContain("__avg_count_");
+  });
+
+  // ─── Task 2.5 — Grand totals row populated under column-pivoting ──────────
+  // Previously grandTotals was keyed by `${aggregation}_${field}` (e.g.
+  // "sum_net_amount") while crosstab cells were keyed by colKey (e.g.
+  // "Jan 2025"). The UI looks up grand totals by the same cellKey it uses
+  // for headers, so every cell rendered as "—".
+  it("grand totals are keyed by crosstab cell keys when column-pivoting (Task 2.5)", () => {
+    const crosstabConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: ["sale_month"],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    };
+    const rawRows = [
+      { hotel_name: "A", sale_month: "Jan 2025", sum_net_amount: 500 },
+      { hotel_name: "A", sale_month: "Feb 2025", sum_net_amount: 700 },
+      { hotel_name: "B", sale_month: "Jan 2025", sum_net_amount: 300 },
+      { hotel_name: "B", sale_month: "Feb 2025", sum_net_amount: 900 },
+    ];
+    const result = formatPivotResults(rawRows, crosstabConfig);
+
+    // Headers (after the row dimension) match crosstab cell keys.
+    expect(result.headers).toContain("Jan 2025");
+    expect(result.headers).toContain("Feb 2025");
+
+    // Grand totals are now keyed by the same crosstab keys, with weighted
+    // (here: SUM) totals across hotels per month.
+    expect(result.grandTotals["Jan 2025"].value).toBe(800); // 500 + 300
+    expect(result.grandTotals["Feb 2025"].value).toBe(1600); // 700 + 900
+
+    // No header should resolve to "—" via the engine — every header
+    // returned has a matching grand total cell.
+    for (const header of result.headers.slice(1)) {
+      expect(result.grandTotals[header]).toBeDefined();
+      expect(result.grandTotals[header].formatted).not.toBe("—");
+    }
+  });
+
+  it("grand totals key by `${colKey} | ${alias}` with multiple values (Task 2.5)", () => {
+    const multiConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: ["sale_month"],
+      values: [
+        { field: "net_amount", aggregation: "sum" },
+        { field: "net_amount", aggregation: "count" },
+      ],
+    };
+    const rawRows = [
+      {
+        hotel_name: "A",
+        sale_month: "Jan 2025",
+        sum_net_amount: 500,
+        count_net_amount: 5,
+      },
+      {
+        hotel_name: "B",
+        sale_month: "Jan 2025",
+        sum_net_amount: 300,
+        count_net_amount: 3,
+      },
+    ];
+    const result = formatPivotResults(rawRows, multiConfig);
+
+    // Cell keys + grand-total keys must match the multi-value composer.
+    expect(result.grandTotals["Jan 2025 | sum_net_amount"].value).toBe(800);
+    expect(result.grandTotals["Jan 2025 | count_net_amount"].value).toBe(8);
+  });
 });
