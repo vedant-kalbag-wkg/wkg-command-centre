@@ -81,10 +81,10 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [ ] **4.12** Flag → Action workflow: wire `createFlag` to optionally `createActionItem` (currently XOR with `sourceId=NULL`). (P1)
 - [x] **4.13** Trend Builder `metric=booking_fee`: `trend-series.ts:107-109` uses `buildIsFeeCondition()` (covers 9991 + 9992 via `is_weknow_fee=true` post-D10). — covered by Task 1.3 Part B (`156bdb4`); verified PR-22
 - [x] **4.14** Compare hotel-group dedup invariant: structurally pinned by regression test (EXISTS gate via `location_hotel_group_memberships`, no top-level membership JOIN). PR-6 Part E covers the production fix; this PR adds the test gate. — PR-28 (`7647f38`)
-- [ ] **4.15** Trend Builder rolling-avg + weekly/monthly granularity: disable combo or switch to day-window. (P2)
-- [ ] **4.16** Trend Builder auto-granularity: replace hard 31/90 day cliffs with continuous logic. (P2)
-- [ ] **4.17** Event annotations: filter by event scope, not just category. (P1)
-- [ ] **4.18** Weather lat/lng resolution: add deterministic `ORDER BY` (`actions.ts:59-73`). (P2)
+- [x] **4.15** Trend Builder rolling-avg toggle: disabled with tooltip when resolved granularity ≠ daily; auto-clears stale state on flip. — PR-29 (`9661a60`)
+- [x] **4.16** Trend Builder auto-granularity: thresholds 31→60 / 90→200 (less jarring transitions, still readable buckets). — PR-29 (`9661a60`)
+- [x] **4.17** Event annotations: server-side hierarchical scope filter via new `buildEffectiveLocationsPredicate` + per-request CTE in `getBusinessEvents`. Cache key bumped v1→v2; portfolio caller plumbed too. — PR-29 (`9661a60` + `98f62d9`)
+- [x] **4.18** Weather lat/lng deterministic `.orderBy(locations.id)` before `.limit(1)`. — PR-29 (`9661a60`)
 - [x] **4.19** Region selector vs detail count divergence (UK 79 vs 63): selector Query 2 rewritten to drive off `sales_records` (matching `getRegionDetail.hotelGroupBreakdown`); structural-unification test pins both queries to the same membership-scoping shape. — PR-27 (`393466f`)
 
 ## Phase 5 — NEW-P0-B: Maturity data restoration
