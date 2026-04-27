@@ -87,15 +87,41 @@ export function toLocalISODate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+// Phase 6.4 — single canonical date format across the app: `27 Apr 2026`.
+// Day-month-year ordering avoids the en-GB / en-US ambiguity of `04/27`,
+// and matches the style already used in detail surfaces (inline-edit
+// fields, kiosk detail sheet, calendar event popovers).
+//
+// Intent: every date in lists, tables, and audit timelines should call
+// `formatDate(d)` rather than `d.toLocaleDateString(...)` directly. Audit
+// the codebase periodically — a raw `toLocaleDateString` reintroduced
+// after this change is a regression.
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
-  month: "2-digit",
+  month: "short",
   year: "numeric",
 });
 
 export function formatDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   return dateFormatter.format(d);
+}
+
+// Phase 6.1 — `outletCode` is unique per region, not globally. Two outlets
+// in different regions can share `Q5`, and the bare code in a global table
+// (Outlet Tiers, Heat Map) leaves operators guessing. `formatOutletCode`
+// returns `UK / Q5` when both halves are present and degrades gracefully.
+//
+// Callers should use it everywhere a region is implicit but not visible
+// (cross-region tables); single-region drill-downs can keep the bare code.
+export function formatOutletCode(
+  outletCode: string | null | undefined,
+  regionCode?: string | null,
+): string {
+  const code = outletCode?.trim();
+  if (!code) return "—";
+  const region = regionCode?.trim();
+  return region ? `${region} / ${code}` : code;
 }
 
 // ─── Granularity & Bucketing ─────────────────────────────────────────────────

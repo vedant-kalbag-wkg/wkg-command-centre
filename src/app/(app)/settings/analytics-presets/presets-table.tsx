@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pencil, Trash2 } from "lucide-react";
+import { formatDate } from "@/lib/analytics/formatters";
 import type { PresetRow } from "./actions";
 
 interface PresetsTableProps {
@@ -54,7 +55,7 @@ export function PresetsTable({ presets, onEdit, onDelete }: PresetsTableProps) {
               )}
             </TableCell>
             <TableCell className="text-muted-foreground">
-              {new Date(preset.createdAt).toLocaleDateString()}
+              {formatDate(preset.createdAt)}
             </TableCell>
             <TableCell>
               <div className="flex items-center gap-1">

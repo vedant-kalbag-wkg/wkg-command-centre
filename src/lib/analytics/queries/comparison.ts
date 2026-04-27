@@ -8,7 +8,7 @@ import {
   hotelGroups,
   regions,
 } from "@/db/schema";
-import { inArray, sql, type SQL } from "drizzle-orm";
+import { inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
@@ -225,16 +225,24 @@ export async function getEntityOptions(
 ): Promise<{ id: string; name: string }[]> {
   switch (entityType) {
     case "location": {
+      // §4 follow-up — exclude archived locations from the picker so the
+      // operator can't pick an outlet that has been retired (the picker
+      // previously showed every row regardless of state, leading to silent
+      // empty comparisons).
       const rows = await db
         .select({ id: locations.id, name: locations.name })
         .from(locations)
+        .where(isNull(locations.archivedAt))
         .orderBy(locations.name);
       return rows;
     }
     case "hotel_group": {
+      // §4 follow-up — same shape: exclude archived hotel-group rows so
+      // the picker doesn't surface JV groups that D5 split apart.
       const rows = await db
         .select({ id: hotelGroups.id, name: hotelGroups.name })
         .from(hotelGroups)
+        .where(isNull(hotelGroups.archivedAt))
         .orderBy(hotelGroups.name);
       return rows;
     }

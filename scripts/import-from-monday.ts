@@ -225,12 +225,22 @@ async function importKiosks(items: MondayItem[]) {
     .from(pipelineStages);
   const stageMap = new Map(stages.map((s) => [s.name, s.id]));
 
-  // Load locations by outlet code
+  // Load locations by outlet code. liveDate is plumbed through so a fresh
+  // Monday-sourced kiosk gets `kiosk_assignments.assigned_at` set to the
+  // outlet's go-live date instead of the import's `NOW()` (Phase 5.3 fix
+  // forward — eliminates the import-induced reseed at source so the
+  // backfill doesn't have to be re-run after every import).
   const locs = await db
-    .select({ id: locations.id, outletCode: locations.outletCode })
+    .select({
+      id: locations.id,
+      outletCode: locations.outletCode,
+      liveDate: locations.liveDate,
+    })
     .from(locations);
   const locMap = new Map(
-    locs.filter((l) => l.outletCode).map((l) => [l.outletCode!, l.id]),
+    locs
+      .filter((l) => l.outletCode)
+      .map((l) => [l.outletCode!, { id: l.id, liveDate: l.liveDate }]),
   );
   log("IMPORT", `Loaded ${stageMap.size} pipeline stages, ${locMap.size} locations`);
 
@@ -339,7 +349,8 @@ async function importKiosks(items: MondayItem[]) {
     // Create assignment if outletCode links to a known location
     let venueLinked = false;
     if (outletCode && locMap.has(outletCode)) {
-      const locationId = locMap.get(outletCode)!;
+      const locEntry = locMap.get(outletCode)!;
+      const locationId = locEntry.id;
       venueLinked = true;
 
       // Check if an active assignment already exists
@@ -359,9 +370,15 @@ async function importKiosks(items: MondayItem[]) {
         : [];
 
       if (activeAssignment.length === 0) {
+        // Anchor `assigned_at` to the outlet's go-live date when known so
+        // every Monday-imported kiosk lands in the correct install cohort
+        // straight away (Phase 5.3 fix forward). When the location predates
+        // its live_date being captured the column default `NOW()` still
+        // applies — Phase 5.2 backfill is the safety net.
         await db.insert(kioskAssignments).values({
           kioskId: kioskUuid,
           locationId,
+          ...(locEntry.liveDate ? { assignedAt: locEntry.liveDate } : {}),
           assignedBy: "system",
           assignedByName: "Monday.com Import",
           reason: `Imported from Monday.com group "${groupTitle}"`,

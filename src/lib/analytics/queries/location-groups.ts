@@ -18,6 +18,7 @@ import {
   buildSalesTxnCondition,
   combineConditions,
   locationGroupRoomsSubquery,
+  locationGroupKiosksSubquery,
 } from "@/lib/analytics/queries/shared";
 import {
   buildActiveLocationCondition,
@@ -90,6 +91,13 @@ export async function getLocationGroupsList(
     sql`= ${locationGroups.id}`,
     activeIds,
   );
+  // §4 follow-up — total_kiosks was hard-NULL'd here, breaking the
+  // `txnPerKiosk` cell on the summary row of `/analytics/location-groups`.
+  // Same correlated-subquery shape as rooms, counting open assignments.
+  const totalKiosksExpr = locationGroupKiosksSubquery(
+    sql`= ${locationGroups.id}`,
+    activeIds,
+  );
 
   const rows = await executeRows<{
     group_id: string;
@@ -107,7 +115,7 @@ export async function getLocationGroupsList(
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count,
       ${totalRoomsExpr}::text AS total_rooms,
-      NULL::text AS total_kiosks
+      ${totalKiosksExpr}::text AS total_kiosks
     FROM ${baseFromWithLocationGroups()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${locationGroups.id}, ${locationGroups.name}
@@ -154,6 +162,10 @@ export async function getLocationGroupDetail(
     sql`IN ${groupIdList}`,
     activeIds,
   );
+  const totalKiosksExpr = locationGroupKiosksSubquery(
+    sql`IN ${groupIdList}`,
+    activeIds,
+  );
 
   // Summary + capacity metrics
   const summaryRows = await executeRows<{
@@ -168,7 +180,7 @@ export async function getLocationGroupDetail(
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count,
       ${totalRoomsExpr}::text AS total_rooms,
-      NULL::text AS total_kiosks
+      ${totalKiosksExpr}::text AS total_kiosks
     FROM ${baseFromWithLocationGroups()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
   `);

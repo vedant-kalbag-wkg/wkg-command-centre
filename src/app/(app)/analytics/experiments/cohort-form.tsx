@@ -42,6 +42,7 @@ export function CohortForm({ locations, onSubmit }: CohortFormProps) {
   const [controlLocationIds, setControlLocationIds] = useState<string[]>([]);
   const [interventionDate, setInterventionDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [findingSimlar, setFindingSimilar] = useState(false);
   const [similarMatches, setSimilarMatches] = useState<{ id: string; name: string }[]>([]);
 
@@ -58,6 +59,7 @@ export function CohortForm({ locations, onSubmit }: CohortFormProps) {
     setControlLocationIds([]);
     setInterventionDate("");
     setSimilarMatches([]);
+    setSubmitError(null);
   }
 
   async function handleFindSimilar() {
@@ -89,6 +91,7 @@ export function CohortForm({ locations, onSubmit }: CohortFormProps) {
     if (!name.trim() || locationIds.length === 0) return;
 
     setSubmitting(true);
+    setSubmitError(null);
     try {
       // similar_hotels is saved as named_control with auto-populated IDs
       const effectiveControlType =
@@ -108,6 +111,15 @@ export function CohortForm({ locations, onSubmit }: CohortFormProps) {
       });
       reset();
       setOpen(false);
+    } catch (err) {
+      // Phase 4.10 — server-side DuplicateCohortNameError surfaces here with
+      // a friendly message. Other errors get a generic fallback so the form
+      // never silently swallows a failure.
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Could not create cohort. Try again.";
+      setSubmitError(message);
     } finally {
       setSubmitting(false);
     }
@@ -137,10 +149,23 @@ export function CohortForm({ locations, onSubmit }: CohortFormProps) {
             <Input
               id="cohort-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (submitError) setSubmitError(null);
+              }}
               placeholder="e.g. Q1 Promo Hotels"
+              aria-invalid={submitError ? true : undefined}
               required
             />
+            {submitError && (
+              <p
+                className="text-xs text-destructive"
+                role="alert"
+                data-testid="cohort-form-error"
+              >
+                {submitError}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">

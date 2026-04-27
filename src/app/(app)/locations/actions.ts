@@ -9,6 +9,9 @@ import {
   regions,
   user,
   locationRegionMemberships,
+  hotelGroups,
+  locationHotelGroupMemberships,
+  kioskConfigGroups,
 } from "@/db/schema";
 import {
   requireRole,
@@ -16,6 +19,7 @@ import {
   type Role,
 } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
+import { LOCATION_TYPES, type LocationType } from "@/lib/analytics/types";
 import { eq, isNull, and, desc, inArray, sql } from "drizzle-orm";
 import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
@@ -76,6 +80,34 @@ export type LocationWithRelations = {
   contractTerms: string | null;
   contractDocuments: Array<{ fileName: string; s3Key: string; uploadedAt: string }> | null;
   notes: string | null;
+  // Phase 7.1 / D9 — analytics-filter integrity. The CHECK constraint on the
+  // column (migration 0034) restricts values to LOCATION_TYPES; null means
+  // "not yet classified" (the `/settings/outlet-types` flow surfaces these).
+  locationType: LocationType | null;
+  // Phase 7.2 — region assignment + outlet code, both NOT NULL since 0022.
+  // Surfaced on the location detail form so admins don't have to detour
+  // through `/settings/outlet-types` for a one-off region change.
+  primaryRegionId: string;
+  outletCode: string;
+  // Phase 7.4 — fields previously list-only on `/locations`. Surfacing them
+  // on the detail form removes the inconsistency where editing meant
+  // crossing pages. `internalPocName` is denormalised from the `user`
+  // table so the form can render the picker label without a second fetch.
+  status: string | null;
+  internalPocId: string | null;
+  internalPocName: string | null;
+  customerCode: string | null;
+  maintenanceFee: string | null;
+  locationGroup: string | null;
+  // Phase 7.2b / D5 — hotel-group memberships are N:N (legitimate JVs map to
+  // multiple groups). The picker writes directly to
+  // `location_hotel_group_memberships` via `setLocationHotelGroupMemberships`.
+  hotelGroupMemberships: Array<{ id: string; name: string }>;
+  // Phase 7.6a / D13 — kiosk config group lives on the location (Monday col
+  // 1466686598). Surfaced read-write on the form; the 7.6d investigation
+  // confirmed Monday sync overwrites local edits unconditionally, so the
+  // picker shows that warning inline.
+  kioskConfigGroupId: string | null;
   // D6 / Task 2.12 — NOT NULL, defaults to 'UTC' when not yet set by the
   // backfill (e.g. a new region without a region-default mapping).
   ianaTimezone: string;
@@ -179,6 +211,38 @@ export async function getLocation(id: string): Promise<
 
     if (!row) return { error: "Location not found" };
 
+    // Phase 7.4 — denormalise the internal POC's display name. Skipped when
+    // unset so the picker can render an "— Unassigned —" sentinel.
+    let internalPocName: string | null = null;
+    if (row.internalPocId) {
+      const [pocRow] = await db
+        .select({ name: user.name })
+        .from(user)
+        .where(eq(user.id, row.internalPocId))
+        .limit(1);
+      internalPocName = pocRow?.name ?? null;
+    }
+
+    // Phase 7.2b — current hotel-group memberships (id + name) so the picker
+    // can render labels without a second client-side fetch.
+    const hotelGroupMembershipRows = await db
+      .select({
+        id: hotelGroups.id,
+        name: hotelGroups.name,
+      })
+      .from(locationHotelGroupMemberships)
+      .innerJoin(
+        hotelGroups,
+        eq(locationHotelGroupMemberships.hotelGroupId, hotelGroups.id),
+      )
+      .where(
+        and(
+          eq(locationHotelGroupMemberships.locationId, id),
+          isNull(hotelGroups.archivedAt),
+        ),
+      )
+      .orderBy(hotelGroups.name);
+
     // Fetch kiosk assignments (all, current and historical)
     const assignmentRows = await db
       .select({
@@ -198,6 +262,8 @@ export async function getLocation(id: string): Promise<
 
     const locationData: LocationWithRelations = {
       ...row,
+      internalPocName,
+      hotelGroupMemberships: hotelGroupMembershipRows,
       assignedKiosks: assignmentRows,
     };
 
@@ -251,6 +317,18 @@ const EDITABLE_LOCATION_FIELDS = [
   // the form's perspective (the Select picks from a curated list); validated
   // against the actual zone DB in the future when we add geo-tz refinement.
   "ianaTimezone",
+  // D9 / Phase 7.1 — `'internal'` analytics exclusion. Validated against the
+  // LOCATION_TYPES enum below before reaching the DB so an attacker can't
+  // bypass the CHECK constraint with a sentinel string.
+  "locationType",
+  // Phase 7.2 — assigning a location to a different region. Validated as a
+  // UUID below; the FK + (primaryRegionId, outletCode) uniqueness invariant
+  // are enforced by the DB and surface as a friendly error if violated.
+  "primaryRegionId",
+  // Phase 7.6a / D13 — kiosk config group. Editor-level access (member, not
+  // admin-only) per D13. Empty string clears the FK; otherwise UUID guard
+  // mirrors primaryRegionId.
+  "kioskConfigGroupId",
 ] as const;
 
 export type EditableLocationField = (typeof EDITABLE_LOCATION_FIELDS)[number];
@@ -314,6 +392,52 @@ export async function updateLocationField(
     } else if (validField === "internalPocId") {
       // FK to user — null means "unassigned"
       updateData[validField] = value && value !== "" ? value : null;
+    } else if (validField === "locationType") {
+      // Empty string treated as "clear classification" (NULL); anything
+      // else must match LOCATION_TYPES exactly. Bouncing here mirrors the
+      // CHECK constraint added in migration 0034 — by the time the value
+      // hits the DB it's already known-good.
+      if (value === null || value === "") {
+        updateData[validField] = null;
+      } else if ((LOCATION_TYPES as readonly string[]).includes(value)) {
+        updateData[validField] = value;
+      } else {
+        return { error: `Invalid location type: ${value}` };
+      }
+    } else if (validField === "primaryRegionId") {
+      // primary_region_id is NOT NULL since migration 0022. Reject empty;
+      // require canonical UUID shape so a malformed value never reaches the
+      // FK check (which would surface as an opaque 500).
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!value || !uuidRe.test(value)) {
+        return { error: "A region is required" };
+      }
+      updateData[validField] = value;
+    } else if (validField === "kioskConfigGroupId") {
+      // Empty string / null = "clear assignment". Otherwise enforce UUID
+      // shape so a bad value never reaches the FK (which would surface as
+      // an opaque 500). The DB FK enforces existence.
+      if (value === null || value === "") {
+        updateData[validField] = null;
+      } else {
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRe.test(value)) {
+          return { error: "Invalid kiosk config group" };
+        }
+        updateData[validField] = value;
+      }
+    } else if (validField === "outletCode") {
+      // NOT NULL since 0022. The (primaryRegionId, outletCode) uniqueness
+      // invariant lives in the DB and surfaces here as a 23505 — caller
+      // sees a generic error and can retry; the DB stays consistent.
+      const trimmed = (value ?? "").trim();
+      if (trimmed.length === 0) {
+        return { error: "Outlet code is required" };
+      }
+      if (trimmed.length > 64) {
+        return { error: "Outlet code must be 64 characters or fewer" };
+      }
+      updateData[validField] = trimmed;
     } else {
       updateData[validField] = value;
     }
@@ -372,7 +496,9 @@ export async function archiveLocation(locationId: string) {
   }
 }
 
-export async function listLocations(): Promise<LocationListItem[]> {
+export async function listLocations(
+  options: { includeArchived?: boolean } = {},
+): Promise<LocationListItem[]> {
   try {
     const pocUser = user;
     const rows = await db
@@ -397,7 +523,10 @@ export async function listLocations(): Promise<LocationListItem[]> {
       })
       .from(locations)
       .leftJoin(pocUser, eq(locations.internalPocId, pocUser.id))
-      .where(isNull(locations.archivedAt))
+      // Phase 7.8 — when the page passes `includeArchived=true`, drop the
+      // `archived_at IS NULL` predicate so the toggle can surface the
+      // archived rows. Default behaviour is unchanged.
+      .where(options.includeArchived ? undefined : isNull(locations.archivedAt))
       .orderBy(desc(locations.createdAt));
 
     // Fetch kiosk counts
@@ -617,34 +746,267 @@ export async function updateBankingDetails(
     const session = await requireRole("admin");
 
     const [row] = await db
-      .select({ name: locations.name })
+      .select({
+        name: locations.name,
+        bankingDetails: locations.bankingDetails,
+      })
       .from(locations)
       .where(eq(locations.id, locationId))
       .limit(1);
 
     if (!row) return { error: "Location not found" };
 
+    // Phase 7.9 — diff old vs new at the field level so admins can answer
+    // "who changed our IBAN?" without reading raw before/after blobs. Values
+    // stay redacted in the audit row; only the field name changes (which is
+    // the question an investigator actually needs answered).
+    const oldDetails = (row.bankingDetails as Record<string, string> | null) ?? {};
+    const changedFields = new Set<string>();
+    for (const k of Object.keys(bankingDetails)) {
+      if ((oldDetails[k] ?? "") !== (bankingDetails[k] ?? "")) {
+        changedFields.add(k);
+      }
+    }
+    for (const k of Object.keys(oldDetails)) {
+      if ((oldDetails[k] ?? "") !== (bankingDetails[k] ?? "")) {
+        changedFields.add(k);
+      }
+    }
+
     await db
       .update(locations)
       .set({ bankingDetails, updatedAt: new Date() })
       .where(eq(locations.id, locationId));
 
-    // Redact values in audit log for security
-    await writeAuditLog({
-      actorId: session.user.id,
-      actorName: session.user.name,
-      entityType: "location",
-      entityId: locationId,
-      entityName: row.name,
-      action: "update",
-      field: "bankingDetails",
-      oldValue: "[REDACTED]",
-      newValue: "[REDACTED]",
-    });
+    if (changedFields.size === 0) {
+      // No-op save — don't pollute the audit log with empty-diff entries.
+      return { success: true as const };
+    }
+
+    // One audit row per changed field. Values stay `[REDACTED]` so the log
+    // never leaks an account number, but the field-level granularity gives
+    // an investigator the "what" alongside the existing "who/when".
+    for (const field of changedFields) {
+      await writeAuditLog({
+        actorId: session.user.id,
+        actorName: session.user.name,
+        entityType: "location",
+        entityId: locationId,
+        entityName: row.name,
+        action: "update",
+        field: `bankingDetails.${field}`,
+        oldValue: "[REDACTED]",
+        newValue: "[REDACTED]",
+      });
+    }
 
     return { success: true as const };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update banking details";
+    return { error: message };
+  }
+}
+
+// Phase 7.10 / D11 — surface locations whose free trial is ending soon
+// so ops can decide to extend / convert / terminate before the deadline
+// arrives unnoticed. Window is configurable; default 30 days matches D11.
+export type TrialEndingSoonItem = {
+  locationId: string;
+  name: string;
+  freeTrialEndDate: Date;
+  daysRemaining: number;
+};
+
+export async function getTrialsEndingSoon(
+  daysAhead: number = 30,
+): Promise<TrialEndingSoonItem[]> {
+  try {
+    await requireRole("admin", "member", "viewer");
+    const now = new Date();
+    const horizon = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+
+    const rows = await db
+      .select({
+        id: locations.id,
+        name: locations.name,
+        freeTrialEndDate: locations.freeTrialEndDate,
+      })
+      .from(locations)
+      .where(
+        and(
+          isNull(locations.archivedAt),
+          // freeTrialEndDate IS NOT NULL — explicit check via raw SQL since
+          // the column is nullable. Drizzle's isNull(...) negation:
+          sql`${locations.freeTrialEndDate} IS NOT NULL`,
+          sql`${locations.freeTrialEndDate} >= ${now.toISOString()}`,
+          sql`${locations.freeTrialEndDate} <= ${horizon.toISOString()}`,
+        ),
+      )
+      .orderBy(locations.freeTrialEndDate);
+
+    return rows
+      .filter((r): r is typeof r & { freeTrialEndDate: Date } =>
+        r.freeTrialEndDate !== null,
+      )
+      .map((r) => {
+        const days = Math.ceil(
+          (r.freeTrialEndDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+        );
+        return {
+          locationId: r.id,
+          name: r.name,
+          freeTrialEndDate: r.freeTrialEndDate,
+          daysRemaining: days,
+        };
+      });
+  } catch {
+    // Same swallow-and-return-empty pattern as listRegionOptions: a banner
+    // that fails to load shouldn't break the host page.
+    return [];
+  }
+}
+
+// Phase 7.6a — list kiosk config groups for the location detail Select.
+export async function listKioskConfigGroupOptions(): Promise<
+  Array<{ id: string; name: string }>
+> {
+  try {
+    await requireRole("admin", "member", "viewer");
+    const rows = await db
+      .select({ id: kioskConfigGroups.id, name: kioskConfigGroups.name })
+      .from(kioskConfigGroups)
+      .orderBy(kioskConfigGroups.name);
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+// Phase 7.2b — list active hotel groups for the multi-select picker. The
+// archived JV groups (split by D5 PR-6 Part C) are excluded so an admin
+// can't accidentally re-attach a location to a defunct comma-encoded row.
+export async function listHotelGroupOptions(): Promise<
+  Array<{ id: string; name: string }>
+> {
+  try {
+    await requireRole("admin", "member", "viewer");
+    const rows = await db
+      .select({ id: hotelGroups.id, name: hotelGroups.name })
+      .from(hotelGroups)
+      .where(isNull(hotelGroups.archivedAt))
+      .orderBy(hotelGroups.name);
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+// Phase 7.2b — replace a location's hotel-group memberships with the given
+// set. Diffs old vs new so the audit log only records actual additions and
+// removals, and so unchanged memberships keep their original `created_at`
+// (rather than being delete+inserted on every save). Wrapped in a single
+// statement chain — Drizzle doesn't expose `db.transaction(...)` from this
+// call site for the postgres-js driver, but `delete + insert ... ON CONFLICT
+// DO NOTHING` is idempotent and effectively atomic for our scale.
+export async function setLocationHotelGroupMemberships(
+  locationId: string,
+  hotelGroupIds: string[],
+) {
+  try {
+    const session = await requireRole("admin", "member");
+
+    const [row] = await db
+      .select({ name: locations.name })
+      .from(locations)
+      .where(eq(locations.id, locationId))
+      .limit(1);
+    if (!row) return { error: "Location not found" };
+
+    const requested = new Set(hotelGroupIds);
+    const currentRows = await db
+      .select({ hotelGroupId: locationHotelGroupMemberships.hotelGroupId })
+      .from(locationHotelGroupMemberships)
+      .where(eq(locationHotelGroupMemberships.locationId, locationId));
+    const current = new Set(currentRows.map((r) => r.hotelGroupId));
+
+    const toAdd = [...requested].filter((id) => !current.has(id));
+    const toRemove = [...current].filter((id) => !requested.has(id));
+
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      return { success: true as const, addedCount: 0, removedCount: 0 };
+    }
+
+    // Resolve names so the audit row is human-readable. Single round trip.
+    const allTouched = [...new Set([...toAdd, ...toRemove])];
+    const nameRows =
+      allTouched.length > 0
+        ? await db
+            .select({ id: hotelGroups.id, name: hotelGroups.name })
+            .from(hotelGroups)
+            .where(inArray(hotelGroups.id, allTouched))
+        : [];
+    const nameMap = new Map(nameRows.map((r) => [r.id, r.name]));
+
+    if (toRemove.length > 0) {
+      await db
+        .delete(locationHotelGroupMemberships)
+        .where(
+          and(
+            eq(locationHotelGroupMemberships.locationId, locationId),
+            inArray(locationHotelGroupMemberships.hotelGroupId, toRemove),
+          ),
+        );
+    }
+
+    if (toAdd.length > 0) {
+      await db
+        .insert(locationHotelGroupMemberships)
+        .values(
+          toAdd.map((hotelGroupId) => ({
+            locationId,
+            hotelGroupId,
+          })),
+        )
+        .onConflictDoNothing();
+    }
+
+    for (const hotelGroupId of toAdd) {
+      await writeAuditLog({
+        actorId: session.user.id,
+        actorName: session.user.name,
+        entityType: "location",
+        entityId: locationId,
+        entityName: row.name,
+        action: "assign",
+        field: "hotel_group_membership",
+        oldValue: undefined,
+        newValue: nameMap.get(hotelGroupId) ?? hotelGroupId,
+      });
+    }
+    for (const hotelGroupId of toRemove) {
+      await writeAuditLog({
+        actorId: session.user.id,
+        actorName: session.user.name,
+        entityType: "location",
+        entityId: locationId,
+        entityName: row.name,
+        action: "unassign",
+        field: "hotel_group_membership",
+        oldValue: nameMap.get(hotelGroupId) ?? hotelGroupId,
+        newValue: undefined,
+      });
+    }
+
+    return {
+      success: true as const,
+      addedCount: toAdd.length,
+      removedCount: toRemove.length,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to update hotel group memberships";
     return { error: message };
   }
 }

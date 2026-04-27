@@ -207,6 +207,11 @@ export async function findSimilarLocations(
     .where(
       combineConditions([
         notInArray(locations.id, cohortLocationIds),
+        // §4 follow-up — exclude archived locations from peer matching.
+        // Without this, cohort vs control comparisons could pick a peer
+        // that has been retired and thus has no recent sales, biasing the
+        // delta toward the cohort.
+        sql`${locations.archivedAt} IS NULL`,
         sql`${locations.numRooms} IS NOT NULL`,
         sql`${locations.numRooms} >= ${roomLow}`,
         sql`${locations.numRooms} <= ${roomHigh}`,

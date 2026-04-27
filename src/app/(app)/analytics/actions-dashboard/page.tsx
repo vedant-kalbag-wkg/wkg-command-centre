@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { formatDate } from "@/lib/analytics/formatters";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -305,7 +306,7 @@ export default function ActionsDashboardPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-xs">
-                      {new Date(item.createdAt).toLocaleDateString()}
+                      {formatDate(item.createdAt)}
                     </TableCell>
                     <TableCell>
                       {item.status !== "resolved" &&
@@ -342,7 +343,7 @@ export default function ActionsDashboardPage() {
                           {item.resolvedAt && (
                             <p className="text-[10px] text-muted-foreground">
                               Resolved{" "}
-                              {new Date(item.resolvedAt).toLocaleDateString()}
+                              {formatDate(item.resolvedAt)}
                             </p>
                           )}
                         </div>

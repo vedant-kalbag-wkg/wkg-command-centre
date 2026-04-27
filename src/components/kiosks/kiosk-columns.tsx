@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import type { KioskListItem } from "@/app/(app)/kiosks/actions";
 import { EditableCell, type EditableCellOption } from "@/components/table/editable-cell";
 import { ColumnHeaderFilter } from "@/components/table/column-header-filter";
+import { formatCurrency, formatDate } from "@/lib/analytics/formatters";
 
 export function makeKioskColumns(
   pocOptions: EditableCellOption[] = []
@@ -186,7 +187,7 @@ export function makeKioskColumns(
     cell: ({ getValue }) => {
       const val = getValue() as Date | null;
       if (!val) return <span className="text-muted-foreground">—</span>;
-      return new Date(val).toLocaleDateString("en-GB");
+      return formatDate(new Date(val));
     },
   },
   // 9. Kiosk ID — non-editable (hidden by default, kioskId visible via column toggle), has header filter
@@ -253,7 +254,9 @@ export function makeKioskColumns(
     cell: ({ getValue }) => {
       const val = getValue() as string | null;
       if (!val) return <span className="text-muted-foreground">—</span>;
-      return `$${parseFloat(val).toFixed(2)}`;
+      // Phase 6.3 — route through `formatCurrency` (en-GB, GBP) so the
+      // symbol matches the rest of the app instead of a hard-coded `$`.
+      return formatCurrency(parseFloat(val));
     },
   },
   // 13. Free Trial Status (hidden by default) — non-editable (boolean)
@@ -267,6 +270,58 @@ export function makeKioskColumns(
     cell: ({ getValue }) => {
       const val = getValue() as boolean | null;
       return val ? "Yes" : "No";
+    },
+  },
+  // 13a. Free Trial End Date — Phase 7.5 (hidden by default).
+  {
+    accessorKey: "freeTrialEndDate",
+    size: 110,
+    header: "Trial Ends",
+    enableSorting: true,
+    enableHiding: true,
+    cell: ({ getValue }) => {
+      const val = getValue() as Date | null;
+      if (!val) return <span className="text-muted-foreground">—</span>;
+      return formatDate(new Date(val));
+    },
+  },
+  // 13b. Deployment Phase Tags — Phase 7.5 (hidden by default).
+  {
+    accessorKey: "deploymentPhaseTags",
+    size: 160,
+    header: "Phase Tags",
+    enableSorting: false,
+    enableHiding: true,
+    cell: ({ getValue }) => {
+      const val = getValue() as string[] | null;
+      if (!val || val.length === 0) return <span className="text-muted-foreground">—</span>;
+      return (
+        <div className="flex flex-wrap gap-1">
+          {val.map((tag) => (
+            <Badge key={tag} variant="secondary" className="text-[10px] py-0 h-5">
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      );
+    },
+  },
+  // 13c. Notes — Phase 7.5 (hidden by default). Truncated with full value
+  // available on hover; long-form editing remains on the detail page.
+  {
+    accessorKey: "notes",
+    size: 200,
+    header: "Notes",
+    enableSorting: false,
+    enableHiding: true,
+    cell: ({ getValue }) => {
+      const val = getValue() as string | null;
+      if (!val) return <span className="text-muted-foreground">—</span>;
+      return (
+        <span className="truncate block text-xs" title={val}>
+          {val}
+        </span>
+      );
     },
   },
   // 14. Internal POC / assignee — editable via user picker
@@ -299,7 +354,7 @@ export function makeKioskColumns(
     cell: ({ getValue }) => {
       const val = getValue() as Date | null;
       if (!val) return <span className="text-muted-foreground">—</span>;
-      return new Date(val).toLocaleDateString("en-GB");
+      return formatDate(new Date(val));
     },
   },
   ];
@@ -317,6 +372,9 @@ export const kioskDefaultColumnVisibility: Record<string, boolean> = {
   softwareVersion: false,
   maintenanceFee: false,
   freeTrialStatus: false,
+  freeTrialEndDate: false,
+  deploymentPhaseTags: false,
+  notes: false,
   createdAt: false,
 };
 

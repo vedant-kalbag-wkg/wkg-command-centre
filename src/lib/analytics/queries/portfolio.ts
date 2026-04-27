@@ -21,6 +21,7 @@ import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getAnalyticsDisplayTimezone } from "@/lib/analytics/display-timezone-server";
 import { getComparisonDates, classifyOutletTier } from "@/lib/analytics/metrics";
+import { OUTLET_TIERS_LIMIT } from "@/lib/analytics/types";
 import type {
   AnalyticsFilters,
   ComparisonMode,
@@ -30,6 +31,7 @@ import type {
   DailyTrendRow,
   HourlyDistributionRow,
   OutletTierRow,
+  OutletTiersResult,
   PortfolioData,
 } from "@/lib/analytics/types";
 
@@ -405,7 +407,7 @@ export async function getHourlyDistribution(
 export async function getOutletTiers(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
-): Promise<OutletTierRow[]> {
+): Promise<OutletTiersResult> {
   const whereClause = await buildPortfolioWhere(filters, userCtx);
   const amountMode = buildAmountModeCondition(filters);
   const salesTxn = buildSalesTxnCondition();
@@ -420,6 +422,10 @@ export async function getOutletTiers(
   // num_rooms must also appear in GROUP BY because it's in SELECT without an
   // aggregate. The correlated subqueries don't need to — they're scalar per
   // row.
+  //
+  // Phase 4.3 — `total_count` via COUNT(*) OVER () runs after the WHERE/GROUP
+  // BY but before LIMIT, so it reports the unrestricted size of the filtered
+  // population (the UI uses this to render "Showing 200 of N" when truncated).
   const rawRows = await executeRows<{
     location_id: string;
     outlet_code: string;
@@ -430,6 +436,7 @@ export async function getOutletTiers(
     num_rooms: number | null;
     revenue: string;
     transactions: string;
+    total_count: number;
   }>(sql`
     SELECT
       ${locations.id} AS location_id,
@@ -440,13 +447,16 @@ export async function getOutletTiers(
       ${activeKioskCountFragment()} AS kiosk_count,
       ${locations.numRooms} AS num_rooms,
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
-      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
+      COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
+      COUNT(*) OVER ()::int AS total_count
     FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
     ORDER BY revenue DESC
-    LIMIT 200
+    LIMIT ${OUTLET_TIERS_LIMIT}
   `);
+
+  const totalCount = rawRows.length > 0 ? Number(rawRows[0].total_count) : 0;
 
   const parsed = rawRows.map((row) => {
     // Postgres returns integers as JS number already, but coerce defensively
@@ -470,7 +480,7 @@ export async function getOutletTiers(
   const totalRevenue = parsed.reduce((sum, r) => sum + r.revenue, 0);
   const sortedRevenues = parsed.map((r) => r.revenue).sort((a, b) => a - b);
 
-  return parsed.map((row) => {
+  const rows: OutletTierRow[] = parsed.map((row) => {
     const rank = binarySearchRank(row.revenue, sortedRevenues);
     const percentile = sortedRevenues.length > 0 ? (rank / sortedRevenues.length) * 100 : 0;
     // Null out per-unit ratios when the denominator is missing or zero; the UI
@@ -495,6 +505,8 @@ export async function getOutletTiers(
       revenuePerRoom,
     };
   });
+
+  return { rows, totalCount };
 }
 
 function binarySearchRank(value: number, sorted: number[]): number {
@@ -559,9 +571,9 @@ export async function getPortfolioData(
       console.error('[portfolio] sub-query "hourlyDistribution" failed:', err);
       return [] as HourlyDistributionRow[];
     }),
-    getOutletTiers(filters, userCtx).catch((err) => {
+    getOutletTiers(filters, userCtx).catch((err): OutletTiersResult => {
       console.error('[portfolio] sub-query "outletTiers" failed:', err);
-      return [] as OutletTierRow[];
+      return { rows: [], totalCount: 0 };
     }),
   ]);
 

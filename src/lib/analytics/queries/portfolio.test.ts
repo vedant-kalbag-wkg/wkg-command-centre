@@ -68,6 +68,7 @@ const outletTierRows = [
     num_rooms: 100,
     revenue: "10000",
     transactions: "500",
+    total_count: 2,
   },
   {
     location_id: "loc-b",
@@ -79,6 +80,7 @@ const outletTierRows = [
     num_rooms: null,
     revenue: "5000",
     transactions: "200",
+    total_count: 2,
   },
 ];
 
@@ -92,9 +94,10 @@ describe("getOutletTiers – property-level enrichment (Phase 4.2)", () => {
   it("maps kioskCount, numRooms, hotelGroupName, and revenue-per-X correctly", async () => {
     mockExecute.mockResolvedValueOnce(outletTierRows);
 
-    const rows = await getOutletTiers(filters, userCtx);
+    const { rows, totalCount } = await getOutletTiers(filters, userCtx);
 
     expect(rows).toHaveLength(2);
+    expect(totalCount).toBe(2);
 
     const alpha = rows.find((r) => r.locationId === "loc-a")!;
     expect(alpha.hotelGroupName).toBe("Hilton");
@@ -118,7 +121,7 @@ describe("getOutletTiers – property-level enrichment (Phase 4.2)", () => {
   it("retains legacy fields (percentile, sharePercentage, tier) alongside the new ones", async () => {
     mockExecute.mockResolvedValueOnce(outletTierRows);
 
-    const rows = await getOutletTiers(filters, userCtx);
+    const { rows } = await getOutletTiers(filters, userCtx);
 
     const alpha = rows.find((r) => r.locationId === "loc-a")!;
     const beta = rows.find((r) => r.locationId === "loc-b")!;
@@ -145,20 +148,46 @@ describe("getOutletTiers – property-level enrichment (Phase 4.2)", () => {
         num_rooms: 0,
         revenue: "1000",
         transactions: "10",
+        total_count: 1,
       },
     ]);
 
-    const [row] = await getOutletTiers(filters, userCtx);
+    const { rows } = await getOutletTiers(filters, userCtx);
+    const row = rows[0];
     expect(row.numRooms).toBe(0);
     expect(row.revenuePerRoom).toBeNull();
     // kioskCount > 0 so revenuePerKiosk should still be finite
     expect(row.revenuePerKiosk).toBe(500);
   });
 
-  it("returns an empty array when the query returns no rows", async () => {
+  it("returns an empty result when the query returns no rows", async () => {
     mockExecute.mockResolvedValueOnce([]);
 
-    const rows = await getOutletTiers(filters, userCtx);
+    const { rows, totalCount } = await getOutletTiers(filters, userCtx);
     expect(rows).toHaveLength(0);
+    expect(totalCount).toBe(0);
+  });
+
+  it("Phase 4.3 — totalCount reflects unrestricted population (LIMIT-aware)", async () => {
+    // Driver simulates a window-counted query: all rows carry the same
+    // total_count = 250, but only 200 rows are returned (LIMIT trims them).
+    mockExecute.mockResolvedValueOnce(
+      Array.from({ length: 200 }, (_, i) => ({
+        location_id: `loc-${i}`,
+        outlet_code: `H${i}`,
+        hotel_name: `Hotel ${i}`,
+        live_date: null,
+        hotel_group_name: null,
+        kiosk_count: 1,
+        num_rooms: 50,
+        revenue: String(1000 - i),
+        transactions: "10",
+        total_count: 250,
+      })),
+    );
+
+    const { rows, totalCount } = await getOutletTiers(filters, userCtx);
+    expect(rows).toHaveLength(200);
+    expect(totalCount).toBe(250);
   });
 });

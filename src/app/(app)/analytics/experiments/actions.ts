@@ -15,6 +15,7 @@ import { getActiveLocationIds } from "@/lib/analytics/active-locations";
 import { scopedLocationsCondition } from "@/lib/scoping/scoped-query";
 import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
 import { combineConditions } from "@/lib/analytics/queries/shared";
+import { DuplicateCohortNameError } from "./errors";
 import type {
   AnalyticsFilters,
   ExperimentCohort,
@@ -106,6 +107,21 @@ export async function listLocationsForPicker(): Promise<
 // Mutations
 // ---------------------------------------------------------------------------
 
+// Phase 4.10 — `DuplicateCohortNameError` lives in `./errors.ts` because
+// `"use server"` modules can only export async functions. Importing the
+// class is fine; throwing it from a server action surfaces the same
+// `instanceof` shape on the client.
+const UNIQUE_INDEX_NAME = "experiment_cohorts_created_by_name_unique";
+
+function isDuplicateCohortNameError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: unknown; message?: unknown; constraint?: unknown };
+  if (e.code === "23505") return true;
+  if (typeof e.constraint === "string" && e.constraint === UNIQUE_INDEX_NAME) return true;
+  if (typeof e.message === "string" && e.message.includes(UNIQUE_INDEX_NAME)) return true;
+  return false;
+}
+
 /**
  * Create a new experiment cohort.
  */
@@ -119,18 +135,26 @@ export async function createCohort(data: {
 }): Promise<ExperimentCohort> {
   const { ctx, actorId, actorName } = await requireAuth();
 
-  const [row] = await db
-    .insert(experimentCohorts)
-    .values({
-      name: data.name,
-      description: data.description ?? null,
-      locationIds: data.locationIds,
-      controlType: data.controlType,
-      controlLocationIds: data.controlLocationIds ?? null,
-      interventionDate: data.interventionDate ?? null,
-      createdBy: ctx.id,
-    })
-    .returning();
+  let row: typeof experimentCohorts.$inferSelect;
+  try {
+    [row] = await db
+      .insert(experimentCohorts)
+      .values({
+        name: data.name,
+        description: data.description ?? null,
+        locationIds: data.locationIds,
+        controlType: data.controlType,
+        controlLocationIds: data.controlLocationIds ?? null,
+        interventionDate: data.interventionDate ?? null,
+        createdBy: ctx.id,
+      })
+      .returning();
+  } catch (err) {
+    if (isDuplicateCohortNameError(err)) {
+      throw new DuplicateCohortNameError(data.name);
+    }
+    throw err;
+  }
 
   await writeAuditLog({
     actorId,

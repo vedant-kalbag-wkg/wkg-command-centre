@@ -33,8 +33,14 @@ export function ConfigGroupsTable({ data }: ConfigGroupsTableProps) {
     () => [
       columnHelper.accessor("name", {
         header: "Group Name",
-        cell: (info) => (
-          <span className="font-medium text-foreground">{info.getValue()}</span>
+        // Phase 7.6b — link to the new member-management detail page.
+        cell: ({ getValue, row }) => (
+          <Link
+            href={`/kiosk-config-groups/${row.original.id}`}
+            className="font-medium text-foreground hover:underline"
+          >
+            {getValue()}
+          </Link>
         ),
       }),
       columnHelper.accessor("productAvailability", {

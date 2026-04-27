@@ -3,6 +3,8 @@ import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { listKiosks, listPipelineStages } from "@/app/(app)/kiosks/actions";
+import { getTrialsEndingSoon } from "@/app/(app)/locations/actions";
+import { TrialEndingBanner } from "@/components/kiosks/trial-ending-banner";
 import { ViewTabsClient } from "./view-tabs-client";
 
 export default async function KiosksPage({
@@ -14,9 +16,13 @@ export default async function KiosksPage({
   const validViews = ["table", "kanban", "gantt", "calendar"];
   const activeView = validViews.includes(view) ? view : "table";
 
-  const [kiosks, stages] = await Promise.all([
+  // Phase 7.10 / D11 — banner only renders when at least one location has a
+  // freeTrialEndDate ≤ 30 days out. Fetched in the same Promise.all so the
+  // page paints in one round trip.
+  const [kiosks, stages, trialsEndingSoon] = await Promise.all([
     listKiosks(),
     listPipelineStages(),
+    getTrialsEndingSoon(30),
   ]);
 
   return (
@@ -35,6 +41,7 @@ export default async function KiosksPage({
         }
       />
       <div className="flex-1 overflow-auto p-4 md:p-6">
+        <TrialEndingBanner items={trialsEndingSoon} />
         <ViewTabsClient
           activeView={activeView}
           kiosks={kiosks}

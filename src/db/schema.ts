@@ -128,7 +128,10 @@ export const kiosks = pgTable("kiosks", {
   freeTrialEndDate: timestamp("free_trial_end_date"),
   regionGroup: text("region_group"),
   pipelineStageId: uuid("pipeline_stage_id").references(() => pipelineStages.id),
-  kioskConfigGroupId: uuid("kiosk_config_group_id").references(() => kioskConfigGroups.id),
+  // Phase 7.6c — `kiosks.kiosk_config_group_id` was removed because the
+  // grouping lives at the location level (Monday col 1466686598 →
+  // `locations.kiosk_config_group_id`). Schema field dropped here; the DB
+  // column is dropped by migration 0037, applied post-merge.
   // Internal POC / assignee — the user responsible for this kiosk. Nullable;
   // ON DELETE SET NULL in the migration so deleting a user doesn't cascade.
   internalPocId: text("internal_poc_id").references(() => user.id),
@@ -190,9 +193,14 @@ export const locations = pgTable(
     // Location type — drives the Location Type analytics filter + the
     // unmapped-outlets admin page. NULL means "not yet categorised"; the
     // admin page surfaces those for manual assignment (default: airport).
-    // Values: 'hotel' | 'retail_desk' | 'online' | 'airport' | 'hex_kiosk'.
-    // Enforced via CHECK constraint in migration 0024.
-    locationType: text("location_type"),
+    // 'internal' (D9 / Phase 7.1) marks refund-handling outlets excluded
+    // from analytics by default.
+    // Enforced via CHECK constraint in migration 0024 + 0034. The TS enum
+    // here is informational — Drizzle does not write the CHECK from this
+    // value, but it propagates the narrow union into LocationWithRelations.
+    locationType: text("location_type", {
+      enum: ["hotel", "retail_desk", "online", "airport", "hex_kiosk", "internal"],
+    }),
     // Kiosk config group lives on the location: each hotel belongs to one
     // group (imported from Monday column 1466686598). Nullable FK + ON DELETE
     // SET NULL so removing a group does not cascade-delete locations.
@@ -934,18 +942,28 @@ export const locationFlags = pgTable("location_flags", {
 // group (rest of portfolio or named locations), and overlay intervention dates.
 // =============================================================================
 
-export const experimentCohorts = pgTable("experiment_cohorts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  description: text("description"),
-  locationIds: jsonb("location_ids").$type<string[]>().notNull(),
-  controlType: text("control_type", { enum: ["rest_of_portfolio", "named_control"] }).notNull().default("rest_of_portfolio"),
-  controlLocationIds: jsonb("control_location_ids").$type<string[]>(),
-  interventionDate: date("intervention_date"),
-  createdBy: text("created_by").notNull().references(() => user.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+// Per-user uniqueness on (created_by, name): two users may both have a "Q1
+// Promo" cohort, but a single user cannot have two with the same name. The
+// list view already filters by createdBy for non-admins, so per-user scope
+// matches the visible namespace.
+export const experimentCohorts = pgTable(
+  "experiment_cohorts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description"),
+    locationIds: jsonb("location_ids").$type<string[]>().notNull(),
+    controlType: text("control_type", { enum: ["rest_of_portfolio", "named_control"] }).notNull().default("rest_of_portfolio"),
+    controlLocationIds: jsonb("control_location_ids").$type<string[]>(),
+    interventionDate: date("intervention_date"),
+    createdBy: text("created_by").notNull().references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("experiment_cohorts_created_by_name_unique").on(t.createdBy, t.name),
+  ],
+);
 
 // =============================================================================
 // Phase 1 M13.2 — Insight-to-action workflow

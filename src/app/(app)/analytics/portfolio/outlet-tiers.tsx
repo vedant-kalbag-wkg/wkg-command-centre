@@ -27,6 +27,9 @@ import { FlagDialog } from "@/components/analytics/flag-dialog";
 
 interface OutletTiersProps {
   data: OutletTierRow[];
+  // Phase 4.3 — total filtered population (pre-LIMIT). When greater than
+  // data.length, a "showing X of Y" notice is rendered above the table.
+  totalCount?: number;
   loading?: boolean;
   thresholdConfig?: ThresholdConfig;
   flags?: LocationFlag[];
@@ -52,7 +55,14 @@ const trafficLightLabel: Record<string, string> = {
 
 const EM_DASH = "—";
 
-export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated, referenceDate }: OutletTiersProps) {
+export function OutletTiers({
+  data,
+  totalCount,
+  thresholdConfig,
+  flags = [],
+  onFlagCreated,
+  referenceDate,
+}: OutletTiersProps) {
   const metricLabel = useMetricLabel();
   const flagsByLocation = new Map<string, LocationFlag[]>();
   for (const f of flags) {
@@ -61,9 +71,19 @@ export function OutletTiers({ data, thresholdConfig, flags = [], onFlagCreated, 
     flagsByLocation.set(f.locationId, existing);
   }
   const refDate = new Date(referenceDate);
+  const isTruncated = totalCount !== undefined && totalCount > data.length;
 
   return (
     <div className="overflow-x-auto">
+      {isTruncated && (
+        <p
+          className="px-3 py-2 text-xs text-muted-foreground"
+          data-testid="outlet-tiers-truncation-notice"
+        >
+          Showing top {formatNumber(data.length)} of {formatNumber(totalCount)} outlets
+          {" "}(ranked by {metricLabel.toLowerCase()}).
+        </p>
+      )}
       <Table>
         <TableHeader>
           <TableRow>

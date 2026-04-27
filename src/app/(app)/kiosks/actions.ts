@@ -90,6 +90,10 @@ export type KioskListItem = {
   maintenanceFee: string | null;
   freeTrialStatus: boolean | null;
   freeTrialEndDate: Date | null;
+  // Phase 7.5 — surfaced in the list (hidden by default) so admins can scan
+  // pipeline tagging and operator notes without bouncing into the detail page.
+  deploymentPhaseTags: string[] | null;
+  notes: string | null;
   regionGroup: string | null;
   pipelineStageId: string | null;
   pipelineStageName: string | null;
@@ -365,9 +369,26 @@ export async function archiveKiosk(kioskId: string) {
 
     if (!row) return { error: "Kiosk not found" };
 
+    const archivedAt = new Date();
+
+    // Phase 7.7 — cascade-close active assignments. Without this, an
+    // archived kiosk still appears in `active_kiosk_count` aggregations
+    // because `kiosk_assignments.unassigned_at` stays NULL. Close the open
+    // assignments alongside the archive flip so analytics and the kiosk
+    // history stay consistent.
+    await db
+      .update(kioskAssignments)
+      .set({ unassignedAt: archivedAt })
+      .where(
+        and(
+          eq(kioskAssignments.kioskId, kioskId),
+          isNull(kioskAssignments.unassignedAt),
+        ),
+      );
+
     await db
       .update(kiosks)
-      .set({ archivedAt: new Date(), updatedAt: new Date() })
+      .set({ archivedAt, updatedAt: archivedAt })
       .where(eq(kiosks.id, kioskId));
 
     await writeAuditLog({
@@ -541,6 +562,8 @@ export async function listKiosks(): Promise<KioskListItem[]> {
         maintenanceFee: kiosks.maintenanceFee,
         freeTrialStatus: kiosks.freeTrialStatus,
         freeTrialEndDate: kiosks.freeTrialEndDate,
+        deploymentPhaseTags: kiosks.deploymentPhaseTags,
+        notes: kiosks.notes,
         regionGroup: kiosks.regionGroup,
         pipelineStageId: kiosks.pipelineStageId,
         stageName: pipelineStages.name,
@@ -584,6 +607,8 @@ export async function listKiosks(): Promise<KioskListItem[]> {
       maintenanceFee: r.maintenanceFee,
       freeTrialStatus: r.freeTrialStatus,
       freeTrialEndDate: r.freeTrialEndDate,
+      deploymentPhaseTags: r.deploymentPhaseTags ?? null,
+      notes: r.notes ?? null,
       regionGroup: r.regionGroup,
       pipelineStageId: r.pipelineStageId,
       pipelineStageName: r.stageName ?? null,
