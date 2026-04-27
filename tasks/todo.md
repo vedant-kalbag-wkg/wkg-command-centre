@@ -38,19 +38,19 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 
 ## Phase 2 — Math correctness fixes (specific calculation bugs)
 
-- [ ] **2.1** Replace `SUM(DISTINCT locations.num_rooms)` with subquery aggregation (`location-groups.ts:95, 146`). (P0)
-- [ ] **2.2** Replace `SUM(locations.num_rooms)` over sales_records JOIN with subquery aggregation (`regions.ts:218`) — Heathrow currently shows 1.79M rooms. (P0)
-- [ ] **2.3** "Avg Monthly Revenue" in Install Cohorts → divide by months in window (`maturity-analysis.ts:202`). (P0 — currently 12× off for 12-month window)
-- [x] **2.4** Pivot Table grand totals AVG: recompute from raw (`pivot-engine.ts:387-388`) — Simpson's paradox fix. (P1) — PR-10
-- [x] **2.5** Pivot Table grand totals row "—" when column-pivoting on: align cell-key composition (`pivot-engine.ts:380-397` ↔ `pivot-result-table.tsx:110-121`). (P1) — PR-10
-- [x] **2.6** Pivot Table comparison columns: switch from positional fallback to key-matching (`pivot.ts:218-220, 273-274`). (P1) — PR-10
-- [x] **2.7** Trend Builder Avg Basket bucketing → weighted average `SUM(amount)/SUM(count)` per bucket (`trend-chart.tsx:55-61`). (P0 — currently shows £600 vs true £15.62)
-- [ ] **2.8** Heat Map composite scoring per **D7** (`heat-map.ts:96-102`). (P1)
-- [ ] **2.9** Heat Map traffic light → use composite score not raw revenue (`performance-table.tsx:165-187`). (P1)
-- [ ] **2.10** Plateau detection: compare same-cohort over time; guard against zero/negative `avg3160`; expose threshold in settings (`page.tsx:28-75`). (P1)
-- [ ] **2.11** `getComparisonDates` YoY: handle Feb 29 with explicit fallback to Feb 28 (`metrics.ts:30`). (P2)
-- [ ] **2.12** Hourly Distribution per **D6** (timezone). (P1)
-- [ ] **2.13** Region distribution percentages capped at 100% (Performer Patterns); surface "untagged" rows explicitly. (P1)
+- [x] **2.1** Replace `SUM(DISTINCT locations.num_rooms)` with subquery aggregation (`location-groups.ts:95, 146`). (P0) — PR-7 (`84f76c8`)
+- [x] **2.2** Replace `SUM(locations.num_rooms)` over sales_records JOIN with subquery aggregation (`regions.ts:218`) — Heathrow currently shows 1.79M rooms. (P0) — PR-7 (`84f76c8`)
+- [x] **2.3** "Avg Monthly Revenue" in Install Cohorts → divide by months in window (`maturity-analysis.ts:202`). (P0 — currently 12× off for 12-month window) — `a02e2cb`
+- [x] **2.4** Pivot Table grand totals AVG: recompute from raw (`pivot-engine.ts:387-388`) — Simpson's paradox fix. (P1) — PR-10 (`3daa002`)
+- [x] **2.5** Pivot Table grand totals row "—" when column-pivoting on: align cell-key composition (`pivot-engine.ts:380-397` ↔ `pivot-result-table.tsx:110-121`). (P1) — PR-10 (`3daa002`)
+- [x] **2.6** Pivot Table comparison columns: switch from positional fallback to key-matching (`pivot.ts:218-220, 273-274`). (P1) — PR-10 (`3daa002`)
+- [x] **2.7** Trend Builder Avg Basket bucketing → weighted average `SUM(amount)/SUM(count)` per bucket (`trend-chart.tsx:55-61`). (P0 — currently shows £600 vs true £15.62) — PR-9 (`12ab1c8`)
+- [x] **2.8** Heat Map composite scoring per **D7** (`heat-map.ts:96-102`). (P1) — PR-11 (`2170e98`)
+- [x] **2.9** Heat Map traffic light → use composite score not raw revenue (`performance-table.tsx:165-187`). (P1) — PR-11 (`2170e98`)
+- [x] **2.10** Plateau detection: compare same-cohort over time; guard against zero/negative `avg3160`; expose threshold in settings (`page.tsx:28-75`). (P1) — PR-13 (`aaa0735`)
+- [x] **2.11** `getComparisonDates` YoY: handle Feb 29 with explicit fallback to Feb 28 (`metrics.ts:30`). (P2) — PR-12 (`3ca289b`)
+- [x] **2.12** Hourly Distribution per **D6** (timezone). (P1) — PR-14 (`cf5fd17`); migration 0033 applied to neon-dev only.
+- [x] **2.13** Region distribution percentages capped at 100% (Performer Patterns); surface "untagged" rows explicitly. (P1) — PR-12 (`3ca289b`)
 
 ## Phase 3 — Filter wiring + scoping
 
