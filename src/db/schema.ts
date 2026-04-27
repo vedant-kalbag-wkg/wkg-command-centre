@@ -554,6 +554,12 @@ export const locationRegionMemberships = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.locationId, t.regionId] }),
     byRegion: index("lrm_region_idx").on(t.regionId),
+    // 1-per-location invariant per Resolved Decision D5 (migration 0029).
+    // Composite PK above blocks (loc,region) duplicates; this UNIQUE blocks a
+    // location from belonging to two different regions at once.
+    locationUniq: unique("location_region_memberships_location_id_unique").on(
+      t.locationId,
+    ),
   }),
 );
 

@@ -70,6 +70,20 @@ describe('analytics dimension tables', () => {
     ).rejects.toThrow();
   });
 
+  // D5 PR-6 Part A — UNIQUE(location_id) layered on top of composite PK
+  // ensures every location belongs to at most one region (migration 0029).
+  it('locationRegionMemberships: UNIQUE(location_id) prevents two-region membership', async () => {
+    const [loc] = await ctx.db
+      .insert(locations)
+      .values({ name: 'OneRegion Test', outletCode: 'DIM-ONE-REG', primaryRegionId: ukRegionId })
+      .returning();
+    const [other] = await ctx.db.insert(regions).values({ name: 'OtherRegion', code: 'OTHER' }).returning();
+    await ctx.db.insert(locationRegionMemberships).values({ locationId: loc.id, regionId: ukRegionId });
+    await expect(
+      ctx.db.insert(locationRegionMemberships).values({ locationId: loc.id, regionId: other.id }),
+    ).rejects.toThrow();
+  });
+
   it('locationGroupMemberships: links + cascade', async () => {
     const [loc] = await ctx.db
       .insert(locations)
