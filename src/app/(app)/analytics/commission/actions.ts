@@ -11,6 +11,8 @@ import {
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { requireRole } from "@/lib/rbac";
+import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
+import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
   buildExclusionCondition,
   buildDateCondition,
@@ -21,6 +23,11 @@ import { getPreviousPeriodDates, calculatePeriodChange } from "@/lib/analytics/m
 import { recalculateCommissions } from "@/lib/commission/processor";
 import { writeAuditLog } from "@/lib/audit";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
+
+// scopedSalesCondition expects NodePgDatabase<any> but our db is postgres-js.
+// The internal Drizzle SQL builder API is compatible; cast to satisfy the type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const dbAny = db as any;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,15 +74,20 @@ export type CommissionMonthlyTrend = {
 // Internal: build WHERE clause
 // ---------------------------------------------------------------------------
 
-async function buildCommissionWhere(
+export async function buildCommissionWhere(
   filters: AnalyticsFilters,
+  userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const exclusionCondition = await buildExclusionCondition();
+  const [scopeCondition, exclusionCondition] = await Promise.all([
+    scopedSalesCondition(dbAny, userCtx),
+    buildExclusionCondition(),
+  ]);
   const dateCondition = buildDateCondition(filters);
   const dimensionConditions = buildDimensionFilters(filters);
 
   return combineConditions([
     dateCondition,
+    scopeCondition,
     exclusionCondition,
     ...dimensionConditions,
   ]);
@@ -88,9 +100,9 @@ async function buildCommissionWhere(
 export async function fetchCommissionSummary(
   filters: AnalyticsFilters,
 ): Promise<CommissionSummary> {
-  await getUserCtx();
+  const userCtx = await getUserCtx();
 
-  const where = await buildCommissionWhere(filters);
+  const where = await buildCommissionWhere(filters, userCtx);
 
   const [current] = await db
     .select({
@@ -113,7 +125,7 @@ export async function fetchCommissionSummary(
   // Previous period
   const { prevFrom, prevTo } = getPreviousPeriodDates(filters.dateFrom, filters.dateTo);
   const prevFilters: AnalyticsFilters = { ...filters, dateFrom: prevFrom, dateTo: prevTo };
-  const prevWhere = await buildCommissionWhere(prevFilters);
+  const prevWhere = await buildCommissionWhere(prevFilters, userCtx);
 
   const [prev] = await db
     .select({
@@ -156,9 +168,9 @@ export async function fetchCommissionSummary(
 export async function fetchCommissionByLocation(
   filters: AnalyticsFilters,
 ): Promise<CommissionByLocation[]> {
-  await getUserCtx();
+  const userCtx = await getUserCtx();
 
-  const where = await buildCommissionWhere(filters);
+  const where = await buildCommissionWhere(filters, userCtx);
 
   const rows = await db
     .select({
@@ -196,9 +208,9 @@ export async function fetchCommissionByLocation(
 export async function fetchCommissionByProduct(
   filters: AnalyticsFilters,
 ): Promise<CommissionByProduct[]> {
-  await getUserCtx();
+  const userCtx = await getUserCtx();
 
-  const where = await buildCommissionWhere(filters);
+  const where = await buildCommissionWhere(filters, userCtx);
 
   const rows = await db
     .select({
@@ -233,9 +245,9 @@ export async function fetchCommissionByProduct(
 export async function fetchCommissionMonthlyTrend(
   filters: AnalyticsFilters,
 ): Promise<CommissionMonthlyTrend[]> {
-  await getUserCtx();
+  const userCtx = await getUserCtx();
 
-  const where = await buildCommissionWhere(filters);
+  const where = await buildCommissionWhere(filters, userCtx);
 
   const rows = await db
     .select({
