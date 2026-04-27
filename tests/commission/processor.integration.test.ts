@@ -116,7 +116,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         netAmount: "100.00",
         vatAmount: "20.00",
         isWeknowFee: true,
-        netsuiteCode: "BF-001",
+        netsuiteCode: "9991",
       })
       .returning({ id: salesRecords.id });
 
@@ -210,7 +210,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         netAmount: "100.00",
         vatAmount: "20.00",
         isWeknowFee: true,
-        netsuiteCode: "BF-002",
+        netsuiteCode: "9991",
       })
       .returning({ id: salesRecords.id });
 
@@ -249,7 +249,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         netAmount: "200.00",
         vatAmount: "40.00",
         isWeknowFee: true,
-        netsuiteCode: "BF-003",
+        netsuiteCode: "9991",
       },
       {
         regionId,
