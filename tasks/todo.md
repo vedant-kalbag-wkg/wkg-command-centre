@@ -67,7 +67,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 
 ## Phase 4 — Per-dashboard surface bugs
 
-- [ ] **4.1** "Category Performance" → group by `products.categoryName`, exclude fees via `buildNonFeeCondition()` (currently groups by product name AND includes fees). (P1)
+- [x] **4.1** "Category Performance" → group by `products.categoryName`, exclude fees via `buildNonFeeCondition()`. — PR-23 (`afbe8d1` + `7f416d6` test tightening)
 - [x] **4.2** Cash Handling Fee leak in Performer Top Products: `high-performer-analysis.ts:195` uses `buildNonFeeCondition()`. — covered by Task 1.3 Part B (`156bdb4`); verified PR-22
 - [ ] **4.3** Outlet Tiers cells: `LIMIT 200` → return total + show "showing 200 of N" indicator. (P2)
 - [x] **4.4** Outlet Tiers maturity column: pass `filters.dateTo` (`outlet-tiers.tsx:95-98` already wires `referenceDate={filters.dateTo}` from `portfolio/page.tsx:380`). — covered by PR-5 (`34ac5de`); verified PR-21
