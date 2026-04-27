@@ -21,8 +21,12 @@ import {
   buildMaturityCondition,
   buildSalesTxnCondition,
   combineConditions,
+  locationGroupRoomsSubquery,
 } from "@/lib/analytics/queries/shared";
-import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import {
+  buildActiveLocationCondition,
+  getActiveLocationIds,
+} from "@/lib/analytics/active-locations";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getPreviousPeriodDates, calculatePeriodChange } from "@/lib/analytics/metrics";
 import type {
@@ -215,6 +219,17 @@ export async function getRegionDetail(
   });
 
   // Location group breakdown within region
+  // Task 2.2: total_rooms via correlated scalar subquery scoped to (a) the
+  // current location_group row and (b) locations in this region. The previous
+  // SUM(locations.num_rooms) over the sales_records JOIN multiplied each
+  // location's num_rooms by its sales-row count — Heathrow displayed 1.79M
+  // rooms (vs ~3,000 actual) because it has many high-volume hotels.
+  const activeIds = await getActiveLocationIds();
+  const totalRoomsExpr = locationGroupRoomsSubquery(
+    sql`= ${locationGroups.id}`,
+    activeIds,
+    sql`l.id IN (${locationIdsInRegion})`,
+  );
   const lgRows = await executeRows<{
     group_name: string;
     revenue: string;
@@ -227,7 +242,7 @@ export async function getRegionDetail(
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS outlet_count,
-      SUM(${locations.numRooms})::text AS total_rooms
+      ${totalRoomsExpr}::text AS total_rooms
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
       INNER JOIN ${locationGroupMemberships} ON ${locations.id} = ${locationGroupMemberships.locationId}

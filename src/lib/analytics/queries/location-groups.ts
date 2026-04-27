@@ -16,8 +16,12 @@ import {
   buildMaturityCondition,
   buildSalesTxnCondition,
   combineConditions,
+  locationGroupRoomsSubquery,
 } from "@/lib/analytics/queries/shared";
-import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
+import {
+  buildActiveLocationCondition,
+  getActiveLocationIds,
+} from "@/lib/analytics/active-locations";
 import {
   getPreviousPeriodDates,
   calculatePercentile,
@@ -76,8 +80,15 @@ export async function getLocationGroupsList(
   userCtx: UserCtx,
 ): Promise<LocationGroupData[]> {
   const whereClause = await buildLocationGroupWhere(filters, userCtx);
+  const activeIds = await getActiveLocationIds();
   const amountMode = buildAmountModeCondition(filters);
   const salesTxn = buildSalesTxnCondition();
+  // Task 2.1: total_rooms via correlated scalar subquery, NOT SUM over the
+  // sales_records JOIN (which fans rooms across each location's sales rows).
+  const totalRoomsExpr = locationGroupRoomsSubquery(
+    sql`= ${locationGroups.id}`,
+    activeIds,
+  );
 
   const rows = await executeRows<{
     group_id: string;
@@ -94,7 +105,7 @@ export async function getLocationGroupsList(
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count,
-      SUM(DISTINCT ${locations.numRooms})::text AS total_rooms,
+      ${totalRoomsExpr}::text AS total_rooms,
       NULL::text AS total_kiosks
     FROM ${baseFromWithLocationGroups()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -130,10 +141,18 @@ export async function getLocationGroupDetail(
   userCtx: UserCtx,
 ): Promise<LocationGroupDetail> {
   const whereClause = await buildLocationGroupWhere(filters, userCtx);
-  const groupFilter = sql`${locationGroups.id} IN ${sql.raw(`(${groupIds.map((id) => `'${id}'`).join(",")})`)}`;
+  const activeIds = await getActiveLocationIds();
+  const groupIdList = sql.raw(`(${groupIds.map((id) => `'${id}'`).join(",")})`);
+  const groupFilter = sql`${locationGroups.id} IN ${groupIdList}`;
   const fullWhere = combineConditions([whereClause, groupFilter]);
   const amountMode = buildAmountModeCondition(filters);
   const salesTxn = buildSalesTxnCondition();
+  // Task 2.1: scoped scalar subquery — sums rooms for active members of the
+  // selected groups exactly once each (vs SUM(DISTINCT) which dedupes by VALUE).
+  const totalRoomsExpr = locationGroupRoomsSubquery(
+    sql`IN ${groupIdList}`,
+    activeIds,
+  );
 
   // Summary + capacity metrics
   const summaryRows = await executeRows<{
@@ -147,7 +166,7 @@ export async function getLocationGroupDetail(
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count,
-      SUM(DISTINCT ${locations.numRooms})::text AS total_rooms,
+      ${totalRoomsExpr}::text AS total_rooms,
       NULL::text AS total_kiosks
     FROM ${baseFromWithLocationGroups()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}

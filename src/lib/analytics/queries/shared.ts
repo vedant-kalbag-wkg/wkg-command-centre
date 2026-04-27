@@ -212,6 +212,54 @@ export function combineConditions(conditions: (SQL | undefined)[]): SQL | undefi
 }
 
 /**
+ * Total `num_rooms` across the active members of a location group, as a scalar
+ * subquery. Used by location-groups.ts (list + detail) and regions.ts
+ * (location-group breakdown) to fix Tasks 2.1 + 2.2 — the original queries SUM
+ * `locations.num_rooms` over a `sales_records → locations → memberships` JOIN,
+ * which fans each location's rooms across its sales rows. SUM(DISTINCT
+ * num_rooms) doesn't help (it dedupes by VALUE, not by location). The fix
+ * computes rooms in an isolated subquery that touches `locations` exactly once
+ * per member.
+ *
+ * Semantic choice (D2.1 fix note): we count rooms for ALL active members of
+ * the group regardless of whether they had sales in the date window — i.e.
+ * "current capacity", not "active capacity in window". revenuePerRoom only
+ * makes sense when at least one member contributed sales, in which case the
+ * numerator (revenue SUM) is non-zero anyway; this matches the operator's
+ * intuition that the denominator is the group's deployable footprint.
+ *
+ * @param groupScope SQL fragment placed after `lgm.location_group_id` —
+ *   typically `= ${locationGroups.id}` for correlated subqueries inside a
+ *   GROUP BY, or `IN (...)` for an aggregate over a fixed group set.
+ * @param activeLocationIds the request-scoped active-location id list from
+ *   `getActiveLocationIds()`. Empty list → subquery returns 0.
+ * @param extraLocationFilter optional extra constraint joined with AND, used
+ *   by regions.ts to additionally scope to locations within the region.
+ */
+export function locationGroupRoomsSubquery(
+  groupScope: SQL,
+  activeLocationIds: string[],
+  extraLocationFilter?: SQL,
+): SQL {
+  // Empty active set → no rooms. Avoids emitting `ANY('{}'::uuid[])` and keeps
+  // the COALESCE → 0 fallback explicit at the call site shape.
+  if (activeLocationIds.length === 0) return sql`0`;
+  const activeFilter = sql`l.id = ANY(${sql.param(activeLocationIds)}::uuid[])`;
+  const filters: SQL[] = [
+    sql`lgm.location_group_id ${groupScope}`,
+    sql`l.archived_at IS NULL`,
+    activeFilter,
+  ];
+  if (extraLocationFilter) filters.push(extraLocationFilter);
+  return sql`COALESCE((
+    SELECT SUM(l.num_rooms)
+    FROM ${locations} l
+    INNER JOIN ${locationGroupMemberships} lgm ON lgm.location_id = l.id
+    WHERE ${sql.join(filters, sql` AND `)}
+  ), 0)`;
+}
+
+/**
  * Returns a SQL fragment resolving each location's canonical hotel-group name.
  *
  * A location can belong to multiple hotel groups via
