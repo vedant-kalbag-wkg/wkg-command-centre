@@ -59,6 +59,18 @@ function baseFrom(): SQL {
     INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}`;
 }
 
+// Inclusive calendar-month count between two ISO date strings (or Date objects).
+// `'2026-01-01'` → `'2026-12-31'` is 12 months; same-month is 1.
+function monthsBetweenInclusive(from: string | Date, to: string | Date): number {
+  const f = from instanceof Date ? from : new Date(from);
+  const t = to instanceof Date ? to : new Date(to);
+  const months =
+    (t.getUTCFullYear() - f.getUTCFullYear()) * 12 +
+    (t.getUTCMonth() - f.getUTCMonth()) +
+    1;
+  return Math.max(1, months);
+}
+
 // ─── Query 1: Revenue by Detailed Maturity Bucket ───────────────────────────
 
 export async function getRevenueByMaturityBucket(
@@ -209,6 +221,11 @@ export async function getInstallCohorts(
     ? sql`${whereClause} AND ${liveDateCondition}`
     : liveDateCondition;
 
+  // Calendar months in the selected window (inclusive). A Jan-Dec window
+  // is 12; a Jan 1-15 window is 1. The previous query divided by neither,
+  // so a 12-month window overstated avg-monthly by 12× (audit Task 2.3).
+  const monthsInWindow = monthsBetweenInclusive(filters.dateFrom, filters.dateTo);
+
   const rows = await executeRows<{
     install_month: string;
     location_count: string;
@@ -217,7 +234,12 @@ export async function getInstallCohorts(
     SELECT
       TO_CHAR(${kioskLiveDateSubquery}, 'YYYY-MM') AS install_month,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
-      COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_monthly_revenue
+      COALESCE(
+        SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode})
+          / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0)
+          / ${monthsInWindow},
+        0
+      ) AS avg_monthly_revenue
     FROM ${baseFrom()}
     WHERE ${fullWhere}
     GROUP BY install_month
