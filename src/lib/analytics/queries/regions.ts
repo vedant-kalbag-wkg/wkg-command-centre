@@ -106,11 +106,23 @@ export async function getRegionsList(
       GROUP BY ${regions.id}, ${regions.name}, ${markets.id}, ${markets.name}
       ORDER BY revenue DESC
     `),
-    // Query 2: badge counts (hotel groups + location groups per region). The
-    // inner DISTINCT subquery applies the same global filter as Query 1 so the
-    // badge counts match the detail-panel KPIs (Task 3.8). Regions with zero
-    // sales rows in the period drop out; the LEFT-JOIN-with-?? 0 fallback in
-    // the consumer provides safe defaults.
+    // Query 2: badge counts (hotel groups + location groups per region).
+    //
+    // Task 4.19 / PR-27 — structurally unified with getRegionDetail's
+    // hotelGroupBreakdown so the selector card and the detail panel cannot
+    // diverge. Both queries now count a hotel-group iff there exists at least
+    // one sales row whose location (a) belongs to the region via
+    // location_region_memberships and (b) is a member of the hotel-group via
+    // location_hotel_group_memberships, AND the row passes the global
+    // whereClause. The same predicate shape applies to location-groups.
+    //
+    // Pre-PR-20 the badge counted memberships off `lrm` directly with no sales
+    // gate, returning portfolio-wide membership totals (UK = 79). PR-20 added
+    // the inner DISTINCT sales subquery so the count matched the detail in
+    // typical cases (UK = 63). PR-27 collapses the two shapes into one so
+    // future filter additions cannot reintroduce drift: any sales row that
+    // qualifies under whereClause + region membership credits its (region,
+    // hotel_group) and (region, location_group) pairs exactly once.
     executeRows<{
       region_id: string;
       hotel_group_count: string;
@@ -120,16 +132,14 @@ export async function getRegionsList(
         ${locationRegionMemberships.regionId} AS region_id,
         COUNT(DISTINCT ${locationHotelGroupMemberships.hotelGroupId})::text AS hotel_group_count,
         COUNT(DISTINCT ${locationGroupMemberships.locationGroupId})::text AS location_group_count
-      FROM ${locationRegionMemberships}
+      FROM ${salesRecords}
+        INNER JOIN ${locationRegionMemberships}
+          ON ${locationRegionMemberships.locationId} = ${salesRecords.locationId}
         LEFT JOIN ${locationHotelGroupMemberships}
-          ON ${locationRegionMemberships.locationId} = ${locationHotelGroupMemberships.locationId}
+          ON ${locationHotelGroupMemberships.locationId} = ${salesRecords.locationId}
         LEFT JOIN ${locationGroupMemberships}
-          ON ${locationRegionMemberships.locationId} = ${locationGroupMemberships.locationId}
-      WHERE ${locationRegionMemberships.locationId} IN (
-        SELECT DISTINCT ${salesRecords.locationId}
-        FROM ${salesRecords}
-        ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-      )
+          ON ${locationGroupMemberships.locationId} = ${salesRecords.locationId}
+      ${whereClause ? sql`WHERE ${whereClause}` : sql``}
       GROUP BY ${locationRegionMemberships.regionId}
     `),
   ]);
