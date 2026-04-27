@@ -147,7 +147,11 @@ describe("getBusinessEvents — hierarchical scope-type visibility (PR-29 / Task
     await getBusinessEvents("2025-01-01", "2025-06-30", baseGlobal, userCtx);
     const sql = captured.join("\n--BREAK--\n");
     // D9 / Task 4.6 — buildEffectiveLocationsPredicate adds an
-    // `IS DISTINCT FROM 'internal'` guard unless includeInternalAccounts.
-    expect(sql).toMatch(/internal/);
+    // `location_type IS DISTINCT FROM 'internal'` guard unless
+    // includeInternalAccounts. Pin the exact predicate shape so accidentally
+    // inverting or removing the guard fails this test (a loose `/internal/`
+    // regex would still pass against unrelated identifiers, the userCtx
+    // literal, or even an inverted comparison).
+    expect(sql).toMatch(/location_type"?\s+IS\s+DISTINCT\s+FROM\s+'internal'/i);
   });
 });

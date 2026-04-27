@@ -373,11 +373,18 @@ export async function getBusinessEvents(
 // wrapAnalyticsQuery (which assumes `(AnalyticsFilters, UserCtx, ...rest)`):
 //
 //   getTrendSeriesData: `(metric, SeriesFilters, dateFrom, dateTo, userCtx)`
-//   getBusinessEvents:  `(dateFrom, dateTo)` — no auth/scoping
+//   getBusinessEvents:  `(dateFrom, dateTo, filters, userCtx)` — D9-scoped via
+//                       buildEffectiveLocationsPredicate; cached with the same
+//                       canonicalised filter signature + scopeKey shape as
+//                       getTrendSeriesData so different filter contexts cache
+//                       separately. Scope participation is mandatory now —
+//                       previously this fn was scope-free and returned every
+//                       event in the date range regardless of user filters
+//                       (PR-29 / Task 4.17).
 //
 // Both wrap directly with unstable_cache + withStats. Scope participates in
-// the trend-series key (via scopeKey arg) to collapse internal users while
-// isolating external scopes; getBusinessEvents is scope-free.
+// each cache key via scopeKey, collapsing internal users while isolating
+// external scopes.
 //
 // TTL = 24h, aligned with overnight UK ETL.
 // Tags: ['analytics', 'analytics:trend-builder'] — invalidate via /admin/cache.
