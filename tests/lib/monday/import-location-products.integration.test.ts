@@ -24,21 +24,23 @@ import {
   salesRecords,
 } from "@/db/schema";
 import { runMondayImport } from "@/lib/monday/import-location-products";
+import { eq } from "drizzle-orm";
 
 /**
  * Integration test for `runMondayImport`.
  *
  * Strategy: stub `global.fetch` with a handler that replies to Monday's
- * GraphQL endpoint with a tiny fixture — two boards, three hotels — and
- * run the import end-to-end against a Testcontainers Postgres. Asserts:
+ * GraphQL endpoint with a tiny fixture and run the import end-to-end
+ * against a Testcontainers Postgres. Asserts:
  *   1. The structured result counts match the fixture
  *   2. `location_products` rows land for the resolved hotel
  *   3. A placeholder `locations` row + audit entry are created for the
- *      no-outlet-code hotel on an active board (Live Estate / Australia DCM)
- *   4. The `logger` injection is honoured (no-op when omitted)
- *
- * The real script exercises the full 4-board API path; this test covers the
- * shape of the function and the placeholder branch in isolation.
+ *      no-outlet-code hotel on the AU board (the only board with an
+ *      unambiguous regional default — see audit D5 Part D)
+ *   4. No-outlet-code hotels on Live Estate (no regional default) are
+ *      SKIPPED + counted in `placeholdersSkippedNoRegion`, never silently
+ *      UK-defaulted
+ *   5. The `logger` injection is honoured
  */
 describe("runMondayImport", () => {
   let ctx: TestDbContext;
@@ -126,19 +128,24 @@ describe("runMondayImport", () => {
     await ctx.db.delete(regions);
     await ctx.db.delete(auditLogs);
 
-    // Seed UK region — required for placeholder creation (Live Estate + AU
-    // DCM both default to UK per BOARD_REGION).
-    await ctx.db
-      .insert(regions)
-      .values({ name: "United Kingdom", code: "UK", azureCode: "GB" });
+    // Seed both regions referenced by tests:
+    //   - UK: needed by the seeded matched-hotel resolution path
+    //   - AU: required for placeholder creation on the Australia DCM board
+    //         (the only board still in BOARD_REGION post-D5 Part D)
+    await ctx.db.insert(regions).values([
+      { name: "United Kingdom", code: "UK", azureCode: "GB" },
+      { name: "Australia", code: "AU", azureCode: "AU" },
+    ]);
+
+    const ukRegionId = (
+      await ctx.db.select({ id: regions.id }).from(regions).where(eq(regions.code, "UK"))
+    )[0].id;
 
     // A real hotel with outlet code MATCH-1 so resolution path is exercised.
     await ctx.db.insert(locations).values({
       name: "Matched Hotel",
       outletCode: "MATCH-1",
-      primaryRegionId: (
-        await ctx.db.select({ id: regions.id }).from(regions)
-      )[0].id,
+      primaryRegionId: ukRegionId,
     });
 
     originalFetch = global.fetch;
@@ -149,13 +156,16 @@ describe("runMondayImport", () => {
     vi.restoreAllMocks();
   });
 
-  test("runs end-to-end: resolves matched hotel, creates placeholder, TRUNCATE+insert, returns counts", async () => {
-    // Board 1356570756 = Live Estate (placeholder board)
+  test("runs end-to-end: resolves matched hotel, creates AU placeholder, skips no-region Live Estate hotel, TRUNCATE+insert, returns counts", async () => {
+    // Board 1356570756 = Live Estate (placeholder-eligible, NO regional default post-D5 Part D)
     //  - hotel A: outletCode MATCH-1 → resolves, 2 subitems
-    //  - hotel B: no outletCode → placeholder created, 1 subitem
+    //  - hotel B: no outletCode → SKIPPED + counted in placeholdersSkippedNoRegion
+    //             (formerly silently UK-defaulted; see audit D5 Part D)
     // Board 1743012104 = Ready to Launch (NON placeholder board)
-    //  - hotel C: no outletCode → SKIPPED
-    // Boards 5026387784 + 5092887865: empty pages.
+    //  - hotel C: no outletCode → SKIPPED (not placeholder-eligible)
+    // Board 5092887865 = Australia DCM (placeholder-eligible, AU regional default)
+    //  - hotel D: no outletCode → AU placeholder created, 1 subitem
+    // Board 5026387784 = Removed: empty page.
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse((init?.body as string) ?? "{}");
       const query: string = body.query ?? "";
@@ -216,8 +226,25 @@ describe("runMondayImport", () => {
             ],
           },
         ]);
+      } else if (query.includes("boards(ids: [5092887865])")) {
+        responseBody = pageResponse(true, [
+          {
+            id: "D",
+            name: "Hotel Delta",
+            displayVal: null,
+            subitems: [
+              {
+                id: "D1",
+                name: "Spa",
+                providerName: "ProviderC",
+                available: true,
+                commissionRate: 12,
+              },
+            ],
+          },
+        ]);
       } else {
-        // Other boards (Removed, Australia DCM) → empty page.
+        // Removed board → empty page.
         responseBody = pageResponse(true, []);
       }
 
@@ -236,42 +263,76 @@ describe("runMondayImport", () => {
       logger: (phase, msg) => logs.push({ phase, msg }),
     });
 
-    // Structured result — 2 subitems for Alpha (resolved) + 1 subitem for
-    // Bravo (placeholder) = 3 rows. Charlie was skipped (Ready-to-Launch).
+    // Structured result —
+    //   Alpha (resolved, 2 subitems) + Delta (AU placeholder, 1 subitem) = 3 rows
+    //   Placeholders: 1 (Delta on AU)
+    //   Skipped: 2 (Bravo no-region + Charlie not-placeholder-eligible)
+    //   placeholdersSkippedNoRegion: 1 (Bravo)
     expect(result.rowsInserted).toBe(3);
     expect(result.placeholdersCreated).toBe(1);
-    expect(result.placeholderNames).toEqual(["Hotel Bravo"]);
-    expect(result.hotelsSkipped).toBe(1);
+    expect(result.placeholderNames).toEqual(["Hotel Delta"]);
+    expect(result.hotelsSkipped).toBe(2);
+    expect(result.placeholdersSkippedNoRegion).toBe(1);
     expect(result.productsResolved).toBeGreaterThanOrEqual(3);
-    expect(result.providersResolved).toBeGreaterThanOrEqual(2);
+    expect(result.providersResolved).toBeGreaterThanOrEqual(3);
     expect(result.durationMs).toBeGreaterThan(0);
 
-    // Placeholder location row was created with MONDAY-<id> outletCode.
-    const placeholderRows = await ctx.db
-      .select({ id: locations.id, name: locations.name })
+    // AU placeholder location row was created.
+    const allLocs = await ctx.db
+      .select({ id: locations.id, name: locations.name, primaryRegionId: locations.primaryRegionId })
       .from(locations);
-    const placeholder = placeholderRows.find(
-      (r) => r.name === "Hotel Bravo",
-    );
-    expect(placeholder).toBeDefined();
+    const auPlaceholder = allLocs.find((r) => r.name === "Hotel Delta");
+    expect(auPlaceholder).toBeDefined();
 
-    // Audit entry for the placeholder.
+    // Hotel Delta's region resolves to AU (not UK).
+    const auRegionId = (
+      await ctx.db.select({ id: regions.id }).from(regions).where(eq(regions.code, "AU"))
+    )[0].id;
+    expect(auPlaceholder!.primaryRegionId).toBe(auRegionId);
+
+    // Hotel Bravo (Live Estate, no outlet code) was NOT created — the
+    // load-bearing assertion: no UK fallback row exists for it.
+    expect(allLocs.find((r) => r.name === "Hotel Bravo")).toBeUndefined();
+
+    // Audit entry for the AU placeholder, none for Bravo.
     const audits = await ctx.db.select().from(auditLogs);
+    expect(
+      audits.some(
+        (a) =>
+          a.action === "imported_from_monday_placeholder" &&
+          a.entityName === "Hotel Delta",
+      ),
+    ).toBe(true);
     expect(
       audits.some(
         (a) =>
           a.action === "imported_from_monday_placeholder" &&
           a.entityName === "Hotel Bravo",
       ),
-    ).toBe(true);
+    ).toBe(false);
+
+    // The skip emits a MONDAY-phase log naming the hotel + Monday item id +
+    // board so operators can act on it.
+    const skipLog = logs.find(
+      (l) =>
+        l.phase === "MONDAY" &&
+        l.msg.includes("Hotel Bravo") &&
+        l.msg.includes("mondayItemId=B") &&
+        l.msg.includes("Live Estate"),
+    );
+    expect(skipLog).toBeDefined();
 
     // location_products row count matches.
     const lpRows = await ctx.db.select().from(locationProducts);
     expect(lpRows).toHaveLength(3);
 
-    // Products + providers got created.
+    // Products + providers got created (Bravo's "Theatre" is still
+    // pre-resolved during the product/provider sweep — that pass runs over
+    // every fetched hotel before the skip decision; the row simply never
+    // makes it into location_products).
     const prodRows = await ctx.db.select().from(products);
     expect(prodRows.map((p) => p.name).sort()).toEqual([
+      "Spa",
       "Theatre",
       "Tours & Activities",
       "Transfers",
@@ -280,12 +341,14 @@ describe("runMondayImport", () => {
     expect(provRows.map((p) => p.name).sort()).toEqual([
       "ProviderA",
       "ProviderB",
+      "ProviderC",
     ]);
 
     // Logger was invoked with the expected phases.
     const phases = new Set(logs.map((l) => l.phase));
     expect(phases.has("FETCH")).toBe(true);
     expect(phases.has("IMPORT")).toBe(true);
+    expect(phases.has("MONDAY")).toBe(true);
 
     // fetch was called — at least once per board (4 boards).
     expect(fetchMock).toHaveBeenCalled();

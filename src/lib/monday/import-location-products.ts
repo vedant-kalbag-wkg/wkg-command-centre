@@ -37,17 +37,14 @@ const BOARD_NAMES: Record<number, string> = {
   5092887865: "Australia DCM",
 };
 
-// Default region for placeholder locations, keyed by board. Monday hotels
-// without a mirror9 outlet code get a placeholder `locations` row so their
-// commission tiers import; since we don't know the real region, we seed by
-// board geography. Operators can reassign per-hotel via the region picker
-// in /settings/outlet-types. Ready-to-Launch / Removed boards don't produce
-// placeholders (see PLACEHOLDER_IMPORT_BOARDS).
+// Region for placeholder locations, keyed by board. Only set for boards
+// whose geography is unambiguous (e.g. Australia DCM is AU-only). For mixed
+// boards like Live Estate we deliberately do NOT default — historically we
+// fell back to "UK" here, which silently mis-attributed non-UK hotels into
+// the UK region (audit D5 Parts A+B cleaned up the resulting mess). When no
+// entry exists for a board, placeholder creation is skipped and logged.
 const BOARD_REGION: Record<number, string> = {
-  1356570756: "UK", // Live Estate — default; operator reassigns per-hotel if wrong
-  1743012104: "UK", // Ready to Launch — not imported (see PLACEHOLDER_IMPORT_BOARDS)
-  5026387784: "UK", // Removed — not imported
-  5092887865: "AU", // Australia DCM — defaults to AU (added in migration 0025)
+  5092887865: "AU", // Australia DCM — AU-only board (added in migration 0025)
 };
 
 // Boards whose no-outlet-code hotels get promoted from silent-skip to
@@ -63,6 +60,14 @@ export type MondayImportResult = {
   placeholdersCreated: number;
   placeholderNames: string[];
   hotelsSkipped: number;
+  /**
+   * Subset of `hotelsSkipped` — placeholder-eligible hotels that we refused
+   * to create because the board has no unambiguous regional default. Tracked
+   * separately so operators can spot when Monday boards drift (e.g. a new
+   * non-AU board is added) and the data team needs to decide on a region
+   * mapping rather than silently UK-defaulting (audit D5 Part D).
+   */
+  placeholdersSkippedNoRegion: number;
   productsResolved: number;
   providersResolved: number;
   durationMs: number;
@@ -296,16 +301,19 @@ export async function runMondayImport(
 
   /**
    * Create (or find, if it already exists from a prior run) a placeholder
-   * location for a Monday hotel with no mirror9 outlet code. The outletCode
-   * is `MONDAY-<mondayItemId>` — the MONDAY- prefix is also the signal the
-   * /settings/outlet-types admin UI uses to badge the row as
-   * "Imported from Monday" (see pipeline.ts::reviewReason).
+   * location for a Monday hotel with no mirror9 outlet code. Returns null
+   * when the hotel's board has no unambiguous regional default (so the
+   * caller can skip + log instead of silently mis-attributing). The
+   * outletCode is `MONDAY-<mondayItemId>` — the MONDAY- prefix is also
+   * the signal the /settings/outlet-types admin UI uses to badge the row
+   * as "Imported from Monday" (see pipeline.ts::reviewReason).
    */
   async function createPlaceholderLocation(
     hotel: HotelWithProducts,
-  ): Promise<string> {
+  ): Promise<string | null> {
     const outletCode = `MONDAY-${hotel.mondayItemId}`;
     const regionCode = BOARD_REGION[hotel.boardId];
+    if (!regionCode) return null;
     const primaryRegionId = regionByCode.get(regionCode);
     if (!primaryRegionId) {
       throw new Error(
@@ -439,18 +447,35 @@ export async function runMondayImport(
   const allRows: Array<typeof locationProducts.$inferInsert> = [];
   let skippedNoLoc = 0;
   let placeholdersCreated = 0;
+  let placeholdersSkippedNoRegion = 0;
 
   for (const hotel of hotels) {
     const locationIds: string[] = [];
 
     if (hotel.outletCodes.length === 0) {
       // Case 1: hotel has no mirror9 outlet code. On active boards
-      // (Live Estate / Australia DCM) create a placeholder so commission
-      // tiers still import; elsewhere keep the old skip behaviour.
+      // (Live Estate / Australia DCM) attempt to create a placeholder so
+      // commission tiers still import; elsewhere keep the old skip
+      // behaviour. Placeholder creation returns null when the board has
+      // no unambiguous regional default — we refuse to guess (formerly
+      // silently UK-defaulted; see audit D5 Part D) and skip+log instead.
       if (PLACEHOLDER_IMPORT_BOARDS.has(hotel.boardId)) {
         const locId = await createPlaceholderLocation(hotel);
-        locationIds.push(locId);
-        placeholdersCreated++;
+        if (locId) {
+          locationIds.push(locId);
+          placeholdersCreated++;
+        } else {
+          logger(
+            "MONDAY",
+            `Skipping placeholder for hotel "${hotel.hotelName}" ` +
+              `(mondayItemId=${hotel.mondayItemId}, board=${BOARD_NAMES[hotel.boardId]}): ` +
+              `no regional default for this board — operator must add an outlet code on Monday ` +
+              `or extend BOARD_REGION.`,
+          );
+          placeholdersSkippedNoRegion++;
+          skippedNoLoc++;
+          continue;
+        }
       } else {
         skippedNoLoc++;
         continue;
@@ -504,7 +529,11 @@ export async function runMondayImport(
   logger(
     "IMPORT",
     `Collected ${allRows.length} rows to insert ` +
-      `(${placeholdersCreated} placeholder locations created, ${skippedNoLoc} hotels skipped)`,
+      `(${placeholdersCreated} placeholder locations created, ${skippedNoLoc} hotels skipped` +
+      (placeholdersSkippedNoRegion > 0
+        ? `, of which ${placeholdersSkippedNoRegion} skipped for missing regional default`
+        : "") +
+      `)`,
   );
 
   // Clear existing locationProducts, then bulk insert in batches
@@ -559,6 +588,7 @@ export async function runMondayImport(
     placeholdersCreated,
     placeholderNames: placeholderHotelNames,
     hotelsSkipped: skippedNoLoc,
+    placeholdersSkippedNoRegion,
     productsResolved: productMap.size,
     providersResolved: providerMap.size,
     durationMs: endedAt - startedAt,
