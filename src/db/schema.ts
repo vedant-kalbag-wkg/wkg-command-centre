@@ -485,6 +485,9 @@ export const markets = pgTable("markets", {
 
 // Hotel groups — hierarchical grouping of hotel locations (e.g. Dalata Hotels).
 // Supports nesting via self-referential parentGroupId.
+// `archivedAt` (D5 PR-6 Part C, migration 0031) marks comma-encoded JV rows
+// that were rewritten into proper multi-memberships and should no longer
+// appear in selectors / filters.
 export const hotelGroups = pgTable("hotel_groups", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
@@ -492,6 +495,7 @@ export const hotelGroups = pgTable("hotel_groups", {
     (): AnyPgColumn => hotelGroups.id,
     { onDelete: "set null" },
   ),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   createdBy: text("created_by").references(() => user.id),
 });

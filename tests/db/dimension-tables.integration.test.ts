@@ -110,4 +110,77 @@ describe('analytics dimension tables', () => {
       ctx.db.insert(locationGroupMemberships).values({ locationId: loc.id, locationGroupId: lg2.id }),
     ).rejects.toThrow();
   });
+
+  // D5 PR-6 Part C — comma-encoded JV hotel_groups are split into proper N:N
+  // memberships against the constituent standalone groups, and the JV row is
+  // archived via the new `archived_at` column (migration 0031). Hotel groups
+  // STAY N:N (legitimate JV cases exist) — there is intentionally no
+  // UNIQUE(location_id) on location_hotel_group_memberships.
+  it('hotelGroups: JV split preserves memberships to both constituents and archives the JV', async () => {
+    const [marriott] = await ctx.db
+      .insert(hotelGroups).values({ name: 'PartC Marriott' }).returning();
+    const [splendid] = await ctx.db
+      .insert(hotelGroups).values({ name: 'PartC Splendid' }).returning();
+    const [jv] = await ctx.db
+      .insert(hotelGroups).values({ name: 'PartC Marriott, PartC Splendid' }).returning();
+
+    const [loc] = await ctx.db
+      .insert(locations)
+      .values({ name: 'JV Test Hotel', outletCode: 'DIM-JV', primaryRegionId: ukRegionId })
+      .returning();
+    await ctx.db
+      .insert(locationHotelGroupMemberships)
+      .values({ locationId: loc.id, hotelGroupId: jv.id });
+
+    // Simulate the script: add memberships to each constituent, drop the JV
+    // membership, archive the JV row.
+    for (const hgId of [marriott.id, splendid.id]) {
+      await ctx.db
+        .insert(locationHotelGroupMemberships)
+        .values({ locationId: loc.id, hotelGroupId: hgId })
+        .onConflictDoNothing();
+    }
+    await ctx.db
+      .delete(locationHotelGroupMemberships)
+      .where(eq(locationHotelGroupMemberships.hotelGroupId, jv.id));
+    await ctx.db
+      .update(hotelGroups)
+      .set({ archivedAt: new Date() })
+      .where(eq(hotelGroups.id, jv.id));
+
+    // Location is now membered to BOTH constituents (N:N preserved).
+    const memberships = await ctx.db
+      .select()
+      .from(locationHotelGroupMemberships)
+      .where(eq(locationHotelGroupMemberships.locationId, loc.id));
+    const hgIds = memberships.map((m) => m.hotelGroupId).sort();
+    expect(hgIds).toEqual([marriott.id, splendid.id].sort());
+
+    // JV row is archived.
+    const [jvAfter] = await ctx.db
+      .select()
+      .from(hotelGroups)
+      .where(eq(hotelGroups.id, jv.id));
+    expect(jvAfter.archivedAt).not.toBeNull();
+  });
+
+  // D5 PR-6 Part C — explicit invariant: hotel groups are N:N. A location
+  // CAN belong to two hotel groups simultaneously (this is the JV case the
+  // split is preserving).
+  it('hotelGroups: stay N:N — same location may belong to two groups', async () => {
+    const [loc] = await ctx.db
+      .insert(locations)
+      .values({ name: 'NN Test Hotel', outletCode: 'DIM-HG-NN', primaryRegionId: ukRegionId })
+      .returning();
+    const [a] = await ctx.db.insert(hotelGroups).values({ name: 'NN Group A' }).returning();
+    const [b] = await ctx.db.insert(hotelGroups).values({ name: 'NN Group B' }).returning();
+    await ctx.db.insert(locationHotelGroupMemberships).values({ locationId: loc.id, hotelGroupId: a.id });
+    // This MUST succeed (no UNIQUE(location_id) on hotel-group memberships).
+    await ctx.db.insert(locationHotelGroupMemberships).values({ locationId: loc.id, hotelGroupId: b.id });
+    const rows = await ctx.db
+      .select()
+      .from(locationHotelGroupMemberships)
+      .where(eq(locationHotelGroupMemberships.locationId, loc.id));
+    expect(rows.length).toBe(2);
+  });
 });
