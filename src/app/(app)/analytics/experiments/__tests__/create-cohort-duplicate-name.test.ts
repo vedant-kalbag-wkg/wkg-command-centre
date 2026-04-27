@@ -49,7 +49,8 @@ vi.mock("@/lib/audit", () => ({
   writeAuditLog: (...args: unknown[]) => writeAuditLogFn(...args),
 }));
 
-import { createCohort, DuplicateCohortNameError } from "../actions";
+import { createCohort } from "../actions";
+import { DuplicateCohortNameError } from "../errors";
 
 const okCohort = {
   id: "cohort-1",

@@ -15,6 +15,7 @@ import { getActiveLocationIds } from "@/lib/analytics/active-locations";
 import { scopedLocationsCondition } from "@/lib/scoping/scoped-query";
 import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
 import { combineConditions } from "@/lib/analytics/queries/shared";
+import { DuplicateCohortNameError } from "./errors";
 import type {
   AnalyticsFilters,
   ExperimentCohort,
@@ -106,19 +107,10 @@ export async function listLocationsForPicker(): Promise<
 // Mutations
 // ---------------------------------------------------------------------------
 
-/**
- * Phase 4.10 — surfaced to the form as a user-readable string when the
- * (created_by, name) UNIQUE index in migration 0035 rejects a duplicate.
- * Specific class so the UI can branch on `instanceof` instead of message
- * matching.
- */
-export class DuplicateCohortNameError extends Error {
-  constructor(name: string) {
-    super(`You already have a cohort named "${name}". Pick a different name.`);
-    this.name = "DuplicateCohortNameError";
-  }
-}
-
+// Phase 4.10 — `DuplicateCohortNameError` lives in `./errors.ts` because
+// `"use server"` modules can only export async functions. Importing the
+// class is fine; throwing it from a server action surfaces the same
+// `instanceof` shape on the client.
 const UNIQUE_INDEX_NAME = "experiment_cohorts_created_by_name_unique";
 
 function isDuplicateCohortNameError(err: unknown): boolean {
