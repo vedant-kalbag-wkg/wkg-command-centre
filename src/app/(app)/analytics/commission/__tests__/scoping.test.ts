@@ -68,7 +68,7 @@ const userCtx = {
 
 describe("commission/actions — buildCommissionWhere applies scopedSalesCondition", () => {
   it("invokes scopedSalesCondition with the userCtx and includes its SQL in the WHERE", async () => {
-    const { buildCommissionWhere } = await import("../actions");
+    const { buildCommissionWhere } = await import("../where-builder");
 
     const where = await buildCommissionWhere(filters, userCtx);
 
