@@ -229,3 +229,32 @@ describe("Task 4.1 / PR-23 — getCategoryPerformance groups by category, exclud
     expect(sqlText).toContain("coalesce");
   });
 });
+
+describe("Task 4.14 / PR-28 — Compare hotel-group dedup invariant", () => {
+  // PR-6 Part E reshaped Compare's hotel-group metric query to gate sales rows
+  // via EXISTS (location_hotel_group_memberships) rather than INNER JOIN'ing
+  // the membership table. INNER JOIN would fan a multi-group location's
+  // sales out across each membership, double-counting revenue inside a single
+  // hotel-group's Compare card. EXISTS qualifies each sales row against the
+  // current hotel_group at most once, keeping per-card totals correct even
+  // when the same location belongs to several selected groups (e.g. a JV).
+  // Pin the structural invariant so a future "while I'm here" rewrite can't
+  // silently regress to the INNER JOIN shape.
+  it("getEntityMetrics(hotel_group) gates sales rows via EXISTS, not INNER JOIN through memberships", async () => {
+    const { getEntityMetrics } = await import("../comparison");
+    await getEntityMetrics(
+      "hotel_group",
+      ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"],
+      filters,
+      userCtx,
+    );
+    const sqlText = captured.join("\n--BREAK--\n").toLowerCase();
+    // (1) The membership gate is an EXISTS subquery scoped to the current
+    //     hotel_group, NOT a top-level INNER JOIN that would fan out.
+    expect(sqlText).toMatch(/exists\s*\([\s\S]*?location_hotel_group_memberships[\s\S]*?hotel_group_id/);
+    // (2) The membership table does NOT appear in any top-level join — i.e.
+    //     it occurs only inside the EXISTS body. We assert this by checking
+    //     no `(inner|left)\s+join\s+"location_hotel_group_memberships"` arm.
+    expect(sqlText).not.toMatch(/\b(inner|left)\s+join\s+"?location_hotel_group_memberships/);
+  });
+});
