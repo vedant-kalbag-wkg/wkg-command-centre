@@ -40,6 +40,11 @@ interface PerformanceTableProps {
   referenceDate: string;
 }
 
+// Score-band defaults for the composite-score traffic light (D7 / Task 2.9).
+// `classifyTrafficLight` uses `redMax` (≤ → red) and `greenMin` (≥ → green);
+// scores in (33, 66) fall through to amber.
+const HEAT_MAP_SCORE_THRESHOLDS: ThresholdConfig = { redMax: 33, greenMin: 66 };
+
 function scoreColorClass(score: number): string {
   if (score >= 70) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
   if (score >= 40) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
@@ -168,7 +173,18 @@ export function PerformanceTable({ data, title, thresholdConfig, flags = [], onF
                   </span>
                 </TableCell>
                 {thresholdConfig && (() => {
-                  const light = classifyTrafficLight(row.revenue, thresholdConfig);
+                  // Task 2.9 / D7: traffic light reflects the composite SCORE
+                  // (0-100), not raw revenue. The DB-backed `thresholdConfig`
+                  // (settings/thresholds page) is still on the £-revenue
+                  // scale — its values (e.g. 500/1500) are meaningless on
+                  // a 0-100 score, so we use score-band constants here.
+                  // TODO: migrate the settings UI + DB defaults to score
+                  // bands (e.g. add `score_threshold_*` keys) so admins
+                  // can re-tune. Tracked alongside Phase 2 audit follow-ups.
+                  const light = classifyTrafficLight(
+                    row.compositeScore,
+                    HEAT_MAP_SCORE_THRESHOLDS,
+                  );
                   return (
                     <TableCell className="text-center">
                       <span
