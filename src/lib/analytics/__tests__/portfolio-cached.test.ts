@@ -104,9 +104,11 @@ describe('portfolio cached exports are callable with (canonicalFilters, scopeKey
     expect(Array.isArray(r)).toBe(true);
   });
 
-  it('getOutletTiersCached returns an array', async () => {
+  it('getOutletTiersCached returns an OutletTiersResult ({rows, totalCount})', async () => {
     const r = await getOutletTiersCached(canonical, INTERNAL_SCOPE_KEY);
-    expect(Array.isArray(r)).toBe(true);
+    expect(r).toBeDefined();
+    expect(Array.isArray(r.rows)).toBe(true);
+    expect(typeof r.totalCount).toBe('number');
   });
 
   it('cached variants throw when given an external scope key', async () => {

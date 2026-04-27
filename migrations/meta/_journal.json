@@ -246,6 +246,27 @@
       "when": 1777336801012,
       "tag": "0034_locations_location_type_internal",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1777336801013,
+      "tag": "0035_experiment_cohorts_name_unique_per_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1777336801014,
+      "tag": "0036_kiosk_assignments_assigned_at_immutable",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1777336801015,
+      "tag": "0037_drop_kiosks_kiosk_config_group_id",
+      "breakpoints": true
     }
   ]
 }

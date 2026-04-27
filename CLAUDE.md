@@ -63,3 +63,34 @@ Both are the same underlying bug: lockfile does not reflect the CI runner's plat
 ### Known repeat offender
 
 `@emnapi/*`, `@napi-rs/wasm-runtime`, `@tybys/wasm-util`, `@rolldown/binding-linux-x64-gnu`, `@tailwindcss/oxide-linux-x64-gnu`, `@next/swc-linux-x64-gnu`, `@unrs/resolver-binding-linux-x64-gnu`. Any time CI complains about any of these, it is the lockfile drift — go straight to the Docker regen.
+
+## Prod admin password rotation (Phase 8.6)
+
+Use `scripts/reset-admin-password.ts` only when an admin needs to be let back in to the production environment (e.g. credentials lost, UAT against prod requires a known login). The script bypasses the normal sign-up flow by writing directly into the `account` table's credential row for the existing user.
+
+### Pre-flight checks
+
+- Confirm the email belongs to a row in `user` and that the user's role is `admin` (the script will refuse to set a password for a user with no `account` row of `providerId='credential'`, but it does **not** restrict by role — be deliberate).
+- Decide on a password before running the script. It is hashed via better-auth's internal hasher, so it must satisfy the same complexity rules better-auth enforces at sign-in.
+- This is a destructive change to a real account credential. Only run against `DATABASE_URL` you intend to mutate.
+
+### Usage
+
+```bash
+ADMIN_EMAIL='vedant.kalbag@weknowgroup.com' \
+ADMIN_PASSWORD='<new-password>' \
+DATABASE_URL='<prod-url-from-vercel-env>' \
+  npx tsx scripts/reset-admin-password.ts
+```
+
+The script logs `Password reset for <email> (role=admin, userId=..., accountId=...)` on success. On failure (user not found, no credential account, missing env vars) it throws with a specific message and exits non-zero.
+
+### Aftercare
+
+- Do not commit the new password anywhere. Hand it off via the same channel the credential lives in.
+- Do not leave the env vars in a shell history or `.env.local`. Prefer one-shot inline assignment as shown above.
+- If you rotated to UAT against prod, immediately rotate again to a fresh password the human admin owns once UAT completes.
+
+### Reference
+
+The prod admin account is `vedant.kalbag@weknowgroup.com` (per the auto-memory entry "Prod admin account"); the canonical prod URL is `https://wkg-command-centre.vercel.app/`. The script will not work against `wkg-kiosk-tool.vercel.app` because that alias was removed in D12.

@@ -323,3 +323,33 @@ export function activeKioskCountFragment(): SQL {
       AND ${kioskAssignments.unassignedAt} IS NULL
   )`;
 }
+
+/**
+ * §4 follow-up — count of currently-active kiosks across the locations of
+ * a location-group (or set of groups). Mirrors `locationGroupRoomsSubquery`
+ * exactly so the `total_kiosks` summary cell stops returning NULL. Used by
+ * `getLocationGroupsList` (per-row, correlated) and
+ * `getLocationGroupDetail` (aggregate, IN scope).
+ *
+ * Empty `activeLocationIds` short-circuits to 0 — same convention as the
+ * rooms subquery.
+ *
+ * @param groupScope SQL fragment placed after `lgm.location_group_id` —
+ *   `= ${locationGroups.id}` for correlated, `IN (...)` for aggregate.
+ * @param activeLocationIds the request-scoped active-location id list.
+ */
+export function locationGroupKiosksSubquery(
+  groupScope: SQL,
+  activeLocationIds: string[],
+): SQL {
+  if (activeLocationIds.length === 0) return sql`0`;
+  return sql`COALESCE((
+    SELECT COUNT(*)::int
+    FROM ${kioskAssignments} ka
+    INNER JOIN ${locationGroupMemberships} lgm
+      ON lgm.location_id = ka.location_id
+    WHERE lgm.location_group_id ${groupScope}
+      AND ka.unassigned_at IS NULL
+      AND ka.location_id = ANY(${sql.param(activeLocationIds)}::uuid[])
+  ), 0)`;
+}

@@ -26,7 +26,7 @@ import type {
   ComparisonMode,
   DailyTrendRow,
   HourlyDistributionRow,
-  OutletTierRow,
+  OutletTiersResult,
   PortfolioData,
   PortfolioSummary,
   TopProductRow,
@@ -69,9 +69,9 @@ export async function fetchPortfolioData(
         console.error('[portfolio] hourlyDistribution failed:', err);
         return [];
       }),
-      getOutletTiersCached(canonical, scopeKey).catch((err): OutletTierRow[] => {
+      getOutletTiersCached(canonical, scopeKey).catch((err): OutletTiersResult => {
         console.error('[portfolio] outletTiers failed:', err);
-        return [];
+        return { rows: [], totalCount: 0 };
       }),
     ]);
 

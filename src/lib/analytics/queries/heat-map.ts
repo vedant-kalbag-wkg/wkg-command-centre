@@ -297,17 +297,32 @@ export async function getHeatMapData(
   }));
 
   // 6. Return top 20, bottom 20, all
-  const topPerformers = allPerformers.slice(0, 20);
-  const bottomPerformers = allPerformers.slice(-20).reverse();
+  const { top: topPerformers, bottom: bottomPerformers } = pickTopAndBottom(
+    allPerformers,
+    20,
+  );
 
   return {
     topPerformers,
-    bottomPerformers: bottomPerformers.length === allPerformers.length
-      ? [] // Don't duplicate if fewer than 20 total
-      : bottomPerformers,
+    bottomPerformers,
     allPerformers,
     scoreWeights: SCORE_WEIGHTS,
   };
+}
+
+// Picks the top N and bottom N from a list already sorted best→worst.
+// When the list size is between N+1 and 2N, the naive `slice(-N)` overlaps with
+// `slice(0, N)`. Anchoring `bottom` to start no earlier than position N
+// guarantees disjoint slices for any list size while preserving the
+// "no bottom shown when N or fewer total" contract.
+export function pickTopAndBottom<T>(
+  ranked: readonly T[],
+  n: number,
+): { top: T[]; bottom: T[] } {
+  const top = ranked.slice(0, n);
+  const bottomStart = Math.max(n, ranked.length - n);
+  const bottom = ranked.slice(bottomStart).reverse();
+  return { top, bottom };
 }
 
 // ─── Cached variant (Phase 3) ────────────────────────────────────────────────

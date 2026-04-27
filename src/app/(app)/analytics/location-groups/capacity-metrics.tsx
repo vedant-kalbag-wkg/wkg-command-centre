@@ -36,6 +36,10 @@ export function CapacityMetrics({ capacityMetrics, loading = false }: CapacityMe
         title="Avg Basket"
         value={formatCurrency(capacityMetrics.avgBasketValue)}
         loading={loading}
+        // Phase 6.5 / 8.5 — Avg Basket has subtly different definitions
+        // across dashboards. State the formula in-place so the operator
+        // knows whether the figure includes fees, reversals, etc.
+        tooltip="Total revenue ÷ total transactions in the selected window. Excludes booking and cash-handling fees and excludes reversed transactions. Updates with the metric-mode toggle (Sales vs Revenue)."
       />
       <KpiCard
         title="Total Rooms"

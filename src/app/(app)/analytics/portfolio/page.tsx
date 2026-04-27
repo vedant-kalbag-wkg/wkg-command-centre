@@ -193,7 +193,7 @@ export default function PortfolioPage() {
   const hasTopProductsData = (portfolio?.topProducts.length ?? 0) > 0;
   const hasDailyTrendsData = (portfolio?.dailyTrends.length ?? 0) > 0;
   const hasHourlyData = (portfolio?.hourlyDistribution.length ?? 0) > 0;
-  const hasOutletTiersData = (portfolio?.outletTiers.length ?? 0) > 0;
+  const hasOutletTiersData = (portfolio?.outletTiers.rows.length ?? 0) > 0;
   const hasHighPerformerData =
     !!highPerformerData &&
     (highPerformerData.greenCount > 0 || highPerformerData.totalCount > 0);
@@ -373,7 +373,8 @@ export default function PortfolioPage() {
           >
             {portfolio && (
               <OutletTiers
-                data={portfolio.outletTiers}
+                data={portfolio.outletTiers.rows}
+                totalCount={portfolio.outletTiers.totalCount}
                 thresholdConfig={thresholdConfig}
                 flags={flags}
                 onFlagCreated={loadData}

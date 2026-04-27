@@ -133,6 +133,16 @@ export type OutletTierRow = {
   revenuePerRoom: number | null
 }
 
+// Phase 4.3 — `rows` is capped at 200 by the underlying query; `totalCount`
+// reports the unrestricted size of the filtered population so the UI can
+// surface "Showing 200 of N" when truncation hits.
+export type OutletTiersResult = {
+  rows: OutletTierRow[]
+  totalCount: number
+}
+
+export const OUTLET_TIERS_LIMIT = 200
+
 export type OutletTier = "Premium" | "Standard" | "Developing" | "Emerging"
 
 export type ComparisonMode = "mom" | "yoy"
@@ -145,7 +155,7 @@ export type PortfolioData = {
   topProducts: TopProductRow[]
   dailyTrends: DailyTrendRow[]
   hourlyDistribution: HourlyDistributionRow[]
-  outletTiers: OutletTierRow[]
+  outletTiers: OutletTiersResult
 }
 
 // ─── Heat Map Types ───────────────────────────────────────────────────────────

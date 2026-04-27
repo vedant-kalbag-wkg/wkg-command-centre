@@ -31,12 +31,24 @@ import { LocationProductsClient } from "@/app/(app)/locations/[id]/products/loca
 import {
   createLocation,
   listRegionOptions,
+  listHotelGroupOptions,
+  listKioskConfigGroupOptions,
+  setLocationHotelGroupMemberships,
   updateLocationField,
   archiveLocation,
   updateBankingDetails,
 } from "@/app/(app)/locations/actions";
 import type { LocationWithRelations } from "@/app/(app)/locations/actions";
+import { listUsersForSelect } from "@/app/(app)/installations/actions";
 import { COMMON_IANA_TIMEZONES } from "@/lib/locations/iana-timezones";
+import { LOCATION_TYPES, LOCATION_TYPE_LABELS } from "@/lib/analytics/types";
+import { MultiSelectFilter } from "@/components/analytics/multi-select-filter";
+
+// Phase 7.4 — known status values seen on prod (Live / Ready for Launch /
+// Removed). Free-text upstream so future Monday rollouts may add others;
+// the picker splices in any unknown current value the same way the timezone
+// picker does (PR-14 pattern).
+const KNOWN_LOCATION_STATUSES = ["Live", "Ready for Launch", "Removed"] as const;
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -316,6 +328,90 @@ function ExistingLocationForm({
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [isArchiving, startArchiveTransition] = useTransition();
 
+  // Phase 7.2 — region picker on the existing form. Mirrors NewLocationForm:
+  // load client-side so the picker tracks admin renames without a reload.
+  // Empty list on fetch failure is fine — the InlineEditField will fall back
+  // to showing the current value as a non-editable label.
+  const [regionOptions, setRegionOptions] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    listRegionOptions().then(setRegionOptions).catch(() => setRegionOptions([]));
+  }, []);
+
+  // Phase 7.4 — internal POC picker. Same load-on-mount pattern. The shared
+  // `listUsersForSelect` action returns either an array or an `{ error }`
+  // object on RBAC failure; collapse to an empty list so the form still
+  // renders for non-admins (the InlineEditField stays read-only when the
+  // options array is empty).
+  const [pocOptions, setPocOptions] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    listUsersForSelect()
+      .then((res) => {
+        if (Array.isArray(res)) setPocOptions(res.map((u) => ({ id: u.id, name: u.name })));
+        else setPocOptions([]);
+      })
+      .catch(() => setPocOptions([]));
+  }, []);
+
+  // Phase 7.6a — kiosk config group picker. Single-select InlineEditField,
+  // editable for member-level (not admin-only) per D13.
+  const [configGroupOptions, setConfigGroupOptions] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  useEffect(() => {
+    listKioskConfigGroupOptions()
+      .then(setConfigGroupOptions)
+      .catch(() => setConfigGroupOptions([]));
+  }, []);
+
+  // Phase 7.2b — hotel-group picker (multi-select). Server-validated; the
+  // form writes via setLocationHotelGroupMemberships which diffs and
+  // audit-logs each add/remove. Selected state is held locally so users
+  // can chip in/out before confirming with "Save".
+  const [hotelGroupOptions, setHotelGroupOptions] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [selectedHotelGroupIds, setSelectedHotelGroupIds] = useState<string[]>(
+    location.hotelGroupMemberships.map((m) => m.id),
+  );
+  const [isSavingHotelGroups, startHotelGroupTransition] = useTransition();
+  const [hotelGroupError, setHotelGroupError] = useState<string | null>(null);
+  useEffect(() => {
+    listHotelGroupOptions()
+      .then(setHotelGroupOptions)
+      .catch(() => setHotelGroupOptions([]));
+  }, []);
+  // Reset local selection when the canonical row changes (e.g. RSC refresh
+  // after a save) so the picker doesn't drift away from the server state.
+  useEffect(() => {
+    setSelectedHotelGroupIds(location.hotelGroupMemberships.map((m) => m.id));
+  }, [location.hotelGroupMemberships]);
+
+  const hotelGroupsDirty = (() => {
+    const current = new Set(location.hotelGroupMemberships.map((m) => m.id));
+    if (current.size !== selectedHotelGroupIds.length) return true;
+    return selectedHotelGroupIds.some((id) => !current.has(id));
+  })();
+
+  const handleSaveHotelGroups = () => {
+    startHotelGroupTransition(async () => {
+      setHotelGroupError(null);
+      const result = await setLocationHotelGroupMemberships(
+        location.id,
+        selectedHotelGroupIds,
+      );
+      if ("error" in result) {
+        setHotelGroupError(result.error ?? "Failed to update hotel groups");
+        return;
+      }
+      toast.success(
+        result.addedCount + result.removedCount === 0
+          ? "Hotel groups unchanged"
+          : `Hotel groups updated (+${result.addedCount} / −${result.removedCount})`,
+      );
+      router.refresh();
+    });
+  };
+
   // Banking form state
   const [bankingFields, setBankingFields] = useState<Record<string, string>>(
     (location.bankingDetails as Record<string, string>) ?? {
@@ -389,6 +485,38 @@ function ExistingLocationForm({
     return values.map((v) => ({ label: v, value: v }));
   })();
 
+  // Phase 7.1 — outlet-type picker. The empty-string sentinel maps to NULL
+  // server-side ("clear classification"), keeping the Select non-empty
+  // visually for unclassified rows.
+  const locationTypeOptions = [
+    { label: "— Unset —", value: "" },
+    ...LOCATION_TYPES.map((v) => ({ label: LOCATION_TYPE_LABELS[v], value: v })),
+  ];
+
+  // Phase 7.4 — status options. Splice in any unknown current value so a
+  // legacy status from before this form change remains editable rather than
+  // being silently swapped to the first option.
+  const statusOptions = (() => {
+    const base: string[] = Array.from(KNOWN_LOCATION_STATUSES);
+    if (location.status && !base.includes(location.status)) {
+      base.unshift(location.status);
+    }
+    return [
+      { label: "— Unset —", value: "" },
+      ...base.map((s) => ({ label: s, value: s })),
+    ];
+  })();
+
+  const internalPocOptions = [
+    { label: "— Unassigned —", value: "" },
+    ...pocOptions.map((u) => ({ label: u.name, value: u.id })),
+  ];
+
+  const configGroupSelectOptions = [
+    { label: "— None —", value: "" },
+    ...configGroupOptions.map((g) => ({ label: g.name, value: g.id })),
+  ];
+
   return (
     <div className="space-y-6">
       {/* Archive dialog */}
@@ -440,6 +568,31 @@ function ExistingLocationForm({
             fieldName="name"
             type="text"
             onSave={(v) => saveField("name", v, location.name)}
+          />
+        </FieldRow>
+        <FieldRow label="Outlet Code">
+          <InlineEditField
+            value={location.outletCode}
+            fieldName="outletCode"
+            type="text"
+            onSave={(v) => saveField("outletCode", v, location.outletCode)}
+          />
+        </FieldRow>
+        <FieldRow label="Customer Code">
+          <InlineEditField
+            value={location.customerCode}
+            fieldName="customerCode"
+            type="text"
+            onSave={(v) => saveField("customerCode", v, location.customerCode ?? undefined)}
+          />
+        </FieldRow>
+        <FieldRow label="Region">
+          <InlineEditField
+            value={location.primaryRegionId}
+            fieldName="primaryRegionId"
+            type="select"
+            options={regionOptions.map((r) => ({ label: r.name, value: r.id }))}
+            onSave={(v) => saveField("primaryRegionId", v, location.primaryRegionId)}
           />
         </FieldRow>
         <FieldRow label="Address">
@@ -507,6 +660,15 @@ function ExistingLocationForm({
             onSave={(v) => saveField("sourcedBy", v, location.sourcedBy ?? undefined)}
           />
         </FieldRow>
+        <FieldRow label="Outlet Type">
+          <InlineEditField
+            value={location.locationType ?? ""}
+            fieldName="locationType"
+            type="select"
+            options={locationTypeOptions}
+            onSave={(v) => saveField("locationType", v, location.locationType ?? undefined)}
+          />
+        </FieldRow>
         <FieldRow label="Timezone">
           <InlineEditField
             value={location.ianaTimezone}
@@ -515,6 +677,85 @@ function ExistingLocationForm({
             options={timezoneOptions}
             onSave={(v) => saveField("ianaTimezone", v, location.ianaTimezone)}
           />
+        </FieldRow>
+      </DetailSection>
+
+      {/* Phase 7.2b / D5 — multi-select hotel-group memberships. JV outlets
+          can map to multiple groups; the picker writes to
+          location_hotel_group_memberships via a diff action that audit-logs
+          each add/remove. */}
+      <DetailSection title="Hotel Groups">
+        <div className="space-y-2">
+          <MultiSelectFilter
+            label="Hotel Groups"
+            options={hotelGroupOptions.map((g) => ({ value: g.id, label: g.name }))}
+            selected={selectedHotelGroupIds}
+            onChange={setSelectedHotelGroupIds}
+            placeholder="Search hotel groups…"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] text-muted-foreground">
+              {selectedHotelGroupIds.length} group
+              {selectedHotelGroupIds.length === 1 ? "" : "s"} selected
+            </span>
+            <Button
+              size="sm"
+              onClick={handleSaveHotelGroups}
+              disabled={isSavingHotelGroups || !hotelGroupsDirty}
+            >
+              {isSavingHotelGroups ? "Saving…" : "Save hotel groups"}
+            </Button>
+          </div>
+          {hotelGroupError && (
+            <p className="text-[12px] text-destructive">{hotelGroupError}</p>
+          )}
+        </div>
+      </DetailSection>
+
+      {/* Phase 7.4 — Operations section. Picks up the remaining list-only
+          fields so admins don't have to bounce to /locations to edit them. */}
+      <DetailSection title="Operations">
+        <FieldRow label="Status">
+          <InlineEditField
+            value={location.status ?? ""}
+            fieldName="status"
+            type="select"
+            options={statusOptions}
+            onSave={(v) => saveField("status", v, location.status ?? undefined)}
+          />
+        </FieldRow>
+        <FieldRow label="Location Group">
+          <InlineEditField
+            value={location.locationGroup}
+            fieldName="locationGroup"
+            type="text"
+            onSave={(v) => saveField("locationGroup", v, location.locationGroup ?? undefined)}
+          />
+        </FieldRow>
+        <FieldRow label="Internal POC">
+          <InlineEditField
+            value={location.internalPocId ?? ""}
+            fieldName="internalPocId"
+            type="select"
+            options={internalPocOptions}
+            onSave={(v) => saveField("internalPocId", v, location.internalPocId ?? undefined)}
+          />
+        </FieldRow>
+        <FieldRow label="Kiosk Config Group">
+          <div className="flex flex-col gap-1">
+            <InlineEditField
+              value={location.kioskConfigGroupId ?? ""}
+              fieldName="kioskConfigGroupId"
+              type="select"
+              options={configGroupSelectOptions}
+              onSave={(v) =>
+                saveField("kioskConfigGroupId", v, location.kioskConfigGroupId ?? undefined)
+              }
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Synced from Monday — the next sync will overwrite local edits.
+            </p>
+          </div>
         </FieldRow>
       </DetailSection>
 
@@ -555,6 +796,18 @@ function ExistingLocationForm({
               fieldName="contractValue"
               type="number"
               onSave={(v) => saveField("contractValue", v, location.contractValue ?? undefined)}
+            />
+          ) : (
+            <RestrictedBadge />
+          )}
+        </FieldRow>
+        <FieldRow label="Maintenance Fee">
+          {canSeeSensitive ? (
+            <InlineEditField
+              value={location.maintenanceFee}
+              fieldName="maintenanceFee"
+              type="number"
+              onSave={(v) => saveField("maintenanceFee", v, location.maintenanceFee ?? undefined)}
             />
           ) : (
             <RestrictedBadge />

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState, useTransition } from "react";
+import { formatDate } from "@/lib/analytics/formatters";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -273,7 +274,7 @@ export default function FlagReviewPage() {
                         </p>
                       </TableCell>
                       <TableCell className="text-xs">
-                        <p>{new Date(flag.createdAt).toLocaleDateString()}</p>
+                        <p>{formatDate(flag.createdAt)}</p>
                         <p className="text-[10px] text-muted-foreground">
                           {flag.actorName}
                         </p>
@@ -308,7 +309,7 @@ export default function FlagReviewPage() {
                           <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
                             {flag.resolvedAt && (
                               <span>
-                                {new Date(flag.resolvedAt).toLocaleDateString()}
+                                {formatDate(flag.resolvedAt)}
                               </span>
                             )}
                             {flag.resolutionNote && (
