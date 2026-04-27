@@ -237,9 +237,12 @@ export async function findSimilarHotels(
 
 /**
  * Fetch temporal comparison data for a cohort with an intervention date.
+ * Respects the global FilterBar — `filters` is forwarded to the underlying
+ * cohort metrics aggregation (only the per-period date range is overridden).
  */
 export async function fetchTemporalComparison(
   cohortId: string,
+  filters: AnalyticsFilters,
 ): Promise<TemporalComparison | null> {
   const ctx = await getUserCtx();
 
@@ -257,6 +260,7 @@ export async function fetchTemporalComparison(
   return getCohortTemporalComparison(
     cohortLocationIds,
     cohort.interventionDate,
+    filters,
     ctx,
   );
 }

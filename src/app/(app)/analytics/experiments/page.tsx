@@ -232,7 +232,7 @@ export default function ExperimentsPage() {
     }
     setTemporalLoading(true);
     try {
-      const result = await fetchTemporalComparison(selectedId);
+      const result = await fetchTemporalComparison(selectedId, JSON.parse(filtersJson));
       setTemporal(result);
     } catch (err) {
       setError(
@@ -241,7 +241,7 @@ export default function ExperimentsPage() {
     } finally {
       setTemporalLoading(false);
     }
-  }, [selectedId, selectedCohort?.interventionDate]);
+  }, [selectedId, selectedCohort?.interventionDate, filtersJson]);
 
   useEffect(() => {
     loadTemporal();

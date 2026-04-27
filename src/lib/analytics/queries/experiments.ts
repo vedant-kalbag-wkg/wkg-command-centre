@@ -224,10 +224,15 @@ export async function findSimilarLocations(
 /**
  * Get temporal comparison for a cohort around its intervention date.
  * Returns metrics for pre-period, during-period, and YoY equivalents.
+ *
+ * The `filters` argument is forwarded to every underlying `getCohortMetrics`
+ * call (region / hotel-group / maturity / metricMode / etc. all flow through);
+ * only `dateFrom`/`dateTo` are overridden per period.
  */
 export async function getCohortTemporalComparison(
   locationIds: string[],
   interventionDate: string,
+  filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<TemporalComparison> {
   const intervention = new Date(interventionDate);
@@ -262,10 +267,10 @@ export async function getCohortTemporalComparison(
 
   // Fetch all 4 periods in parallel
   const [pre, during, yoyPre, yoyDuring] = await Promise.all([
-    getCohortMetrics(locationIds, { dateFrom: preFromStr, dateTo: preToStr }, userCtx),
-    getCohortMetrics(locationIds, { dateFrom: duringFromStr, dateTo: duringToStr }, userCtx),
-    getCohortMetrics(locationIds, { dateFrom: yoyPreFrom, dateTo: yoyPreTo }, userCtx),
-    getCohortMetrics(locationIds, { dateFrom: yoyDuringFrom, dateTo: yoyDuringTo }, userCtx),
+    getCohortMetrics(locationIds, { ...filters, dateFrom: preFromStr, dateTo: preToStr }, userCtx),
+    getCohortMetrics(locationIds, { ...filters, dateFrom: duringFromStr, dateTo: duringToStr }, userCtx),
+    getCohortMetrics(locationIds, { ...filters, dateFrom: yoyPreFrom, dateTo: yoyPreTo }, userCtx),
+    getCohortMetrics(locationIds, { ...filters, dateFrom: yoyDuringFrom, dateTo: yoyDuringTo }, userCtx),
   ]);
 
   return {
