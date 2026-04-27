@@ -8,7 +8,7 @@ import {
   hotelGroups,
   regions,
 } from "@/db/schema";
-import { sql, type SQL } from "drizzle-orm";
+import { inArray, sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
@@ -67,30 +67,28 @@ export async function getEntityMetrics(
   if (entityIds.length === 0) return [];
 
   const whereClause = await buildComparisonWhere(filters, userCtx);
-  const idList = sql.raw(`(${entityIds.map((id) => `'${id}'`).join(",")})`);
   const amountMode = buildAmountModeCondition(filters);
   const salesTxn = buildSalesTxnCondition();
 
   switch (entityType) {
     case "location":
-      return getLocationMetrics(entityIds, idList, whereClause, amountMode, salesTxn);
+      return getLocationMetrics(entityIds, whereClause, amountMode, salesTxn);
     case "hotel_group":
-      return getHotelGroupMetrics(entityIds, idList, whereClause, amountMode, salesTxn);
+      return getHotelGroupMetrics(entityIds, whereClause, amountMode, salesTxn);
     case "region":
-      return getRegionMetrics(entityIds, idList, whereClause, amountMode, salesTxn);
+      return getRegionMetrics(entityIds, whereClause, amountMode, salesTxn);
   }
 }
 
 // ─── Location metrics ───────────────────────────────────────────────────────
 
 async function getLocationMetrics(
-  _entityIds: string[],
-  idList: SQL,
+  entityIds: string[],
   whereClause: SQL | undefined,
   amountMode: SQL,
   salesTxn: SQL,
 ): Promise<ComparisonEntity[]> {
-  const entityFilter = sql`${salesRecords.locationId} IN ${idList}`;
+  const entityFilter = inArray(salesRecords.locationId, entityIds);
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
   const rows = await executeRows<{
@@ -127,13 +125,12 @@ async function getLocationMetrics(
 // ─── Hotel group metrics ────────────────────────────────────────────────────
 
 async function getHotelGroupMetrics(
-  _entityIds: string[],
-  idList: SQL,
+  entityIds: string[],
   whereClause: SQL | undefined,
   amountMode: SQL,
   salesTxn: SQL,
 ): Promise<ComparisonEntity[]> {
-  const entityFilter = sql`${hotelGroups.id} IN ${idList}`;
+  const entityFilter = inArray(hotelGroups.id, entityIds);
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
   // D5 Part E — hotel groups remain N:N with locations, so a JOIN through
@@ -180,13 +177,12 @@ async function getHotelGroupMetrics(
 // ─── Region metrics ─────────────────────────────────────────────────────────
 
 async function getRegionMetrics(
-  _entityIds: string[],
-  idList: SQL,
+  entityIds: string[],
   whereClause: SQL | undefined,
   amountMode: SQL,
   salesTxn: SQL,
 ): Promise<ComparisonEntity[]> {
-  const entityFilter = sql`${regions.id} IN ${idList}`;
+  const entityFilter = inArray(regions.id, entityIds);
   const fullWhere = combineConditions([whereClause, entityFilter]);
 
   const rows = await executeRows<{
