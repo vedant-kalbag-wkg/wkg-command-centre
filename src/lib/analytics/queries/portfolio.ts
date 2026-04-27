@@ -11,6 +11,7 @@ import {
   buildDimensionFilters,
   buildIsFeeCondition,
   buildMaturityCondition,
+  buildNonFeeCondition,
   buildSalesTxnCondition,
   canonicalHotelGroupNameFragment,
   combineConditions,
@@ -141,8 +142,27 @@ export async function getCategoryPerformance(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<CategoryPerformanceRow[]> {
-  const whereClause = await buildPortfolioWhere(filters, userCtx);
-  const amountMode = buildAmountModeCondition(filters);
+  // Task 4.1 / PR-23 — two P1 fixes from the analytics audit:
+  //   (1) GROUP BY products.category_name (not products.name) so each bar is a
+  //       category, not a product. ~19 products lack a category_name (NetSuite
+  //       ETL coverage is 100/119 ≈ 98.9% of sales rows); render the gap as
+  //       an explicit "— Uncategorised" bucket so analysts notice rather than
+  //       silently merging into a random other category.
+  //   (2) Exclude fee rows in WHERE via buildNonFeeCondition(). Without this,
+  //       the "Booking Fee" / "Cash Handling Fee" pseudo-products dominate.
+  // Trade-off: the SUM/AVG no longer carry FILTER (WHERE amountMode). In
+  // revenue mode amountMode = is_weknow_fee=true, which combined with the new
+  // is_weknow_fee=false WHERE would zero out the chart. Top Products handles
+  // the "fee revenue attributed to parent product" case via a LATERAL
+  // self-join, but that pattern is out of scope here — Category Performance
+  // becomes always-non-fee revenue per category. The useMetricLabel consumer
+  // label still flips Sales/Revenue but the data stays non-fee. P2 audit
+  // items (quantity redundant, avg_value per-row not avg basket) are
+  // intentionally left alone — see ANALYTICS-ISSUES.md lines 332-338.
+  const whereClause = combineConditions([
+    await buildPortfolioWhere(filters, userCtx),
+    buildNonFeeCondition(),
+  ]);
   const salesTxn = buildSalesTxnCondition();
 
   const rows = await executeRows<{
@@ -153,14 +173,14 @@ export async function getCategoryPerformance(
     avg_value: string;
   }>(sql`
     SELECT
-      ${products.name} AS category_name,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(${products.categoryName}, '— Uncategorised') AS category_name,
+      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS quantity,
-      COALESCE(AVG(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS avg_value
+      COALESCE(AVG(${salesRecords.netAmount}), 0) AS avg_value
     FROM ${baseFromWithProducts()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${products.name}
+    GROUP BY COALESCE(${products.categoryName}, '— Uncategorised')
     ORDER BY revenue DESC
   `);
 

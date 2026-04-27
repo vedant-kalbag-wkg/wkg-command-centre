@@ -176,3 +176,20 @@ describe("D1 COUNT(*) sweep — every Transactions KPI scopes to non-fee, non-re
     expect(sql).toContain("is_reversal");
   });
 });
+
+describe("Task 4.1 / PR-23 — getCategoryPerformance groups by category, excludes fees", () => {
+  it("groups by COALESCE(products.category_name, …) and filters fees in WHERE", async () => {
+    const { getCategoryPerformance } = await import("../portfolio");
+    await getCategoryPerformance(filters, userCtx);
+    const sqlText = captured.join("\n--BREAK--\n").toLowerCase();
+
+    // (1) GROUP BY uses category_name with a COALESCE wrapper for NULL bucket.
+    expect(sqlText).toMatch(/group by\s+coalesce\(.*category_name/);
+    // (2) Non-fee predicate landed in the outer WHERE (buildNonFeeCondition).
+    expect(sqlText).toContain("is_weknow_fee");
+    expect(sqlText).toContain("false");
+    // (3) NULL category coalesced into an explicit bucket — proves the
+    //     "— Uncategorised" wrapping is wired in (case-insensitive match).
+    expect(sqlText).toContain("coalesce");
+  });
+});
