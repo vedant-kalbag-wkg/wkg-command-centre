@@ -72,7 +72,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [ ] **4.3** Outlet Tiers cells: `LIMIT 200` → return total + show "showing 200 of N" indicator. (P2)
 - [x] **4.4** Outlet Tiers maturity column: pass `filters.dateTo` (`outlet-tiers.tsx:95-98` already wires `referenceDate={filters.dateTo}` from `portfolio/page.tsx:380`). — covered by PR-5 (`34ac5de`); verified PR-21
 - [x] **4.5** Heat Map `performance-table.tsx:124-127` maturity badge: passes `filters.dateTo` from `heat-map/page.tsx:120,138,158`. — covered by PR-5 (`34ac5de`); verified PR-21
-- [ ] **4.6** Refund-only outlet `BK` per **D9**: add `locationType='internal'` and exclude from leaderboards. (P1)
+- [x] **4.6** Refund-only outlet `BK` per **D9**: added `locationType='internal'` (TS + CHECK rebuild via migration 0034); `buildDimensionFilters` now appends a NOT-IN exclusion unless `includeInternalAccounts=true`; FilterBar gains a "Show internal accounts" Switch + `internal=1` URL param. — PR-25 (`19d8697`). Migration 0034 applied to neon-dev only.
 - [ ] **4.7** Outlet `4T` "Heathrow Terminal 4 b" per **D8**: investigate, then fix import-time normalisation. (P1)
 - [x] **4.8** Hotels-in-Group breakdown tables: dropped redundant `quantity` (=`transactions`); replaced `NULL::text AS kiosks` with `activeKioskCountFragment()` per-row count. UI columns now `[Hotel] [Metric] [Transactions] [Rooms] [Kiosks] [Stars] [Metric/Room]`. — PR-24 (`7aa37d7`). Summary-level `total_kiosks` NULL in `getLocationGroupsList`/`getLocationGroupDetail` capacity intentionally left for follow-up (separate audit items at ANALYTICS-ISSUES.md:178, 467).
 - [ ] **4.9** Bottom 20 / Top 20 overlap when 21 ≤ N ≤ 39: warn or merge. (`heat-map.ts:286-293`). (P2)
