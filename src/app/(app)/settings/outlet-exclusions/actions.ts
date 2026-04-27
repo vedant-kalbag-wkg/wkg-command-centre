@@ -1,10 +1,10 @@
 "use server";
 
 import { db } from "@/db";
-import { outletExclusions, locations, user } from "@/db/schema";
+import { outletExclusions, locations, regions, user } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Outlet exclusion server actions — admin only
@@ -15,10 +15,36 @@ export type ExclusionRow = {
   outletCode: string;
   patternType: "exact" | "regex";
   label: string | null;
+  regionId: string;
+  regionCode: string;
+  regionName: string;
   createdBy: string | null;
   createdByName: string | null;
   createdAt: string;
 };
+
+export type RegionOption = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export async function listRegions(): Promise<
+  { regions: RegionOption[] } | { error: string }
+> {
+  try {
+    await requireRole("admin");
+    const rows = await db
+      .select({ id: regions.id, code: regions.code, name: regions.name })
+      .from(regions)
+      .orderBy(asc(regions.code));
+    return { regions: rows };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to list regions";
+    return { error: message };
+  }
+}
 
 export async function listExclusions(): Promise<
   { exclusions: ExclusionRow[] } | { error: string }
@@ -32,11 +58,15 @@ export async function listExclusions(): Promise<
         outletCode: outletExclusions.outletCode,
         patternType: outletExclusions.patternType,
         label: outletExclusions.label,
+        regionId: outletExclusions.regionId,
+        regionCode: regions.code,
+        regionName: regions.name,
         createdBy: outletExclusions.createdBy,
         createdByName: user.name,
         createdAt: outletExclusions.createdAt,
       })
       .from(outletExclusions)
+      .innerJoin(regions, eq(outletExclusions.regionId, regions.id))
       .leftJoin(user, eq(outletExclusions.createdBy, user.id))
       .orderBy(outletExclusions.createdAt);
 
@@ -45,6 +75,9 @@ export async function listExclusions(): Promise<
       outletCode: r.outletCode,
       patternType: r.patternType as "exact" | "regex",
       label: r.label,
+      regionId: r.regionId,
+      regionCode: r.regionCode,
+      regionName: r.regionName,
       createdBy: r.createdBy,
       createdByName: r.createdByName ?? null,
       createdAt: r.createdAt.toISOString(),
@@ -61,16 +94,22 @@ export async function listExclusions(): Promise<
 export async function createExclusion(data: {
   outletCode: string;
   patternType: "exact" | "regex";
+  regionId: string;
   label?: string;
 }): Promise<{ success: true; id: string } | { error: string }> {
   try {
     const session = await requireRole("admin");
+
+    if (!data.regionId) {
+      return { error: "Region is required" };
+    }
 
     const [row] = await db
       .insert(outletExclusions)
       .values({
         outletCode: data.outletCode,
         patternType: data.patternType,
+        regionId: data.regionId,
         label: data.label || null,
         createdBy: session.user.id,
       })
@@ -125,21 +164,33 @@ export async function deleteExclusion(
 }
 
 /**
- * Test a pattern against all known outlet codes.
- * Returns the list of matching outlet codes.
+ * Test a pattern against the outlet codes in a single region. Region-scoped
+ * to mirror how the exclusion will actually be evaluated at query time
+ * (Task 1.9 / PR-6 Part F): an exclusion only matches outlets sharing its
+ * region_id.
  */
 export async function testPattern(
   pattern: string,
   patternType: "exact" | "regex",
+  regionId: string,
 ): Promise<{ matches: string[] } | { error: string }> {
   try {
     await requireRole("admin");
 
-    // Fetch all outlet codes from locations
+    if (!regionId) {
+      return { error: "Region is required" };
+    }
+
+    // Fetch all outlet codes in this region only.
     const allCodes = await db
       .select({ outletCode: locations.outletCode })
       .from(locations)
-      .where(isNotNull(locations.outletCode));
+      .where(
+        and(
+          isNotNull(locations.outletCode),
+          eq(locations.primaryRegionId, regionId),
+        ),
+      );
 
     const codes = allCodes
       .map((r) => r.outletCode)

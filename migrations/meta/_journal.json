@@ -225,6 +225,13 @@
       "when": 1777336801009,
       "tag": "0031_hotel_groups_archived_at",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1777336801010,
+      "tag": "0032_outlet_exclusions_region_id",
+      "breakpoints": true
     }
   ]
 }

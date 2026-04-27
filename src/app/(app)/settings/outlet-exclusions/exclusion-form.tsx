@@ -12,19 +12,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { testPattern } from "./actions";
+import { testPattern, type RegionOption } from "./actions";
 
 interface ExclusionFormProps {
+  regions: RegionOption[];
   onSubmit: (data: {
     outletCode: string;
     patternType: "exact" | "regex";
+    regionId: string;
     label?: string;
   }) => Promise<void>;
 }
 
-export function ExclusionForm({ onSubmit }: ExclusionFormProps) {
+export function ExclusionForm({ regions, onSubmit }: ExclusionFormProps) {
   const [pattern, setPattern] = React.useState("");
   const [patternType, setPatternType] = React.useState<"exact" | "regex">("exact");
+  const [regionId, setRegionId] = React.useState<string>("");
   const [label, setLabel] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
@@ -36,10 +39,14 @@ export function ExclusionForm({ onSubmit }: ExclusionFormProps) {
       setError("Enter a pattern to test");
       return;
     }
+    if (!regionId) {
+      setError("Select a region to test against");
+      return;
+    }
     setTesting(true);
     setError(null);
     setTestResults(null);
-    const result = await testPattern(pattern.trim(), patternType);
+    const result = await testPattern(pattern.trim(), patternType, regionId);
     if ("error" in result) {
       setError(result.error);
     } else {
@@ -54,16 +61,22 @@ export function ExclusionForm({ onSubmit }: ExclusionFormProps) {
       setError("Pattern is required");
       return;
     }
+    if (!regionId) {
+      setError("Region is required");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       await onSubmit({
         outletCode: pattern.trim(),
         patternType,
+        regionId,
         label: label.trim() || undefined,
       });
       setPattern("");
       setLabel("");
+      setRegionId("");
       setTestResults(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
@@ -76,7 +89,23 @@ export function ExclusionForm({ onSubmit }: ExclusionFormProps) {
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border p-4">
       <h3 className="text-sm font-medium">Add Exclusion Rule</h3>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-2">
+          <Label htmlFor="excl-region">Region</Label>
+          <Select value={regionId} onValueChange={(v) => v && setRegionId(v)}>
+            <SelectTrigger className="w-full" id="excl-region">
+              <SelectValue placeholder="Select region…" />
+            </SelectTrigger>
+            <SelectContent>
+              {regions.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.code} — {r.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor="excl-type">Pattern Type</Label>
           <Select

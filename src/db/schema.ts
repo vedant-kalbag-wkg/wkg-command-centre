@@ -785,6 +785,9 @@ export const productCodeFallbacks = pgTable("product_code_fallbacks", {
 // =============================================================================
 
 // outletExclusions — admin-managed outlet exclusion rules with exact/regex patterns.
+// Per Task 1.9 (PR-6 Part F) exclusions are scoped to a single region: outlet
+// codes are unique per (region_id, outlet_code) but not globally, so an
+// exclusion that targets one region's 'Q5' must not silently apply to AU/DE/ES.
 export const outletExclusions = pgTable(
   "outlet_exclusions",
   {
@@ -794,12 +797,15 @@ export const outletExclusions = pgTable(
       .notNull()
       .default("exact"),
     label: text("label"),
+    regionId: uuid("region_id")
+      .notNull()
+      .references(() => regions.id, { onDelete: "restrict" }),
     createdBy: text("created_by").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    uniq: unique().on(t.outletCode, t.patternType),
+    uniq: unique().on(t.outletCode, t.patternType, t.regionId),
     byPatternType: index("outlet_exclusions_pattern_type_idx").on(t.patternType),
     byOutletCode: index("outlet_exclusions_outlet_code_idx").on(t.outletCode),
   }),

@@ -16,12 +16,19 @@ export async function buildExclusionCondition(): Promise<SQL | undefined> {
   const exclusions = await db.select().from(outletExclusions);
   if (exclusions.length === 0) return undefined;
 
+  // Region-scoped match (Task 1.9 / PR-6 Part F). An exclusion only applies
+  // to locations in the same region — outlet codes are unique per region, not
+  // globally, so 'Q5' in UK and 'Q5' in DE are distinct outlets.
   const conditions: SQL[] = [];
   for (const ex of exclusions) {
     if (ex.patternType === "exact") {
-      conditions.push(sql`${locations.outletCode} = ${ex.outletCode}`);
+      conditions.push(
+        sql`(${locations.outletCode} = ${ex.outletCode} AND ${locations.primaryRegionId} = ${ex.regionId})`,
+      );
     } else if (ex.patternType === "regex") {
-      conditions.push(sql`${locations.outletCode} ~ ${ex.outletCode}`);
+      conditions.push(
+        sql`(${locations.outletCode} ~ ${ex.outletCode} AND ${locations.primaryRegionId} = ${ex.regionId})`,
+      );
     }
   }
 
