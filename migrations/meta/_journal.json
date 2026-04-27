@@ -239,6 +239,13 @@
       "when": 1777336801011,
       "tag": "0033_locations_iana_timezone_and_admin_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1777336801012,
+      "tag": "0034_locations_location_type_internal",
+      "breakpoints": true
     }
   ]
 }

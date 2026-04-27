@@ -105,11 +105,15 @@ type FilterState = {
   maturityFilter: string[];
   locationTypeFilter: string[];
   metricMode: MetricMode;
+  // D9 / Task 4.6 — admin escape hatch. Default false → internal-type
+  // locations (BK refund-handling) are excluded from leaderboards.
+  includeInternalAccounts: boolean;
 
   setDateRange: (range: FilterDateRange) => void;
   applyPreset: (preset: DatePreset) => void;
   setFilter: (dimension: FilterDimensionKey, values: string[]) => void;
   setMetricMode: (mode: MetricMode) => void;
+  setIncludeInternalAccounts: (v: boolean) => void;
   resetDimensionFilters: () => void;
   clearAllFilters: () => void;
 };
@@ -127,11 +131,13 @@ function createFullFilterStore() {
     maturityFilter: [],
     locationTypeFilter: [],
     metricMode: "sales",
+    includeInternalAccounts: false,
 
     setDateRange: (range) => set({ dateRange: range }),
     applyPreset: (preset) => set({ dateRange: getPresetRange(preset) }),
     setFilter: (dimension, values) => set({ [dimension]: values }),
     setMetricMode: (mode) => set({ metricMode: mode }),
+    setIncludeInternalAccounts: (v) => set({ includeInternalAccounts: v }),
     resetDimensionFilters: () =>
       set({
         hotelFilter: [],
@@ -153,6 +159,7 @@ function createFullFilterStore() {
         maturityFilter: [],
         locationTypeFilter: [],
         metricMode: "sales",
+        includeInternalAccounts: false,
       }),
   }));
 }
@@ -177,6 +184,7 @@ export function filtersToSearchParams(state: FilterState): URLSearchParams {
   if (state.locationTypeFilter.length > 0) params.set("types", state.locationTypeFilter.join(","));
   // Only serialize when non-default so URLs stay clean for the common case.
   if (state.metricMode === "revenue") params.set("mode", "revenue");
+  if (state.includeInternalAccounts) params.set("internal", "1");
 
   return params;
 }
@@ -194,6 +202,7 @@ export type SearchParamsToFiltersResult = {
       | "maturityFilter"
       | "locationTypeFilter"
       | "metricMode"
+      | "includeInternalAccounts"
     >
   >;
   dropped: DroppedParam[];
@@ -220,6 +229,7 @@ export function searchParamsToFilters(
   if (filters.maturityFilter) state.maturityFilter = filters.maturityFilter as string[];
   if (filters.locationTypeFilter) state.locationTypeFilter = filters.locationTypeFilter as string[];
   if (filters.metricMode) state.metricMode = filters.metricMode;
+  if (filters.includeInternalAccounts) state.includeInternalAccounts = filters.includeInternalAccounts;
 
   return { state, dropped };
 }
@@ -238,6 +248,8 @@ export function storeStateToAnalyticsFilters(state: FilterState): AnalyticsFilte
       state.locationTypeFilter.length > 0
         ? (state.locationTypeFilter as LocationType[])
         : undefined,
+    // D9 — only set when true; undefined applies the default-exclude.
+    includeInternalAccounts: state.includeInternalAccounts ? true : undefined,
     metricMode: state.metricMode,
   };
 }

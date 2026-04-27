@@ -25,6 +25,9 @@ export type ParsedUrlFilters = {
   maturityFilter?: MaturityBucket[];
   locationTypeFilter?: LocationType[];
   metricMode?: MetricMode;
+  // D9 / Task 4.6 — admin escape hatch (only `internal=1` / `internal=true`
+  // map to true; anything else gets dropped silently).
+  includeInternalAccounts?: boolean;
 };
 
 export type UrlFilterResult = {
@@ -98,6 +101,7 @@ const FILTER_KEYS = [
   "maturity",
   "types",
   "mode",
+  "internal",
 ] as const;
 
 // Single source of truth for parsing the analytics filter URL params.
@@ -169,6 +173,18 @@ export function parseUrlFilters(sp: SearchParamsLike): UrlFilterResult {
     const r = metricModeSchema.safeParse(modeRaw);
     if (r.success) filters.metricMode = r.data;
     else pushDropped(dropped, "mode", [modeRaw]);
+  }
+
+  // D9 — `internal=1` / `internal=true` → includeInternalAccounts: true.
+  // Any other value is dropped (so `internal=0`, `internal=false`, junk all
+  // fall to the default-exclude path). Absent → omit entirely.
+  const internalRaw = getRaw(sp, "internal");
+  if (internalRaw !== null && internalRaw !== "") {
+    if (internalRaw === "1" || internalRaw === "true") {
+      filters.includeInternalAccounts = true;
+    } else {
+      pushDropped(dropped, "internal", [internalRaw]);
+    }
   }
 
   return { filters, dropped, hasFilterParams };

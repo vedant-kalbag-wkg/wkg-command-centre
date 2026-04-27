@@ -20,6 +20,7 @@ function resetStore() {
     maturityFilter: [],
     locationTypeFilter: [],
     metricMode: "sales",
+    includeInternalAccounts: false,
   });
 }
 

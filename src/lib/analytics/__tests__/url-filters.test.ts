@@ -53,6 +53,40 @@ describe("parseUrlFilters", () => {
     expect(result.dropped).toEqual([{ field: "mode", values: ["wat"] }]);
   });
 
+  // D9 / Task 4.6 — `internal=1` is the admin escape hatch that opts back
+  // into seeing internal-type locations (e.g. BK 'Customer Service'). Only
+  // the truthy strings map to true; everything else gets dropped silently.
+  it("maps internal=1 to includeInternalAccounts: true", () => {
+    const sp = new URLSearchParams();
+    sp.set("internal", "1");
+    const result = parseUrlFilters(sp);
+    expect(result.filters.includeInternalAccounts).toBe(true);
+    expect(result.dropped).toEqual([]);
+  });
+
+  it("maps internal=true to includeInternalAccounts: true", () => {
+    const sp = new URLSearchParams();
+    sp.set("internal", "true");
+    const result = parseUrlFilters(sp);
+    expect(result.filters.includeInternalAccounts).toBe(true);
+  });
+
+  it("drops invalid internal values silently (default-exclude wins)", () => {
+    const sp = new URLSearchParams();
+    sp.set("internal", "foo");
+    const result = parseUrlFilters(sp);
+    expect(result.filters.includeInternalAccounts).toBeUndefined();
+    expect(result.dropped).toEqual([{ field: "internal", values: ["foo"] }]);
+  });
+
+  it("omits includeInternalAccounts when the param is absent", () => {
+    const sp = new URLSearchParams();
+    sp.set("from", "2026-01-01");
+    sp.set("to", "2026-03-31");
+    const result = parseUrlFilters(sp);
+    expect(result.filters.includeInternalAccounts).toBeUndefined();
+  });
+
   it("accepts both valid date endpoints", () => {
     const sp = new URLSearchParams();
     sp.set("from", "2026-01-01");

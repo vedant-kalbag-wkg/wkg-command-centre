@@ -177,6 +177,33 @@ describe("D1 COUNT(*) sweep — every Transactions KPI scopes to non-fee, non-re
   });
 });
 
+describe("Task 4.6 / PR-25 — D9 internal-account default-exclude", () => {
+  // The buildDimensionFilters funnel emits a `NOT IN (SELECT … WHERE
+  // location_type = 'internal')` predicate by default. Setting
+  // includeInternalAccounts=true on the filters opts back in for admin audit.
+  // We assert against getPortfolioSummary because every dashboard funnels
+  // through buildDimensionFilters; one happy-path + one opt-in case is enough
+  // to pin the contract.
+  const internalExclusionRegex = /not in[\s\S]*?location_type[\s\S]*?=\s*'internal'/i;
+
+  it("default filters → portfolio query excludes internal-type locations", async () => {
+    const { getPortfolioSummary } = await import("../portfolio");
+    await getPortfolioSummary(filters, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).toMatch(internalExclusionRegex);
+  });
+
+  it("includeInternalAccounts=true → portfolio query drops the exclusion", async () => {
+    const { getPortfolioSummary } = await import("../portfolio");
+    await getPortfolioSummary(
+      { ...filters, includeInternalAccounts: true },
+      userCtx,
+    );
+    const sql = captured.join("\n--BREAK--\n");
+    expect(sql).not.toMatch(internalExclusionRegex);
+  });
+});
+
 describe("Task 4.1 / PR-23 — getCategoryPerformance groups by category, excludes fees", () => {
   it("groups by COALESCE(products.category_name, …) and filters fees in WHERE", async () => {
     const { getCategoryPerformance } = await import("../portfolio");

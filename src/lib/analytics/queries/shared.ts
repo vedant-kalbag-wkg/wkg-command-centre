@@ -147,6 +147,21 @@ export function buildDimensionFilters(filters: AnalyticsFilters): SQL[] {
       )`,
     );
   }
+  // D9 / Task 4.6 — default-exclude internal-type locations (e.g. the BK
+  // 'Customer Service' refund-handling outlet) from every dashboard. The
+  // single funnel through buildDimensionFilters propagates this to portfolio,
+  // heat-map, hotel-groups, regions, location-groups, comparison, maturity,
+  // and trend-series queries. Admins can opt back in by setting
+  // includeInternalAccounts=true via the FilterBar toggle (`internal=1` URL
+  // param).
+  if (!filters.includeInternalAccounts) {
+    conditions.push(
+      sql`${salesRecords.locationId} NOT IN (
+        SELECT ${locations.id} FROM ${locations}
+        WHERE ${locations.locationType} = 'internal'
+      )`,
+    );
+  }
 
   return conditions;
 }

@@ -14,6 +14,7 @@ import { formatDroppedMessage } from "@/lib/analytics/url-filters";
 import { MultiSelectFilter } from "./multi-select-filter";
 import { DateRangePicker } from "./date-range-picker";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import type { DimensionOptions } from "@/lib/analytics/types";
 import { LOCATION_TYPES, LOCATION_TYPE_LABELS } from "@/lib/analytics/types";
 import { MATURITY_BUCKETS } from "@/lib/analytics/maturity";
@@ -82,6 +83,7 @@ export function AnalyticsFilterBar({
     maturity: store.maturityFilter,
     locationType: store.locationTypeFilter,
     mode: store.metricMode,
+    internal: store.includeInternalAccounts,
   });
 
   useEffect(() => {
@@ -235,6 +237,21 @@ export function AnalyticsFilterBar({
           onChange={(values) => store.setFilter("maturityFilter", values)}
           placeholder="Filter by maturity..."
         />
+
+        {/* D9 / Task 4.6 — admin escape hatch. Default off; internal-type
+            outlets (BK 'Customer Service' refund-handler) are excluded from
+            every leaderboard. Toggling on shows them for audit purposes. */}
+        <label
+          data-testid="include-internal-toggle"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap pl-1"
+        >
+          <Switch
+            size="sm"
+            checked={store.includeInternalAccounts}
+            onCheckedChange={(v) => store.setIncludeInternalAccounts(v)}
+          />
+          Show internal accounts
+        </label>
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
