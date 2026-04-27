@@ -10,6 +10,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  activeKioskCountFragment,
   buildAmountModeCondition,
   buildExclusionCondition,
   buildDateCondition,
@@ -241,7 +242,6 @@ export async function getHotelGroupDetail(
     hotel_name: string;
     revenue: string;
     transactions: string;
-    quantity: string;
     rooms: string | null;
     kiosks: string | null;
     star_rating: string | null;
@@ -252,9 +252,8 @@ export async function getHotelGroupDetail(
       ${locations.name} AS hotel_name,
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
-      COUNT(*) FILTER (WHERE ${salesTxn})::text AS quantity,
       ${locations.numRooms}::text AS rooms,
-      NULL::text AS kiosks,
+      ${activeKioskCountFragment()}::text AS kiosks,
       ${locations.starRating}::text AS star_rating
     FROM ${baseFromLocationsOnly()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
@@ -271,7 +270,6 @@ export async function getHotelGroupDetail(
       hotelName: row.hotel_name,
       revenue: hotelRevenue,
       transactions: Number(row.transactions),
-      quantity: Number(row.quantity),
       rooms,
       kiosks: row.kiosks ? Number(row.kiosks) : null,
       starRating: row.star_rating ? Number(row.star_rating) : null,

@@ -255,9 +255,8 @@ describe("getHotelGroupDetail – multi-group fan-out guard (D5 Part E)", () => 
           hotel_name: "JV Hotel",
           revenue: "100",
           transactions: "1",
-          quantity: "1",
           rooms: "50",
-          kiosks: null,
+          kiosks: "2",
           star_rating: "4",
         },
       ])
@@ -275,6 +274,10 @@ describe("getHotelGroupDetail – multi-group fan-out guard (D5 Part E)", () => 
     expect(result.hotels).toHaveLength(1);
     expect(result.hotels[0]!.locationId).toBe("loc-jv");
     expect(result.hotels[0]!.revenue).toBe(100);
+    // Task 4.8 / PR-24 — kiosks is now sourced from a real
+    // active-kiosk subquery; quantity is dropped from HotelInGroup.
+    expect(result.hotels[0]!.kiosks).toBe(2);
+    expect(result.hotels[0]).not.toHaveProperty("quantity");
     expect(result.metrics.hotelCount).toBe(1);
 
     // Structural guard on the hotel-breakdown query (call #2): it must

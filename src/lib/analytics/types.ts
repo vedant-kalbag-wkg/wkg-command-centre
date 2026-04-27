@@ -272,7 +272,6 @@ export type HotelInGroup = {
   hotelName: string
   revenue: number
   transactions: number
-  quantity: number
   rooms: number | null
   kiosks: number | null
   starRating: number | null

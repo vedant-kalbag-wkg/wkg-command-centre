@@ -35,8 +35,8 @@ export function HotelBreakdown({ hotels }: HotelBreakdownProps) {
             <TableHead className="min-w-[180px]">Hotel</TableHead>
             <TableHead className="text-right">{metricLabel}</TableHead>
             <TableHead className="text-right">Transactions</TableHead>
-            <TableHead className="text-right">Quantity</TableHead>
             <TableHead className="text-right">Rooms</TableHead>
+            <TableHead className="text-right">Kiosks</TableHead>
             <TableHead className="text-right">Stars</TableHead>
             <TableHead className="text-right">{metricLabel === "Revenue" ? "Rev" : "Sales"} / Room</TableHead>
           </TableRow>
@@ -61,10 +61,10 @@ export function HotelBreakdown({ hotels }: HotelBreakdownProps) {
                 {formatNumber(hotel.transactions)}
               </TableCell>
               <TableCell className="text-right">
-                {formatNumber(hotel.quantity)}
+                {formatNullValue(hotel.rooms, formatNumber)}
               </TableCell>
               <TableCell className="text-right">
-                {formatNullValue(hotel.rooms, formatNumber)}
+                {formatNullValue(hotel.kiosks, formatNumber)}
               </TableCell>
               <TableCell className="text-right">
                 {formatNullValue(hotel.starRating, formatNumber)}
