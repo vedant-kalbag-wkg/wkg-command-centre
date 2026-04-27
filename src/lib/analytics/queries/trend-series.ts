@@ -4,6 +4,7 @@ import {
   salesRecords,
   businessEvents,
   eventCategories,
+  locations,
   locationHotelGroupMemberships,
   locationRegionMemberships,
   locationGroupMemberships,
@@ -11,6 +12,7 @@ import {
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
+import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
 import {
   buildDimensionFilters,
   buildIsFeeCondition,
@@ -197,10 +199,128 @@ export async function getTrendSeriesData(
 
 // ─── Business Events Query ───────────────────────────────────────────────────
 
+// Task 4.17 — locations.id-anchored dimension predicates for the
+// effective-locations subquery in getBusinessEvents. Mirrors the membership
+// join shape of `buildDimensionFilters` but flips the LHS to `locations.id`
+// (the sales-records-anchored helper isn't usable here because the events
+// visibility check operates over the location universe, not over rows in
+// `sales_records`).
+function buildEffectiveLocationsPredicate(filters: AnalyticsFilters): SQL[] {
+  const conditions: SQL[] = [];
+
+  if (filters.hotelIds?.length) {
+    conditions.push(inArray(locations.id, filters.hotelIds));
+  }
+  if (filters.hotelGroupIds?.length) {
+    conditions.push(
+      sql`${locations.id} IN (
+        SELECT ${locationHotelGroupMemberships.locationId}
+        FROM ${locationHotelGroupMemberships}
+        WHERE ${inArray(locationHotelGroupMemberships.hotelGroupId, filters.hotelGroupIds)}
+      )`,
+    );
+  }
+  if (filters.regionIds?.length) {
+    conditions.push(
+      sql`${locations.id} IN (
+        SELECT ${locationRegionMemberships.locationId}
+        FROM ${locationRegionMemberships}
+        WHERE ${inArray(locationRegionMemberships.regionId, filters.regionIds)}
+      )`,
+    );
+  }
+  if (filters.locationGroupIds?.length) {
+    conditions.push(
+      sql`${locations.id} IN (
+        SELECT ${locationGroupMemberships.locationId}
+        FROM ${locationGroupMemberships}
+        WHERE ${inArray(locationGroupMemberships.locationGroupId, filters.locationGroupIds)}
+      )`,
+    );
+  }
+  if (filters.locationTypes?.length) {
+    conditions.push(inArray(locations.locationType, filters.locationTypes));
+  }
+  if (!filters.includeInternalAccounts) {
+    conditions.push(sql`${locations.locationType} IS DISTINCT FROM 'internal'`);
+  }
+  return conditions;
+}
+
+/**
+ * Hierarchical visibility filter for business events (Task 4.17).
+ *
+ * An event is visible to the user iff one of:
+ *   - scope_type='global' (always visible)
+ *   - scope_type='hotel' AND scope_value is in the user's effective set
+ *   - scope_type='region' AND any location in that region is in the
+ *     effective set
+ *   - scope_type='hotel_group' AND any location in that group is in the
+ *     effective set
+ *
+ * The "effective set" is the user's scoped, active locations further
+ * restricted by any dimension filters on the global FilterBar. When no
+ * filters are set, the effective set is every scoped active location, so
+ * every event with at least one matching location remains visible.
+ *
+ * The events table is small (≤ a few hundred rows in prod), so the four
+ * scope branches each running an EXISTS / IN over a per-request
+ * effective-locations CTE is fine — index hits dominate.
+ */
 export async function getBusinessEvents(
   dateFrom: string,
   dateTo: string,
+  filters: AnalyticsFilters,
+  userCtx: UserCtx,
 ): Promise<BusinessEventDisplay[]> {
+  const scopedActiveIds = await getScopedActiveLocationIds(userCtx);
+  // No locations in scope → no events can satisfy any non-global predicate;
+  // global events still pass through, so we fall through with an effective
+  // set of `FALSE` and let the SQL handle it uniformly.
+  const effectivePredicates = buildEffectiveLocationsPredicate(filters);
+  const scopedActiveCondition =
+    scopedActiveIds.length === 0
+      ? sql`FALSE`
+      : sql`${locations.id} = ANY(${sql.param(scopedActiveIds)}::uuid[])`;
+  const effectiveWhere = combineConditions([
+    scopedActiveCondition,
+    ...effectivePredicates,
+  ]);
+
+  // CTE: effective_locations — the location set the user can "see" right
+  // now. Reused across all three non-global scope branches below.
+  const effectiveLocationsCte = sql`
+    WITH effective_locations AS (
+      SELECT ${locations.id} AS id
+      FROM ${locations}
+      WHERE ${effectiveWhere ?? sql`TRUE`}
+    )
+  `;
+
+  const visibilityPredicate = sql`(
+    ${businessEvents.scopeType} = 'global'
+    OR (
+      ${businessEvents.scopeType} = 'hotel'
+      AND ${businessEvents.scopeValue}::uuid IN (SELECT id FROM effective_locations)
+    )
+    OR (
+      ${businessEvents.scopeType} = 'region'
+      AND EXISTS (
+        SELECT 1 FROM ${locationRegionMemberships}
+        WHERE ${locationRegionMemberships.regionId} = ${businessEvents.scopeValue}::uuid
+          AND ${locationRegionMemberships.locationId} IN (SELECT id FROM effective_locations)
+      )
+    )
+    OR (
+      ${businessEvents.scopeType} = 'hotel_group'
+      AND EXISTS (
+        SELECT 1 FROM ${locationHotelGroupMemberships}
+        WHERE ${locationHotelGroupMemberships.hotelGroupId} = ${businessEvents.scopeValue}::uuid
+          AND ${locationHotelGroupMemberships.locationId} IN (SELECT id FROM effective_locations)
+      )
+    )
+  )`;
+
   const rows = await executeRows<{
     id: string;
     title: string;
@@ -213,6 +333,7 @@ export async function getBusinessEvents(
     scope_type: string | null;
     scope_value: string | null;
   }>(sql`
+    ${effectiveLocationsCte}
     SELECT
       ${businessEvents.id}::text AS id,
       ${businessEvents.title} AS title,
@@ -228,6 +349,7 @@ export async function getBusinessEvents(
       INNER JOIN ${eventCategories} ON ${businessEvents.categoryId} = ${eventCategories.id}
     WHERE ${businessEvents.startDate} <= ${dateTo}
       AND (${businessEvents.endDate} IS NULL OR ${businessEvents.endDate} >= ${dateFrom})
+      AND ${visibilityPredicate}
     ORDER BY ${businessEvents.startDate} ASC
   `);
 
@@ -334,8 +456,32 @@ export const getTrendSeriesDataCached = unstable_cache(
   { revalidate: 86400, tags: TREND_BUILDER_TAGS },
 );
 
+// v2 — getBusinessEvents now applies hierarchical scope-type visibility
+// (Task 4.17). The filter signature participates in the cache key so two
+// distinct filter contexts cache independently.
 export const getBusinessEventsCached = unstable_cache(
-  withStats('getBusinessEvents', getBusinessEvents),
-  ['analytics', 'getBusinessEvents', 'v1'],
+  withStats(
+    'getBusinessEvents',
+    async (
+      dateFrom: string,
+      dateTo: string,
+      filters: AnalyticsFilters,
+      scopeKey: CachedQueryScope,
+    ): Promise<BusinessEventDisplay[]> => {
+      if (scopeKey !== INTERNAL_SCOPE_KEY) {
+        throw new Error(`getBusinessEvents: external scope not yet supported (got ${scopeKey})`);
+      }
+      // Strip product/maturity/dateFrom/dateTo from the filter — events
+      // visibility doesn't depend on them, so different values must collide
+      // on the cache key. Reuse the same canonicaliser as trend-series.
+      const canonicalGlobal: AnalyticsFilters = {
+        ...canonicaliseGlobalFilters(filters),
+        dateFrom,
+        dateTo,
+      };
+      return getBusinessEvents(dateFrom, dateTo, canonicalGlobal, INTERNAL_USER_CTX);
+    },
+  ),
+  ['analytics', 'getBusinessEvents', 'v2'],
   { revalidate: 86400, tags: TREND_BUILDER_TAGS },
 );

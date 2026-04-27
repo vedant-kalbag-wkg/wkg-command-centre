@@ -52,6 +52,14 @@ vi.mock("@/lib/scoping/scoped-query", () => ({
   scopedSalesCondition: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/scoping/scoped-active-locations", () => ({
+  // Single sentinel id keeps the rendered SQL deterministic and lets the
+  // 4.17 tests assert the effective-locations CTE exists.
+  getScopedActiveLocationIds: vi
+    .fn()
+    .mockResolvedValue(["00000000-0000-0000-0000-0000000000ff"]),
+}));
+
 vi.mock("@/lib/analytics/active-locations", () => ({
   getActiveLocationIds: vi.fn().mockResolvedValue([]),
   buildActiveLocationCondition: vi.fn().mockResolvedValue(undefined),
@@ -95,5 +103,51 @@ describe("getTrendSeriesData — global FilterBar dimensions reach the SQL (PR-1
     const sql = captured.join("\n--BREAK--\n");
     expect(sql).toContain("kiosk_assignments");
     expect(sql).toMatch(/interval/i);
+  });
+});
+
+describe("getBusinessEvents — hierarchical scope-type visibility (PR-29 / Task 4.17)", () => {
+  it("default filters render the four-branch visibility predicate", async () => {
+    const { getBusinessEvents } = await import("../trend-series");
+    await getBusinessEvents("2025-01-01", "2025-06-30", baseGlobal, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    // CTE-anchored effective set
+    expect(sql).toMatch(/effective_locations/i);
+    // All four scope branches are present
+    expect(sql).toMatch(/'global'/);
+    expect(sql).toMatch(/'hotel'/);
+    expect(sql).toMatch(/'region'/);
+    expect(sql).toMatch(/'hotel_group'/);
+    // Region/hotel-group branches go through the membership tables
+    expect(sql).toContain("location_region_memberships");
+    expect(sql).toContain("location_hotel_group_memberships");
+    // Date-range predicate still applies
+    expect(sql).toMatch(/start_date/);
+    expect(sql).toMatch(/end_date/);
+  });
+
+  it("regionIds filter narrows the effective-locations subquery", async () => {
+    const { getBusinessEvents } = await import("../trend-series");
+    const global: AnalyticsFilters = {
+      ...baseGlobal,
+      regionIds: ["00000000-0000-0000-0000-0000000000aa"],
+    };
+    await getBusinessEvents("2025-01-01", "2025-06-30", global, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    // The effective-locations CTE now has the locations.id-anchored region
+    // membership predicate as well as the universal region branch in the
+    // visibility predicate, so the membership table should appear at least
+    // twice (once in CTE, once in visibility OR-arm).
+    const hits = sql.match(/location_region_memberships/g) ?? [];
+    expect(hits.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("internal-type locations are excluded by default from the effective set", async () => {
+    const { getBusinessEvents } = await import("../trend-series");
+    await getBusinessEvents("2025-01-01", "2025-06-30", baseGlobal, userCtx);
+    const sql = captured.join("\n--BREAK--\n");
+    // D9 / Task 4.6 — buildEffectiveLocationsPredicate adds an
+    // `IS DISTINCT FROM 'internal'` guard unless includeInternalAccounts.
+    expect(sql).toMatch(/internal/);
   });
 });
