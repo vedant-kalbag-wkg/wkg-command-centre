@@ -4,19 +4,28 @@ import { db } from "@/db";
 import { experimentCohorts, locations } from "@/db/schema";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { writeAuditLog } from "@/lib/audit";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   getCohortMetrics,
   getRestOfPortfolioMetrics,
   findSimilarLocations,
   getCohortTemporalComparison,
 } from "@/lib/analytics/queries/experiments";
+import { getActiveLocationIds } from "@/lib/analytics/active-locations";
+import {
+  scopedLocationsCondition,
+  type UserCtx,
+} from "@/lib/scoping/scoped-query";
+import { combineConditions } from "@/lib/analytics/queries/shared";
 import type {
   AnalyticsFilters,
   ExperimentCohort,
   CohortComparison,
   TemporalComparison,
 } from "@/lib/analytics/types";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const dbAny = db as any;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,17 +82,44 @@ export async function listCohorts(): Promise<ExperimentCohort[]> {
 }
 
 /**
- * Fetch all locations for the location picker.
+ * Fetch locations for the cohort picker. Honours the caller's scope
+ * (external-region users only see locations within their region(s)) and
+ * outlet_exclusions (TEST/training outlets are filtered out).
  */
 export async function listLocationsForPicker(): Promise<
   { id: string; name: string }[]
 > {
-  await getUserCtx(); // auth gate
+  const ctx = await getUserCtx();
+  const [scopeCondition, activeIds] = await Promise.all([
+    scopedLocationsCondition(dbAny, ctx),
+    getActiveLocationIds(),
+  ]);
   const rows = await db
     .select({ id: locations.id, name: locations.name })
     .from(locations)
+    .where(
+      combineConditions([inArray(locations.id, activeIds), scopeCondition]),
+    )
     .orderBy(locations.name);
   return rows;
+}
+
+/**
+ * Active + scope-visible location IDs for the caller. Used by
+ * fetchCohortComparison to compute the rest-of-portfolio control size for
+ * per-location delta normalisation.
+ */
+async function getScopedActiveLocationIds(ctx: UserCtx): Promise<string[]> {
+  const [allActive, scopeCondition] = await Promise.all([
+    getActiveLocationIds(),
+    scopedLocationsCondition(dbAny, ctx),
+  ]);
+  if (!scopeCondition) return allActive;
+  const rows = await db
+    .select({ id: locations.id })
+    .from(locations)
+    .where(and(inArray(locations.id, allActive), scopeCondition));
+  return rows.map((r) => r.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -176,18 +212,24 @@ export async function fetchCohortComparison(
   if (!cohort) throw new Error("Cohort not found");
 
   const cohortLocationIds = (cohort.locationIds ?? []) as string[];
+  const cohortSize = cohortLocationIds.length;
 
   // Fetch cohort metrics
   const cohortMetrics = await getCohortMetrics(cohortLocationIds, filters, ctx);
 
-  // Fetch control metrics
+  // Fetch control metrics + size
   let controlMetrics: { revenue: number; transactions: number; avgRevenue: number };
+  let controlSize: number;
 
   if (cohort.controlType === "named_control" && cohort.controlLocationIds) {
     const controlIds = cohort.controlLocationIds as string[];
+    controlSize = controlIds.length;
     controlMetrics = await getCohortMetrics(controlIds, filters, ctx);
   } else {
-    // rest_of_portfolio — exclude cohort locations
+    // rest_of_portfolio — exclude cohort locations from scoped+active universe.
+    const scopedActiveIds = await getScopedActiveLocationIds(ctx);
+    const cohortSet = new Set(cohortLocationIds);
+    controlSize = scopedActiveIds.filter((id) => !cohortSet.has(id)).length;
     controlMetrics = await getRestOfPortfolioMetrics(
       cohortLocationIds,
       filters,
@@ -195,14 +237,22 @@ export async function fetchCohortComparison(
     );
   }
 
-  // Compute deltas
+  // Per-location normalisation. Comparing a 5-hotel cohort vs a 200-hotel
+  // control on raw totals would be dominated by group-size disparity; divide
+  // through to make the delta interpretable. avgRevenue is already
+  // per-transaction so its delta is meaningful as-is.
+  const safeDiv = (n: number, d: number) => (d > 0 ? n / d : 0);
   const delta = {
-    revenue: cohortMetrics.revenue - controlMetrics.revenue,
-    transactions: cohortMetrics.transactions - controlMetrics.transactions,
+    revenue:
+      safeDiv(cohortMetrics.revenue, cohortSize) -
+      safeDiv(controlMetrics.revenue, controlSize),
+    transactions:
+      safeDiv(cohortMetrics.transactions, cohortSize) -
+      safeDiv(controlMetrics.transactions, controlSize),
     avgRevenue: cohortMetrics.avgRevenue - controlMetrics.avgRevenue,
   };
 
-  return { cohortMetrics, controlMetrics, delta };
+  return { cohortMetrics, controlMetrics, cohortSize, controlSize, delta };
 }
 
 // ---------------------------------------------------------------------------

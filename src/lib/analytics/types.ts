@@ -409,6 +409,8 @@ export type ExperimentCohort = {
 export type CohortComparison = {
   cohortMetrics: { revenue: number; transactions: number; avgRevenue: number };
   controlMetrics: { revenue: number; transactions: number; avgRevenue: number };
+  cohortSize: number;
+  controlSize: number;
   delta: { revenue: number; transactions: number; avgRevenue: number };
 };
 
