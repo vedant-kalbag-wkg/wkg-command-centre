@@ -106,6 +106,11 @@ export async function getRegionsList(
       GROUP BY ${regions.id}, ${regions.name}, ${markets.id}, ${markets.name}
       ORDER BY revenue DESC
     `),
+    // Query 2: badge counts (hotel groups + location groups per region). The
+    // inner DISTINCT subquery applies the same global filter as Query 1 so the
+    // badge counts match the detail-panel KPIs (Task 3.8). Regions with zero
+    // sales rows in the period drop out; the LEFT-JOIN-with-?? 0 fallback in
+    // the consumer provides safe defaults.
     executeRows<{
       region_id: string;
       hotel_group_count: string;
@@ -120,6 +125,11 @@ export async function getRegionsList(
           ON ${locationRegionMemberships.locationId} = ${locationHotelGroupMemberships.locationId}
         LEFT JOIN ${locationGroupMemberships}
           ON ${locationRegionMemberships.locationId} = ${locationGroupMemberships.locationId}
+      WHERE ${locationRegionMemberships.locationId} IN (
+        SELECT DISTINCT ${salesRecords.locationId}
+        FROM ${salesRecords}
+        ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      )
       GROUP BY ${locationRegionMemberships.regionId}
     `),
   ]);

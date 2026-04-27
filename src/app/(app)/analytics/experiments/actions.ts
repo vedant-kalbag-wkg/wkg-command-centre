@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { experimentCohorts, locations } from "@/db/schema";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { writeAuditLog } from "@/lib/audit";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   getCohortMetrics,
   getRestOfPortfolioMetrics,
@@ -12,10 +12,8 @@ import {
   getCohortTemporalComparison,
 } from "@/lib/analytics/queries/experiments";
 import { getActiveLocationIds } from "@/lib/analytics/active-locations";
-import {
-  scopedLocationsCondition,
-  type UserCtx,
-} from "@/lib/scoping/scoped-query";
+import { scopedLocationsCondition } from "@/lib/scoping/scoped-query";
+import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
 import { combineConditions } from "@/lib/analytics/queries/shared";
 import type {
   AnalyticsFilters,
@@ -102,24 +100,6 @@ export async function listLocationsForPicker(): Promise<
     )
     .orderBy(locations.name);
   return rows;
-}
-
-/**
- * Active + scope-visible location IDs for the caller. Used by
- * fetchCohortComparison to compute the rest-of-portfolio control size for
- * per-location delta normalisation.
- */
-async function getScopedActiveLocationIds(ctx: UserCtx): Promise<string[]> {
-  const [allActive, scopeCondition] = await Promise.all([
-    getActiveLocationIds(),
-    scopedLocationsCondition(dbAny, ctx),
-  ]);
-  if (!scopeCondition) return allActive;
-  const rows = await db
-    .select({ id: locations.id })
-    .from(locations)
-    .where(and(inArray(locations.id, allActive), scopeCondition));
-  return rows.map((r) => r.id);
 }
 
 // ---------------------------------------------------------------------------
