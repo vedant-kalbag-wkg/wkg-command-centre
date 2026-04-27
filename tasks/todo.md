@@ -68,7 +68,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 ## Phase 4 — Per-dashboard surface bugs
 
 - [ ] **4.1** "Category Performance" → group by `products.categoryName`, exclude fees via `buildNonFeeCondition()` (currently groups by product name AND includes fees). (P1)
-- [ ] **4.2** Cash Handling Fee leak in Performer Top Products: replace `isBookingFee=false` with `buildNonFeeCondition()` (`high-performer-analysis.ts:194`). (P1)
+- [x] **4.2** Cash Handling Fee leak in Performer Top Products: `high-performer-analysis.ts:195` uses `buildNonFeeCondition()`. — covered by Task 1.3 Part B (`156bdb4`); verified PR-22
 - [ ] **4.3** Outlet Tiers cells: `LIMIT 200` → return total + show "showing 200 of N" indicator. (P2)
 - [x] **4.4** Outlet Tiers maturity column: pass `filters.dateTo` (`outlet-tiers.tsx:95-98` already wires `referenceDate={filters.dateTo}` from `portfolio/page.tsx:380`). — covered by PR-5 (`34ac5de`); verified PR-21
 - [x] **4.5** Heat Map `performance-table.tsx:124-127` maturity badge: passes `filters.dateTo` from `heat-map/page.tsx:120,138,158`. — covered by PR-5 (`34ac5de`); verified PR-21
@@ -79,7 +79,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [ ] **4.10** Cohort name uniqueness in Experiments. (P3)
 - [ ] **4.11** Actions Dashboard: add overdue indicator, "Mine only" filter, location filter, sort by due-date default, display `resolvedAt`. (P1)
 - [ ] **4.12** Flag → Action workflow: wire `createFlag` to optionally `createActionItem` (currently XOR with `sourceId=NULL`). (P1)
-- [ ] **4.13** Trend Builder `metric=booking_fee`: switch from `isBookingFee=true` to `buildIsFeeCondition()` to include `9992` (`trend-series.ts:85-91`). (P1)
+- [x] **4.13** Trend Builder `metric=booking_fee`: `trend-series.ts:107-109` uses `buildIsFeeCondition()` (covers 9991 + 9992 via `is_weknow_fee=true` post-D10). — covered by Task 1.3 Part B (`156bdb4`); verified PR-22
 - [ ] **4.14** Compare hotel-group/region cards: dedupe shared locations across multi-selection (covered by 1.5). (P1)
 - [ ] **4.15** Trend Builder rolling-avg + weekly/monthly granularity: disable combo or switch to day-window. (P2)
 - [ ] **4.16** Trend Builder auto-granularity: replace hard 31/90 day cliffs with continuous logic. (P2)
