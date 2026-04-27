@@ -85,7 +85,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [ ] **4.16** Trend Builder auto-granularity: replace hard 31/90 day cliffs with continuous logic. (P2)
 - [ ] **4.17** Event annotations: filter by event scope, not just category. (P1)
 - [ ] **4.18** Weather lat/lng resolution: add deterministic `ORDER BY` (`actions.ts:59-73`). (P2)
-- [ ] **4.19** Region selector vs detail hotel-count divergence (UK shows 79 vs 63): unify the count query. (P1)
+- [x] **4.19** Region selector vs detail count divergence (UK 79 vs 63): selector Query 2 rewritten to drive off `sales_records` (matching `getRegionDetail.hotelGroupBreakdown`); structural-unification test pins both queries to the same membership-scoping shape. — PR-27 (`393466f`)
 
 ## Phase 5 — NEW-P0-B: Maturity data restoration
 
