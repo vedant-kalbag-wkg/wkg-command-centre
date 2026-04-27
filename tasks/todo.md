@@ -74,7 +74,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [x] **4.5** Heat Map `performance-table.tsx:124-127` maturity badge: passes `filters.dateTo` from `heat-map/page.tsx:120,138,158`. — covered by PR-5 (`34ac5de`); verified PR-21
 - [ ] **4.6** Refund-only outlet `BK` per **D9**: add `locationType='internal'` and exclude from leaderboards. (P1)
 - [ ] **4.7** Outlet `4T` "Heathrow Terminal 4 b" per **D8**: investigate, then fix import-time normalisation. (P1)
-- [ ] **4.8** Hotels-in-Group / Hotels-in-Region tables: drop the redundant `quantity` column (it equals `transactions`); add real `kiosks` value (currently hardcoded NULL — `hotel-groups.ts`, `location-groups.ts`). (P1)
+- [x] **4.8** Hotels-in-Group breakdown tables: dropped redundant `quantity` (=`transactions`); replaced `NULL::text AS kiosks` with `activeKioskCountFragment()` per-row count. UI columns now `[Hotel] [Metric] [Transactions] [Rooms] [Kiosks] [Stars] [Metric/Room]`. — PR-24 (`7aa37d7`). Summary-level `total_kiosks` NULL in `getLocationGroupsList`/`getLocationGroupDetail` capacity intentionally left for follow-up (separate audit items at ANALYTICS-ISSUES.md:178, 467).
 - [ ] **4.9** Bottom 20 / Top 20 overlap when 21 ≤ N ≤ 39: warn or merge. (`heat-map.ts:286-293`). (P2)
 - [ ] **4.10** Cohort name uniqueness in Experiments. (P3)
 - [ ] **4.11** Actions Dashboard: add overdue indicator, "Mine only" filter, location filter, sort by due-date default, display `resolvedAt`. (P1)
