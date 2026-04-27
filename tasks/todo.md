@@ -69,16 +69,16 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 
 - [x] **4.1** "Category Performance" → group by `products.categoryName`, exclude fees via `buildNonFeeCondition()`. — PR-23 (`afbe8d1` + `7f416d6` test tightening)
 - [x] **4.2** Cash Handling Fee leak in Performer Top Products: `high-performer-analysis.ts:195` uses `buildNonFeeCondition()`. — covered by Task 1.3 Part B (`156bdb4`); verified PR-22
-- [ ] **4.3** Outlet Tiers cells: `LIMIT 200` → return total + show "showing 200 of N" indicator. (P2)
+- [ ] **4.3** Outlet Tiers cells: `LIMIT 200` → return total + show "showing 200 of N" indicator. (P2 — **deferred Phase 4 close**, UI noise not correctness)
 - [x] **4.4** Outlet Tiers maturity column: pass `filters.dateTo` (`outlet-tiers.tsx:95-98` already wires `referenceDate={filters.dateTo}` from `portfolio/page.tsx:380`). — covered by PR-5 (`34ac5de`); verified PR-21
 - [x] **4.5** Heat Map `performance-table.tsx:124-127` maturity badge: passes `filters.dateTo` from `heat-map/page.tsx:120,138,158`. — covered by PR-5 (`34ac5de`); verified PR-21
 - [x] **4.6** Refund-only outlet `BK` per **D9**: added `locationType='internal'` (TS + CHECK rebuild via migration 0034); `buildDimensionFilters` now appends a NOT-IN exclusion unless `includeInternalAccounts=true`; FilterBar gains a "Show internal accounts" Switch + `internal=1` URL param. — PR-25 (`19d8697`). Migration 0034 applied to neon-dev only.
 - [x] **4.7** Outlet `4T` "Heathrow Terminal 4 b" + `2M` "T2 Mobile desk B" — display-only suffix strip via `formatHotelDisplayName` helper applied at 4 hotel-name render sites (Outlet Tiers, Heat Map perf table, hotel-list, hotel-breakdown). Underlying data preserved for Phase 5.6 multi-POS bulk merge. — PR-26 (`7f97f5d`)
 - [x] **4.8** Hotels-in-Group breakdown tables: dropped redundant `quantity` (=`transactions`); replaced `NULL::text AS kiosks` with `activeKioskCountFragment()` per-row count. UI columns now `[Hotel] [Metric] [Transactions] [Rooms] [Kiosks] [Stars] [Metric/Room]`. — PR-24 (`7aa37d7`). Summary-level `total_kiosks` NULL in `getLocationGroupsList`/`getLocationGroupDetail` capacity intentionally left for follow-up (separate audit items at ANALYTICS-ISSUES.md:178, 467).
-- [ ] **4.9** Bottom 20 / Top 20 overlap when 21 ≤ N ≤ 39: warn or merge. (`heat-map.ts:286-293`). (P2)
-- [ ] **4.10** Cohort name uniqueness in Experiments. (P3)
-- [ ] **4.11** Actions Dashboard: add overdue indicator, "Mine only" filter, location filter, sort by due-date default, display `resolvedAt`. (P1)
-- [ ] **4.12** Flag → Action workflow: wire `createFlag` to optionally `createActionItem` (currently XOR with `sourceId=NULL`). (P1)
+- [ ] **4.9** Bottom 20 / Top 20 overlap when 21 ≤ N ≤ 39: warn or merge. (`heat-map.ts:286-293`). (P2 — **deferred Phase 4 close**, rare edge case)
+- [ ] **4.10** Cohort name uniqueness in Experiments. (P3 — **deferred Phase 4 close**, UNIQUE constraint + form validation; not blocking)
+- [x] **4.11** Actions Dashboard: overdue badge in due-date cell, "Mine only" Switch, location multi-select (filtered to locations with ≥1 action), default sort `due_date ASC NULLS LAST`, resolvedAt date in resolved view. — PR-30 (`7b68395`)
+- [x] **4.12** Flag → Action workflow: dedicated Flag Review page (`/analytics/flags`) with active/resolved tabs, type + location filters, inline-expand to linked actions, Create Action + Resolve actions per row. FlagDialog reshaped from XOR to single-submit + "Also create a linked action item" checkbox via tested `flag-dialog-submit.ts` helper. Linked-action count rendered server-side (correlated subquery) to avoid N+1. — PR-30 (`7b68395` + `31e8581` + `c3c3836`)
 - [x] **4.13** Trend Builder `metric=booking_fee`: `trend-series.ts:107-109` uses `buildIsFeeCondition()` (covers 9991 + 9992 via `is_weknow_fee=true` post-D10). — covered by Task 1.3 Part B (`156bdb4`); verified PR-22
 - [x] **4.14** Compare hotel-group dedup invariant: structurally pinned by regression test (EXISTS gate via `location_hotel_group_memberships`, no top-level membership JOIN). PR-6 Part E covers the production fix; this PR adds the test gate. — PR-28 (`7647f38`)
 - [x] **4.15** Trend Builder rolling-avg toggle: disabled with tooltip when resolved granularity ≠ daily; auto-clears stale state on flip. — PR-29 (`9661a60`)
