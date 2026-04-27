@@ -19,6 +19,7 @@ import {
   ArrowLeftRight,
   Percent,
   ClipboardList,
+  Flag,
   CalendarRange,
   Filter,
   Ban,
@@ -77,6 +78,7 @@ const analytics: NavItem[] = [
   { label: "Compare", href: "/analytics/compare", icon: ArrowLeftRight },
   { label: "Commission", href: "/analytics/commission", icon: Percent },
   { label: "Actions", href: "/analytics/actions-dashboard", icon: ClipboardList },
+  { label: "Flag Review", href: "/analytics/flags", icon: Flag },
 ];
 
 const configure: NavItem[] = [
