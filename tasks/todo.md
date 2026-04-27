@@ -44,7 +44,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [ ] **2.4** Pivot Table grand totals AVG: recompute from raw (`pivot-engine.ts:387-388`) — Simpson's paradox fix. (P1)
 - [ ] **2.5** Pivot Table grand totals row "—" when column-pivoting on: align cell-key composition (`pivot-engine.ts:380-397` ↔ `pivot-result-table.tsx:110-121`). (P1)
 - [ ] **2.6** Pivot Table comparison columns: switch from positional fallback to key-matching (`pivot.ts:218-220, 273-274`). (P1)
-- [ ] **2.7** Trend Builder Avg Basket bucketing → weighted average `SUM(amount)/SUM(count)` per bucket (`trend-chart.tsx:55-61`). (P0 — currently shows £600 vs true £15.62)
+- [x] **2.7** Trend Builder Avg Basket bucketing → weighted average `SUM(amount)/SUM(count)` per bucket (`trend-chart.tsx:55-61`). (P0 — currently shows £600 vs true £15.62)
 - [ ] **2.8** Heat Map composite scoring per **D7** (`heat-map.ts:96-102`). (P1)
 - [ ] **2.9** Heat Map traffic light → use composite score not raw revenue (`performance-table.tsx:165-187`). (P1)
 - [ ] **2.10** Plateau detection: compare same-cohort over time; guard against zero/negative `avg3160`; expose threshold in settings (`page.tsx:28-75`). (P1)

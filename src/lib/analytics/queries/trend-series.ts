@@ -78,6 +78,17 @@ function buildSeriesDimensionFilters(filters: SeriesFilters): SQL[] {
 }
 
 // ─── Internal: metric aggregation expression ─────────────────────────────────
+//
+// Avg-basket numerator and denominator are split out (Task 2.7) so the chart
+// can compute a weighted weekly/monthly average — see `metricSelectColumns`.
+
+function avgBasketNumeratorExpr(): SQL {
+  return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
+}
+
+function avgBasketDenominatorExpr(): SQL {
+  return sql`COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()})`;
+}
 
 function metricExpression(metric: TrendMetric): SQL {
   switch (metric) {
@@ -89,7 +100,7 @@ function metricExpression(metric: TrendMetric): SQL {
       return sql`COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()})::numeric`;
     case "avg_basket_value":
       // Avg Basket = SUM(non-fee net) / COUNT(sales txns) — see D1.
-      return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()}) / NULLIF(COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`;
+      return sql`${avgBasketNumeratorExpr()} / NULLIF(${avgBasketDenominatorExpr()}, 0)`;
     case "booking_fee":
       // Fee revenue (9991 + 9992). is_weknow_fee=true covers both post-D10.
       return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildIsFeeCondition()})`;
@@ -122,6 +133,37 @@ export async function getTrendSeriesData(
     activeLocationCondition,
     ...seriesConditions,
   ]);
+
+  // For `avg_basket_value` we also project the per-day numerator (non-fee
+  // revenue) and denominator (sales-txn count). The chart re-weights these
+  // when bucketing into weekly/monthly granularity (Task 2.7) — without it,
+  // SUM-ing daily means produced wildly inflated values (£600 vs £15.62 in
+  // live UAT).
+  if (metric === "avg_basket_value") {
+    const rows = await executeRows<{
+      date: string;
+      value: string;
+      numerator: string;
+      denominator: string;
+    }>(sql`
+      SELECT
+        ${salesRecords.transactionDate}::text AS date,
+        COALESCE(${avgBasketNumeratorExpr()} / NULLIF(${avgBasketDenominatorExpr()}, 0), 0) AS value,
+        COALESCE(${avgBasketNumeratorExpr()}, 0) AS numerator,
+        COALESCE(${avgBasketDenominatorExpr()}, 0) AS denominator
+      FROM ${salesRecords}
+      ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      GROUP BY ${salesRecords.transactionDate}
+      ORDER BY ${salesRecords.transactionDate} ASC
+    `);
+
+    return rows.map((row) => ({
+      date: row.date,
+      value: Number(row.value),
+      numerator: Number(row.numerator),
+      denominator: Number(row.denominator),
+    }));
+  }
 
   const rows = await executeRows<{
     date: string;

@@ -14,7 +14,6 @@ import { EmptyState } from "@/components/analytics/empty-state";
 import {
   formatCurrency,
   formatNumber,
-  dateToBucket,
   autoGranularity,
   type Granularity,
 } from "@/lib/analytics/formatters";
@@ -25,6 +24,7 @@ import type {
   BusinessEventDisplay,
 } from "@/lib/analytics/types";
 import { EventAnnotations } from "./event-annotations";
+import { mergeSeriesData } from "./merge-series-data";
 
 // ─── Currency vs count metric classification ─────────────────────────────────
 
@@ -32,43 +32,6 @@ const CURRENCY_METRICS = new Set(["revenue", "avg_basket_value", "booking_fee"])
 
 function isCurrencyMetric(metric: string): boolean {
   return CURRENCY_METRICS.has(metric);
-}
-
-// ─── Merge + bucket series data ──────────────────────────────────────────────
-
-type MergedRow = { date: string; [seriesId: string]: string | number };
-
-function mergeSeriesData(
-  allData: Map<string, TrendDataPoint[]>,
-  appliedSeries: SeriesConfig[],
-  granularity: Granularity,
-): MergedRow[] {
-  // Collect all dates from all series, bucketed
-  const dateMap = new Map<string, MergedRow>();
-
-  for (const series of appliedSeries) {
-    const points = allData.get(series.id) ?? [];
-    for (const pt of points) {
-      const bucket = dateToBucket(pt.date, granularity);
-      if (!dateMap.has(bucket)) {
-        dateMap.set(bucket, { date: bucket });
-      }
-      const row = dateMap.get(bucket)!;
-      // Accumulate values within the same bucket
-      const existing = (row[series.id] as number) ?? 0;
-      row[series.id] = existing + pt.value;
-    }
-  }
-
-  // For avg_basket_value, we need count tracking to compute proper averages
-  // within buckets. For now, the query already returns daily averages and
-  // weekly/monthly bucketing sums them — which is an approximation. A full
-  // weighted-average implementation would require returning both numerator
-  // and denominator from the query. This is acceptable for the initial port.
-
-  return Array.from(dateMap.values()).sort((a, b) =>
-    a.date.localeCompare(b.date),
-  );
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────

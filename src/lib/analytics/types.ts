@@ -202,6 +202,13 @@ export type SeriesConfig = {
 export type TrendDataPoint = {
   date: string           // YYYY-MM-DD
   value: number
+  // Populated only for `avg_basket_value` series (Task 2.7). Bucketing daily
+  // averages by SUM gives a wrong weekly/monthly mean — instead we accumulate
+  // the per-day numerator (non-fee revenue) and denominator (sales-txn count)
+  // separately and compute `numerator / denominator` per bucket. Other metrics
+  // (revenue / transactions / booking_fee) are additive and leave these unset.
+  numerator?: number
+  denominator?: number
 }
 
 export type TrendGranularity = "auto" | "daily" | "weekly" | "monthly"
