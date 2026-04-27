@@ -54,16 +54,16 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 
 ## Phase 3 — Filter wiring + scoping
 
-- [ ] **3.1** Trend Builder consumes the global analytics-filter store (currently reads only `dateRange` + `locationGroupFilter`). Mount `FilterBar`. (`trend-builder/page.tsx:39-46`, `trend-series.ts:96-138`). (P0)
-- [ ] **3.2** Pivot Table consumes global filter bar (currently has its own store). Mount `FilterBar`. (P1)
-- [ ] **3.3** Compare consumes global filter bar consistently. Switch `comparison.ts:70` from `sql.raw` hand-quoting to parameterised. (P1)
-- [ ] **3.4** Commission dashboard: add `scopedSalesCondition` to `buildCommissionWhere` (`commission/actions.ts:70-82`). (P0 — data leak across regions)
-- [ ] **3.5** Experiments Temporal Analysis: pass full `AnalyticsFilters` (currently drops everything but date) (`queries/experiments.ts:262-265`). (P0)
-- [ ] **3.6** Cohort picker `listLocationsForPicker`: apply user scope and outlet exclusions. (P1)
-- [ ] **3.7** Cohort vs Control delta: add per-location normalisation when `controlType='rest_of_portfolio'`. (P1)
-- [ ] **3.8** Region Selector counts (`regions.ts:107-118`): wire filters into Query 2 so the badge matches the detail-panel KPI.
-- [ ] **3.9** `listRegionOptions`: add region scoping (currently any internal user can assign a location to any region). (P1)
-- [ ] **3.10** Performer Pattern queries: pass `metricMode` through (NEW-P0-A) — currently flag-blind. (P0)
+- [x] **3.1** Trend Builder consumes the global analytics-filter store (currently reads only `dateRange` + `locationGroupFilter`). Mount `FilterBar`. (`trend-builder/page.tsx:39-46`, `trend-series.ts:96-138`). (P0) — PR-18c (`1933e6a`)
+- [x] **3.2** Pivot Table consumes global filter bar (currently has its own store). Mount `FilterBar`. (P1) — PR-18b (`6aa0979`)
+- [x] **3.3** Compare consumes global filter bar consistently. Switch `comparison.ts:70` from `sql.raw` hand-quoting to parameterised. (P1) — PR-18a (`1138b75`)
+- [x] **3.4** Commission dashboard: add `scopedSalesCondition` to `buildCommissionWhere` (`commission/actions.ts:70-82`). (P0 — data leak across regions) — PR-15 (`bb37bb7` + `158086e`)
+- [x] **3.5** Experiments Temporal Analysis: pass full `AnalyticsFilters` (currently drops everything but date) (`queries/experiments.ts:262-265`). (P0) — PR-17 (`2b4e41f`)
+- [x] **3.6** Cohort picker `listLocationsForPicker`: apply user scope and outlet exclusions. (P1) — PR-19 (`69e0c12`)
+- [x] **3.7** Cohort vs Control delta: add per-location normalisation when `controlType='rest_of_portfolio'`. (P1) — PR-19 (`69e0c12`)
+- [x] **3.8** Region Selector counts (`regions.ts:107-118`): wire filters into Query 2 so the badge matches the detail-panel KPI. — PR-20 (`9b2511c`)
+- [x] **3.9** `listRegionOptions`: add region scoping (currently any internal user can assign a location to any region). (P1) — PR-20 (`9b2511c`)
+- [x] **3.10** Performer Pattern queries: pass `metricMode` through (NEW-P0-A) — currently flag-blind. (P0) — PR-16 (`0167f74`)
 
 ## Phase 4 — Per-dashboard surface bugs
 
