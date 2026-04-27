@@ -185,9 +185,18 @@ describe("Task 4.1 / PR-23 — getCategoryPerformance groups by category, exclud
 
     // (1) GROUP BY uses category_name with a COALESCE wrapper for NULL bucket.
     expect(sqlText).toMatch(/group by\s+coalesce\(.*category_name/);
-    // (2) Non-fee predicate landed in the outer WHERE (buildNonFeeCondition).
-    expect(sqlText).toContain("is_weknow_fee");
-    expect(sqlText).toContain("false");
+    // (2) Non-fee predicate landed in the outer WHERE (buildNonFeeCondition)
+    //     in addition to the existing salesTxn FILTERs. We count matches of
+    //     `is_weknow_fee … = false` (the `…` bridges Drizzle's quoted column
+    //     boundary, e.g. `"is_weknow_fee" = false`) and require ≥3 because:
+    //       - pre-fix: 2 matches (one per `COUNT(*) FILTER (WHERE ${salesTxn})`,
+    //         emitted twice for the transactions + quantity tiles)
+    //       - post-fix: 3 matches (the two FILTERs PLUS the new outer WHERE
+    //         from `buildNonFeeCondition()`)
+    //     A bare `toContain("is_weknow_fee")` / `toContain("false")` pair
+    //     would pass against pre-fix code and fail to pin Bug #2.
+    const nonFeeMatches = sqlText.match(/is_weknow_fee[^a-z0-9_]*=\s*false/g) ?? [];
+    expect(nonFeeMatches.length).toBeGreaterThanOrEqual(3);
     // (3) NULL category coalesced into an explicit bucket — proves the
     //     "— Uncategorised" wrapping is wired in (case-insensitive match).
     expect(sqlText).toContain("coalesce");
