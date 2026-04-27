@@ -70,8 +70,8 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [ ] **4.1** "Category Performance" → group by `products.categoryName`, exclude fees via `buildNonFeeCondition()` (currently groups by product name AND includes fees). (P1)
 - [ ] **4.2** Cash Handling Fee leak in Performer Top Products: replace `isBookingFee=false` with `buildNonFeeCondition()` (`high-performer-analysis.ts:194`). (P1)
 - [ ] **4.3** Outlet Tiers cells: `LIMIT 200` → return total + show "showing 200 of N" indicator. (P2)
-- [ ] **4.4** Outlet Tiers maturity column: pass `filters.dateTo` (covered by 1.4 but explicit call site in `outlet-tiers.tsx:91-93`). (P0)
-- [ ] **4.5** Heat Map `performance-table.tsx:114-117` maturity badge: pass `filters.dateTo` (covered by 1.4). (P0)
+- [x] **4.4** Outlet Tiers maturity column: pass `filters.dateTo` (`outlet-tiers.tsx:95-98` already wires `referenceDate={filters.dateTo}` from `portfolio/page.tsx:380`). — covered by PR-5 (`34ac5de`); verified PR-21
+- [x] **4.5** Heat Map `performance-table.tsx:124-127` maturity badge: passes `filters.dateTo` from `heat-map/page.tsx:120,138,158`. — covered by PR-5 (`34ac5de`); verified PR-21
 - [ ] **4.6** Refund-only outlet `BK` per **D9**: add `locationType='internal'` and exclude from leaderboards. (P1)
 - [ ] **4.7** Outlet `4T` "Heathrow Terminal 4 b" per **D8**: investigate, then fix import-time normalisation. (P1)
 - [ ] **4.8** Hotels-in-Group / Hotels-in-Region tables: drop the redundant `quantity` column (it equals `transactions`); add real `kiosks` value (currently hardcoded NULL — `hotel-groups.ts`, `location-groups.ts`). (P1)
