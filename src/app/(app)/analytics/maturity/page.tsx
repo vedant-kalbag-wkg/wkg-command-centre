@@ -23,59 +23,8 @@ import { fetchMaturityAnalysis } from "./actions";
 import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
 import { useMetricLabel } from "@/lib/analytics/metric-label";
 import { MATURITY_BUCKETS } from "@/lib/analytics/maturity";
+import { getPlateauInsight } from "@/lib/analytics/plateau-insight";
 import type { AnalyticsFilters, MaturityAnalysis } from "@/lib/analytics/types";
-
-// Plateau insight compares "young but settled" (1-3mo) vs "mature" (9+mo)
-// average revenue. Same intent as the old 31-60d vs 90+d test, re-anchored
-// to the canonical 5-bucket convention (D3).
-function getPlateauInsight(
-  bucketMetrics: MaturityAnalysis["bucketMetrics"],
-  metricLabel: string,
-): { text: string; color: string } {
-  const youngBucket = bucketMetrics.find((b) => b.bucket === "1-3mo");
-  const matureBucket = bucketMetrics.find((b) => b.bucket === "9+mo");
-
-  if (
-    !youngBucket ||
-    !matureBucket ||
-    youngBucket.locationCount === 0 ||
-    matureBucket.locationCount === 0
-  ) {
-    return {
-      text: "Insufficient data to determine maturity trend",
-      color: "#6B7280",
-    };
-  }
-
-  const avgYoung = youngBucket.avgRevenue;
-  const avgMature = matureBucket.avgRevenue;
-
-  if (avgYoung === 0) {
-    return {
-      text: "Insufficient data to determine maturity trend",
-      color: "#6B7280",
-    };
-  }
-
-  const pctChange = ((avgMature - avgYoung) / avgYoung) * 100;
-
-  if (pctChange > 10) {
-    return {
-      text: `Mature kiosks continue to grow (+${pctChange.toFixed(1)}%)`,
-      color: "#166534",
-    };
-  }
-  if (pctChange < -10) {
-    return {
-      text: `${metricLabel} declines after maturity (${pctChange.toFixed(1)}%)`,
-      color: "#991B1B",
-    };
-  }
-  return {
-    text: `${metricLabel} plateaus after 9 months`,
-    color: "#6B7280",
-  };
-}
 
 export default function MaturityPage() {
   const filters = useAnalyticsFilters();
@@ -303,7 +252,7 @@ export default function MaturityPage() {
       {/* D. Plateau Detection */}
       <ChartCard
         title="Plateau Detection"
-        description="Comparing 9+ month avg revenue vs 1-3 month avg revenue"
+        description="Comparing the ramp curve at 9+ months vs 1-3 months (same-cohort progression)"
         loading={loading}
         empty={!loading && !data}
         emptyMessage="No plateau data available"
@@ -313,7 +262,7 @@ export default function MaturityPage() {
           <Skeleton className="h-20 rounded-lg" />
         ) : data ? (
           (() => {
-            const insight = getPlateauInsight(data.bucketMetrics, metricLabel);
+            const insight = getPlateauInsight(data, metricLabel);
             return (
               <div
                 className="rounded-lg border px-4 py-3"
@@ -326,7 +275,9 @@ export default function MaturityPage() {
                   {insight.text}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Comparing 9+ month average revenue vs 1-3 month average revenue
+                  Each ramp point averages revenue per location while in that
+                  maturity stage, so the same kiosks contribute to both ends —
+                  unlike the bucket cross-section which compares different cohorts.
                 </p>
               </div>
             );
