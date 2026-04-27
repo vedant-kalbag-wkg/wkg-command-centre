@@ -68,7 +68,10 @@ export default function FlagReviewPage() {
   const [linkedActions, setLinkedActions] = useState<
     Record<string, ActionItem[]>
   >({});
-  const [linkedActionCounts, setLinkedActionCounts] = useState<
+  // Per-row count overrides: only populated after a CreateActionDialog
+  // succeeds (so the badge updates without a full reload). Otherwise the
+  // count comes straight off `flag.linkedActionCount` from the server query.
+  const [linkedActionCountOverrides, setLinkedActionCountOverrides] = useState<
     Record<string, number>
   >({});
   const [isPending, startTransition] = useTransition();
@@ -88,16 +91,10 @@ export default function FlagReviewPage() {
         selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
     });
     setFlags(data);
-    // Re-fetch linked-action counts in parallel for the visible flags. Counts
-    // power the column badge; full action lists are loaded lazily on expand.
-    const counts: Record<string, number> = {};
-    await Promise.all(
-      data.map(async (f) => {
-        const items = await fetchActionItemsForFlag(f.id);
-        counts[f.id] = items.length;
-      }),
-    );
-    setLinkedActionCounts(counts);
+    // Server now returns `linkedActionCount` per flag via a correlated
+    // subquery — no per-row roundtrip needed for the count badge. Drop any
+    // stale overrides from a previous filter view.
+    setLinkedActionCountOverrides({});
     setLoading(false);
   }
 
@@ -128,8 +125,12 @@ export default function FlagReviewPage() {
   }
 
   async function refreshLinkedCount(flagId: string) {
+    // Called after a new action is created from the inline "Create Action"
+    // dialog. We refetch just the affected flag's action list (one row,
+    // not N+1) and override the badge count locally; the next loadFlags()
+    // will refresh from the server-side count and clear the override.
     const items = await fetchActionItemsForFlag(flagId);
-    setLinkedActionCounts((prev) => ({ ...prev, [flagId]: items.length }));
+    setLinkedActionCountOverrides((prev) => ({ ...prev, [flagId]: items.length }));
     if (expandedId === flagId) {
       setLinkedActions((prev) => ({ ...prev, [flagId]: items }));
     }
@@ -232,7 +233,8 @@ export default function FlagReviewPage() {
               {flags.map((flag) => {
                 const expanded = expandedId === flag.id;
                 const isResolved = !!flag.resolvedAt;
-                const linkedCount = linkedActionCounts[flag.id] ?? 0;
+                const linkedCount =
+                  linkedActionCountOverrides[flag.id] ?? flag.linkedActionCount;
                 return (
                   <Fragment key={flag.id}>
                     <TableRow>

@@ -1,16 +1,18 @@
 "use server";
 
 import { db } from "@/db";
-import { locationFlags, locations } from "@/db/schema";
+import { actionItems, locationFlags, locations } from "@/db/schema";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { writeAuditLog } from "@/lib/audit";
-import { eq, isNull, isNotNull, and, inArray, asc } from "drizzle-orm";
+import { eq, isNull, isNotNull, and, inArray, asc, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 import type { FlagType, LocationFlag } from "@/lib/analytics/types";
 
 export type FlagWithLocation = LocationFlag & {
   locationName: string | null;
   outletCode: string | null;
+  linkedActionCount: number;
 };
 
 const FLAGS_TAG = "analytics:flags";
@@ -103,10 +105,24 @@ type AllFlagsFilters = {
  * Mutations on this table call `revalidateTag(FLAGS_TAG)` so cache stays
  * coherent without a separate invalidation key per filter combination.
  */
+// Build a stable cache key regardless of caller-side key insertion order or
+// array ordering. JSON.stringify(filters) alone fragments the cache when an
+// equivalent filter object happens to serialise differently (e.g. `{a, b}`
+// vs `{b, a}`, or a `flagTypes` array passed in shuffled order).
+function canonicaliseFilterKey(
+  filters: AllFlagsFilters | undefined,
+): string {
+  return JSON.stringify({
+    resolved: filters?.resolved ?? false,
+    flagTypes: filters?.flagTypes?.slice().sort() ?? [],
+    locationIds: filters?.locationIds?.slice().sort() ?? [],
+  });
+}
+
 const fetchAllFlagsCached = unstable_cache(
   async (filtersJson: string): Promise<FlagWithLocation[]> => {
     const filters: AllFlagsFilters = filtersJson ? JSON.parse(filtersJson) : {};
-    const conditions: ReturnType<typeof eq>[] = [];
+    const conditions: SQL[] = [];
 
     const resolved = filters.resolved ?? false;
     if (resolved === false) {
@@ -135,6 +151,17 @@ const fetchAllFlagsCached = unstable_cache(
         resolutionNote: locationFlags.resolutionNote,
         locationName: locations.name,
         outletCode: locations.outletCode,
+        // Correlated subquery: count of action items linked back to this
+        // flag. Done in-query so the Flag Review page renders in a single
+        // roundtrip rather than firing N separate `fetchActionItemsForFlag`
+        // calls (one per visible flag) just to display a count badge.
+        // `action_items.source_id` is `text` while `location_flags.id` is
+        // `uuid`; the explicit `::text` cast keeps the comparison sound.
+        linkedActionCount: sql<number>`(
+          SELECT COUNT(*)::int FROM ${actionItems}
+          WHERE ${actionItems.sourceType} = 'flag'
+            AND ${actionItems.sourceId} = ${locationFlags.id}::text
+        )`.as("linked_action_count"),
       })
       .from(locationFlags)
       .leftJoin(locations, eq(locationFlags.locationId, locations.id))
@@ -152,6 +179,7 @@ const fetchAllFlagsCached = unstable_cache(
       resolutionNote: r.resolutionNote,
       locationName: r.locationName ?? null,
       outletCode: r.outletCode ?? null,
+      linkedActionCount: Number(r.linkedActionCount ?? 0),
     }));
   },
   ["analytics", "allFlags", "v1"],
@@ -162,7 +190,7 @@ export async function fetchAllFlags(
   filters?: AllFlagsFilters,
 ): Promise<FlagWithLocation[]> {
   await getUserCtx(); // auth gate — kept OUTSIDE the cache
-  return fetchAllFlagsCached(JSON.stringify(filters ?? {}));
+  return fetchAllFlagsCached(canonicaliseFilterKey(filters));
 }
 
 /**

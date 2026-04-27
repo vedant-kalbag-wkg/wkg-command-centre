@@ -21,7 +21,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql as drizzleSql } from "drizzle-orm";
 
-const captured: { where: string }[] = [];
+const captured: { where: string; projection: string }[] = [];
 
 function renderFragment(frag: unknown): string {
   if (!frag) return "";
@@ -39,26 +39,64 @@ function renderFragment(frag: unknown): string {
   }
 }
 
+// Render the projection object passed to db.select(...) by extracting
+// the SQL fragment from each value. Plain column references expose
+// `.getSQL()`; `sql\`...\`` fragments (including correlated subqueries
+// wrapped in `.as("alias")`) do too. We concatenate the rendered SQL of
+// every value so assertions can match on the correlated subquery shape.
+function renderProjection(projection: unknown): string {
+  if (!projection || typeof projection !== "object") return "";
+  const fakeDb = drizzle("postgres://noop");
+  const parts: string[] = [];
+  for (const value of Object.values(projection as Record<string, unknown>)) {
+    const v = value as { getSQL?: () => unknown };
+    if (typeof v?.getSQL !== "function") continue;
+    try {
+      const sqlFrag = v.getSQL();
+      const rendered = fakeDb
+        .select({ v: sqlFrag as never })
+        .from(drizzleSql`location_flags`)
+        .toSQL().sql;
+      parts.push(rendered);
+    } catch {
+      // skip un-renderable values
+    }
+  }
+  return parts.join(" | ");
+}
+
 function makeChain() {
   const chain: Record<string, unknown> = {};
+  let projection = "";
   chain.from = () => chain;
   chain.leftJoin = () => chain;
   chain.innerJoin = () => chain;
   chain.as = () => chain; // for `.as("owner")` subquery aliases
   chain.where = (frag: unknown) => {
-    captured.push({ where: renderFragment(frag) });
+    captured.push({ where: renderFragment(frag), projection });
     return chain;
   };
   chain.orderBy = async () => [];
   chain.limit = async () => [];
   (chain as { then?: unknown }).then = (resolve: (v: unknown[]) => void) =>
     resolve([]);
+  // Stash the projection so the .where() handler can record it alongside
+  // the WHERE fragment for that call.
+  (chain as { __setProjection?: (p: string) => void }).__setProjection = (p) => {
+    projection = p;
+  };
   return chain;
 }
 
 vi.mock("@/db", () => ({
   db: {
-    select: () => makeChain(),
+    select: (projection?: unknown) => {
+      const chain = makeChain();
+      (chain as { __setProjection?: (p: string) => void }).__setProjection?.(
+        renderProjection(projection),
+      );
+      return chain;
+    },
     selectDistinct: () => makeChain(),
   },
 }));
@@ -160,6 +198,28 @@ describe("fetchAllFlags — Flag Review filters (Task 4.12)", () => {
     expect(where).toContain("flag_type");
     expect(where).toContain("location_id");
     expect(where).toContain(" and ");
+  });
+
+  it("SELECT carries a correlated count(*) subquery against action_items keyed by location_flags.id (no N+1)", async () => {
+    const { fetchAllFlags } = await import("../actions");
+    await fetchAllFlags();
+
+    expect(captured.length).toBe(1);
+    const projection = captured[0]!.projection.toLowerCase();
+    // Correlated subquery: `SELECT COUNT(*)::int FROM action_items
+    // WHERE source_type = 'flag' AND source_id = location_flags.id::text`.
+    // Drizzle elides the table-name prefix on `id` because location_flags
+    // is the only outer table in the FROM — the correlation is still
+    // structural (the inner SELECT references the outer row's id column).
+    expect(projection).toMatch(/select\s+count\(\*\)/);
+    expect(projection).toContain("action_items");
+    expect(projection).toContain("source_type");
+    expect(projection).toContain("'flag'");
+    expect(projection).toContain("source_id");
+    // The cast keeps the uuid (location_flags.id) ↔ text (action_items.source_id)
+    // comparison sound; its presence next to the outer-id reference is the
+    // tell-tale sign of correlation rather than a plain global count.
+    expect(projection).toMatch(/source_id"?\s*=\s*"?id"?::text/);
   });
 });
 

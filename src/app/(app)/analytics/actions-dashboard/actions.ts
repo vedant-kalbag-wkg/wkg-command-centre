@@ -5,6 +5,7 @@ import { actionItems, locations, user } from "@/db/schema";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { writeAuditLog } from "@/lib/audit";
 import { eq, and, asc, inArray, isNotNull, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import type {
   ActionItem,
   ActionItemStatus,
@@ -45,7 +46,7 @@ export async function listActionItems(
 ): Promise<ActionItem[]> {
   await getUserCtx(); // auth gate
 
-  const conditions: (ReturnType<typeof eq> | ReturnType<typeof inArray>)[] = [];
+  const conditions: SQL[] = [];
 
   if (filters?.status) {
     conditions.push(eq(actionItems.status, filters.status as ActionItemStatus));
