@@ -80,7 +80,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [ ] **4.11** Actions Dashboard: add overdue indicator, "Mine only" filter, location filter, sort by due-date default, display `resolvedAt`. (P1)
 - [ ] **4.12** Flag → Action workflow: wire `createFlag` to optionally `createActionItem` (currently XOR with `sourceId=NULL`). (P1)
 - [x] **4.13** Trend Builder `metric=booking_fee`: `trend-series.ts:107-109` uses `buildIsFeeCondition()` (covers 9991 + 9992 via `is_weknow_fee=true` post-D10). — covered by Task 1.3 Part B (`156bdb4`); verified PR-22
-- [ ] **4.14** Compare hotel-group/region cards: dedupe shared locations across multi-selection (covered by 1.5). (P1)
+- [x] **4.14** Compare hotel-group dedup invariant: structurally pinned by regression test (EXISTS gate via `location_hotel_group_memberships`, no top-level membership JOIN). PR-6 Part E covers the production fix; this PR adds the test gate. — PR-28 (`7647f38`)
 - [ ] **4.15** Trend Builder rolling-avg + weekly/monthly granularity: disable combo or switch to day-window. (P2)
 - [ ] **4.16** Trend Builder auto-granularity: replace hard 31/90 day cliffs with continuous logic. (P2)
 - [ ] **4.17** Event annotations: filter by event scope, not just category. (P1)
