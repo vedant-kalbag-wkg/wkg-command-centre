@@ -170,7 +170,7 @@ describe("D1 COUNT(*) sweep — every Transactions KPI scopes to non-fee, non-re
 
   it("trend-series.transactions metric — emits sales-txn filter", async () => {
     const { getTrendSeriesData } = await import("../trend-series");
-    await getTrendSeriesData("transactions", {}, "2025-01-01", "2025-06-30", userCtx);
+    await getTrendSeriesData("transactions", {}, filters, "2025-01-01", "2025-06-30", userCtx);
     const sql = captured.join("\n--BREAK--\n");
     expect(sql).toContain(SALES_TXN_FILTER_FRAGMENT);
     expect(sql).toContain("is_reversal");

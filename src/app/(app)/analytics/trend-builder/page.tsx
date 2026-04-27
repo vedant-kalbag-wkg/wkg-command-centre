@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useAnalyticsFilterStore } from "@/lib/stores/analytics-filter-store";
+import {
+  useAnalyticsFilterStore,
+  useAnalyticsFilters,
+} from "@/lib/stores/analytics-filter-store";
 import { useAbortableAction } from "@/lib/analytics/use-abortable-action";
 import { useTrendStore } from "@/lib/stores/trend-store";
 import { toLocalISODate } from "@/lib/analytics/formatters";
@@ -42,6 +45,9 @@ export default function TrendBuilderPage() {
   const globalLocationGroupFilter = useAnalyticsFilterStore(
     (s) => s.locationGroupFilter,
   );
+  // Full global FilterBar shape for SQL-WHERE wiring (PR-18c). useShallow-
+  // memoised so the reference is stable unless a relevant field changed.
+  const globalFilters = useAnalyticsFilters();
   const dateFrom = toLocalISODate(dateRange.from);
   const dateTo = toLocalISODate(dateRange.to);
 
@@ -126,6 +132,7 @@ export default function TrendBuilderPage() {
           const data = await fetchTrendSeriesData(
             s.metric,
             s.filters,
+            globalFilters,
             dateFrom,
             dateTo,
           );
@@ -137,6 +144,7 @@ export default function TrendBuilderPage() {
               const data = await fetchTrendSeriesDataYoY(
                 s.metric,
                 s.filters,
+                globalFilters,
                 dateFrom,
                 dateTo,
               );
@@ -173,6 +181,7 @@ export default function TrendBuilderPage() {
       [
         dateFrom,
         dateTo,
+        globalFilters,
         showWeather,
         showEvents,
         showYoY,

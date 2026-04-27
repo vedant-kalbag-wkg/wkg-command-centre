@@ -12,7 +12,9 @@ import { sql, inArray, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
+  buildDimensionFilters,
   buildIsFeeCondition,
+  buildMaturityCondition,
   buildNonFeeCondition,
   buildSalesTxnCondition,
   combineConditions,
@@ -26,6 +28,7 @@ import {
   type CachedQueryScope,
 } from "@/lib/analytics/cached-query";
 import type {
+  AnalyticsFilters,
   TrendMetric,
   SeriesFilters,
   TrendDataPoint,
@@ -111,7 +114,8 @@ function metricExpression(metric: TrendMetric): SQL {
 
 export async function getTrendSeriesData(
   metric: TrendMetric,
-  filters: SeriesFilters,
+  seriesFilters: SeriesFilters,
+  globalFilters: AnalyticsFilters,
   dateFrom: string,
   dateTo: string,
   userCtx: UserCtx,
@@ -125,13 +129,20 @@ export async function getTrendSeriesData(
   ]);
 
   const dateCondition = sql`${salesRecords.transactionDate} >= ${dateFrom} AND ${salesRecords.transactionDate} <= ${dateTo}`;
-  const seriesConditions = buildSeriesDimensionFilters(filters);
+  const seriesConditions = buildSeriesDimensionFilters(seriesFilters);
+  // Global FilterBar dimensions intersect with per-series filters (PR-18c).
+  // metricMode is intentionally not threaded — trend metrics carry their own
+  // per-metric FILTER (revenue=non-fee, booking_fee=fee).
+  const globalDimensionConditions = buildDimensionFilters(globalFilters);
+  const globalMaturityCondition = buildMaturityCondition(globalFilters);
 
   const whereClause = combineConditions([
     dateCondition,
     scopeCondition,
     activeLocationCondition,
     ...seriesConditions,
+    ...globalDimensionConditions,
+    globalMaturityCondition,
   ]);
 
   // For `avg_basket_value` we also project the per-day numerator (non-fee
@@ -268,12 +279,37 @@ function canonicaliseSeriesFilters(f: SeriesFilters): SeriesFilters {
   };
 }
 
+// Same idea for the global FilterBar shape. metricMode is stripped because
+// trend metrics aren't mode-aware (see getTrendSeriesData), so two requests
+// differing only in metricMode must collide on the cache key. dateFrom/dateTo
+// are also dropped — the per-series query has always owned its own date range
+// (passed positionally), so the global bar's range is irrelevant to the SQL.
+function canonicaliseGlobalFilters(g: AnalyticsFilters): Partial<AnalyticsFilters> {
+  const sortedUnique = (xs: string[] | undefined): string[] | undefined => {
+    if (!xs || xs.length === 0) return undefined;
+    const out = [...new Set(xs)].sort();
+    return out.length > 0 ? out : undefined;
+  };
+  return {
+    hotelIds: sortedUnique(g.hotelIds),
+    regionIds: sortedUnique(g.regionIds),
+    productIds: sortedUnique(g.productIds),
+    hotelGroupIds: sortedUnique(g.hotelGroupIds),
+    locationGroupIds: sortedUnique(g.locationGroupIds),
+    maturityBuckets: sortedUnique(g.maturityBuckets),
+    locationTypes: g.locationTypes && g.locationTypes.length > 0
+      ? ([...new Set(g.locationTypes)].sort() as AnalyticsFilters["locationTypes"])
+      : undefined,
+  };
+}
+
 export const getTrendSeriesDataCached = unstable_cache(
   withStats(
     'getTrendSeriesData',
     async (
       metric: TrendMetric,
-      filters: SeriesFilters,
+      seriesFilters: SeriesFilters,
+      globalFilters: AnalyticsFilters,
       dateFrom: string,
       dateTo: string,
       scopeKey: CachedQueryScope,
@@ -281,11 +317,20 @@ export const getTrendSeriesDataCached = unstable_cache(
       if (scopeKey !== INTERNAL_SCOPE_KEY) {
         throw new Error(`getTrendSeriesData: external scope not yet supported (got ${scopeKey})`);
       }
-      const canonical = canonicaliseSeriesFilters(filters);
-      return getTrendSeriesData(metric, canonical, dateFrom, dateTo, INTERNAL_USER_CTX);
+      const canonicalSeries = canonicaliseSeriesFilters(seriesFilters);
+      // Anchor maturity buckets to the per-series query window's end (dateTo
+      // arg) — the per-series window supersedes the global bar's range, so
+      // bucket boundaries must be relative to the actual analysis window.
+      const canonicalGlobal: AnalyticsFilters = {
+        ...canonicaliseGlobalFilters(globalFilters),
+        dateFrom,
+        dateTo,
+      };
+      return getTrendSeriesData(metric, canonicalSeries, canonicalGlobal, dateFrom, dateTo, INTERNAL_USER_CTX);
     },
   ),
-  ['analytics', 'getTrendSeriesData', 'v1'],
+  // v2 — global filters now part of cache key (PR-18c)
+  ['analytics', 'getTrendSeriesData', 'v2'],
   { revalidate: 86400, tags: TREND_BUILDER_TAGS },
 );
 
