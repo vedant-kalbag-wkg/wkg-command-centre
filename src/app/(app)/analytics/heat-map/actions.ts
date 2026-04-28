@@ -2,10 +2,16 @@
 
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
 import { getHeatMapDataCached } from "@/lib/analytics/queries/heat-map";
-import { getThresholds } from "@/lib/analytics/thresholds-server";
+import {
+  getThresholds,
+  getOutletTierThresholds,
+} from "@/lib/analytics/thresholds-server";
 import { canonicaliseFilters } from "@/lib/analytics/canonicalise-filters";
 import { getCacheScopeKey } from "@/lib/analytics/cache-scope";
-import type { ThresholdConfig } from "@/lib/analytics/thresholds";
+import type {
+  ThresholdConfig,
+  OutletTierConfig,
+} from "@/lib/analytics/thresholds";
 import { fetchLocationFlags } from "@/app/(app)/analytics/flags/actions";
 import type {
   AnalyticsFilters,
@@ -25,6 +31,19 @@ export async function fetchHeatMapData(
 
 export async function fetchThresholdConfig(): Promise<ThresholdConfig> {
   return getThresholds();
+}
+
+// Phase 6 plan 06-05 — re-export the canonical reader names so the heat-map
+// client page can call them directly (instead of a separate dual-purpose
+// `fetchThresholdConfig`). This keeps the URL-param override pattern uniform
+// across heat-map / portfolio: both pages call `fetchThresholds()` +
+// `fetchOutletTierThresholds()`.
+export async function fetchThresholds(): Promise<ThresholdConfig> {
+  return getThresholds();
+}
+
+export async function fetchOutletTierThresholds(): Promise<OutletTierConfig> {
+  return getOutletTierThresholds();
 }
 
 export async function fetchActiveFlags(): Promise<LocationFlag[]> {
