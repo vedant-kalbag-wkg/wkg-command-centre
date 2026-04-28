@@ -49,26 +49,35 @@ export default function DataQualityPage() {
           <>
             {/* KPI Cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+              {/* Tooltip text authored 2026-04-28 — values derive from
+                  fetchDataQualityReport (src/app/(app)/settings/data-quality/actions.ts):
+                  each percentage is the share of non-archived locations with
+                  the relevant association populated. No D-decision applies —
+                  these are admin-completeness metrics, not analytics KPIs. */}
               <KpiCard
                 title="% with Region"
+                tooltip="Share of active (non-archived) locations that have at least one row in location_region_memberships. Drives every region-scoped analytics rollup — locations missing a region are excluded from region dashboards."
                 value={loading ? "..." : `${report!.pctWithRegion}%`}
                 loading={loading}
                 icon={<MapPin className="size-3" />}
               />
               <KpiCard
                 title="% with Hotel Group"
+                tooltip="Share of active locations that have at least one row in location_hotel_group_memberships. Locations without a hotel-group membership do not appear in Hotel Groups analytics or in Compare entity pickers scoped by hotel group."
                 value={loading ? "..." : `${report!.pctWithHotelGroup}%`}
                 loading={loading}
                 icon={<Building2 className="size-3" />}
               />
               <KpiCard
                 title="% with Operating Group"
+                tooltip="Share of active locations whose locations.operating_group_id FK is populated. Operating groups are the legal-entity rollup used by finance — locations with no operating group cannot be billed-and-attributed correctly."
                 value={loading ? "..." : `${report!.pctWithOperatingGroup}%`}
                 loading={loading}
                 icon={<Network className="size-3" />}
               />
               <KpiCard
                 title="% with Market"
+                tooltip="Share of active locations whose region maps to a non-null markets.id (regions.market_id). Market is the geographic super-region (UK, EU, ANZ, etc.) used by exec dashboards; locations whose region has no market FK are excluded from market-level rollups."
                 value={loading ? "..." : `${report!.pctWithMarket}%`}
                 loading={loading}
                 icon={<Globe className="size-3" />}

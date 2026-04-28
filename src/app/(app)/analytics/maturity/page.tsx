@@ -97,6 +97,7 @@ export default function MaturityPage() {
             <KpiCard
               key={bm.bucket}
               title={`${bucketLabel(bm.bucket)} (${formatNumber(bm.locationCount)} locations)`}
+              tooltip={`Average ${metricLabelLower} per location for outlets currently in the ${bucketLabel(bm.bucket)} maturity bucket. Maturity = months from locations.live_date to filters.dateTo (never NOW()), bucketed 0-1 / 1-3 / 3-6 / 6-9 / 9+ months (audit-fix D3). Outlets with no live_date are excluded from this view.`}
               value={formatCurrency(bm.avgRevenue)}
             />
           ))}
