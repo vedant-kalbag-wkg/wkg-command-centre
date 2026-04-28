@@ -138,6 +138,16 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 
 ---
 
+## v2 Carryover (Phase 6 close 2026-04-28)
+
+8 deferred items captured in `tasks/v2-carryover-from-v1-phase-6.md` and added to `.planning/REQUIREMENTS.md` v2 Requirements section. Will be incorporated into v2 PROJECT.md when `/gsd:complete-milestone` runs.
+
+- **Data quality** — 61 NULL-coord rows + Clayton London Wall address + 60 NO_MONDAY triage (DQ-V2-01/02/03)
+- **Data model** — same-name location collapse policy decision (DM-V2-01); 19 hotel names currently have 2+ active rows
+- **Testing** — multi-pos-merge single-pair fixture + staging orphan-rate baseline (TEST-V2-01/02)
+- **Integration** — Monday drift detection / bidirectional sync (MONDAY-V2-01)
+- **Refactoring** — analytics-dashboard `useEffect → loadData()` pattern (REF-V2-01)
+
 ## Informal follow-ups (originally in `tasks/handoff-2026-04-27-post-merge.md` §4)
 
 - [x] **`location-groups.ts` summary `total_kiosks` NULL** — added `locationGroupKiosksSubquery(groupScope, activeIds)` to `src/lib/analytics/queries/shared.ts` (mirrors `locationGroupRoomsSubquery`) and replaced the `NULL::text AS total_kiosks` placeholders in both `getLocationGroupsList` and `getLocationGroupDetail.summaryRows`. `txnPerKiosk` now renders a real number on the summary row.
