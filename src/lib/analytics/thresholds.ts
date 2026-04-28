@@ -5,6 +5,19 @@ export type ThresholdConfig = {
   greenMin: number;
 };
 
+/**
+ * Outlet-tier percentile cutoffs used by `classifyOutletTier`. Mirror the
+ * three keys persisted in `app_settings`: `threshold_outlet_tier_top`,
+ * `threshold_outlet_tier_mid`, `threshold_outlet_tier_bottom`. Defaults are
+ * 80 / 50 / 20 (per CONTEXT D-06). Caller is responsible for ensuring
+ * `top > mid > bottom`; the form layer validates this on save.
+ */
+export type OutletTierConfig = {
+  top: number;
+  mid: number;
+  bottom: number;
+};
+
 export function classifyTrafficLight(
   revenue: number,
   config: ThresholdConfig,

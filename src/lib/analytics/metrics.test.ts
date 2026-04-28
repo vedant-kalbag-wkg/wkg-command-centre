@@ -48,11 +48,22 @@ describe("calculateCompositeScore", () => {
   });
 });
 
+// Phase 6 plan 06-05 — `classifyOutletTier` now takes an `OutletTierConfig`
+// second arg; the boundary suite lives in
+// `src/lib/analytics/__tests__/metrics.test.ts`. Smoke-test with the default
+// 80/50/20 cutoffs here so the existing top-level metrics suite continues to
+// catch regressions.
+const DEFAULT_TIER_CONFIG = { top: 80, mid: 50, bottom: 20 } as const;
+
 describe("classifyOutletTier", () => {
-  it(">=80 -> Premium", () => expect(classifyOutletTier(85)).toBe("Premium"));
-  it(">=50 -> Standard", () => expect(classifyOutletTier(60)).toBe("Standard"));
-  it(">=20 -> Developing", () => expect(classifyOutletTier(30)).toBe("Developing"));
-  it("<20 -> Emerging", () => expect(classifyOutletTier(10)).toBe("Emerging"));
+  it(">=80 -> Premium", () =>
+    expect(classifyOutletTier(85, DEFAULT_TIER_CONFIG)).toBe("Premium"));
+  it(">=50 -> Standard", () =>
+    expect(classifyOutletTier(60, DEFAULT_TIER_CONFIG)).toBe("Standard"));
+  it(">=20 -> Developing", () =>
+    expect(classifyOutletTier(30, DEFAULT_TIER_CONFIG)).toBe("Developing"));
+  it("<20 -> Emerging", () =>
+    expect(classifyOutletTier(10, DEFAULT_TIER_CONFIG)).toBe("Emerging"));
 });
 
 describe("calculatePercentile", () => {

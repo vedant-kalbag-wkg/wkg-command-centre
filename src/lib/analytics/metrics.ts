@@ -1,5 +1,6 @@
 import { toLocalISODate } from "@/lib/analytics/formatters";
 import type { OutletTier } from "@/lib/analytics/types";
+import type { OutletTierConfig } from "@/lib/analytics/thresholds";
 
 // ─── Period Change ────────────────────────────────────────────────────────────
 
@@ -101,11 +102,19 @@ export function calculateAvgBasketValue(
 }
 
 // ─── Outlet Tier Classification ───────────────────────────────────────────────
+//
+// Phase 6 plan 06-05 — config-driven cutoffs. Caller injects the loaded
+// `OutletTierConfig` (defaults 80/50/20) so the thresholds can be edited from
+// `/settings/thresholds` without a redeploy. Defaults preserved here as a
+// belt-and-braces fallback — the form layer enforces `top > mid > bottom`.
 
-export function classifyOutletTier(percentile: number): OutletTier {
-  if (percentile >= 80) return "Premium";
-  if (percentile >= 50) return "Standard";
-  if (percentile >= 20) return "Developing";
+export function classifyOutletTier(
+  percentile: number,
+  config: OutletTierConfig,
+): OutletTier {
+  if (percentile >= config.top) return "Premium";
+  if (percentile >= config.mid) return "Standard";
+  if (percentile >= config.bottom) return "Developing";
   return "Emerging";
 }
 

@@ -81,6 +81,15 @@ vi.mock("@/lib/analytics/active-locations", () => ({
   buildActiveLocationConditionForRawContext: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Phase 6 plan 06-05 — `getOutletTiers` now consumes
+// `getOutletTierThresholdsCached`. Stub with defaults so this DB-free SQL
+// rendering sweep doesn't reach for `db.select(appSettings)`.
+vi.mock("@/lib/analytics/thresholds-server", () => ({
+  getOutletTierThresholdsCached: vi
+    .fn()
+    .mockResolvedValue({ top: 80, mid: 50, bottom: 20 }),
+}));
+
 const filters = {
   dateFrom: "2025-01-01",
   dateTo: "2025-06-30",
