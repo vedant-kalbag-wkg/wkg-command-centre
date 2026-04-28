@@ -33,6 +33,16 @@ vi.mock("@/lib/analytics/active-locations", () => ({
   buildActiveLocationConditionForRawContext: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Phase 6 plan 06-05 — `getOutletTiers` now reads outlet-tier thresholds from
+// `app_settings` via `getOutletTierThresholdsCached`. Stub it with the default
+// 80/50/20 cutoffs so this DB-free unit test stays green without exercising
+// `db.select`.
+vi.mock("@/lib/analytics/thresholds-server", () => ({
+  getOutletTierThresholdsCached: vi
+    .fn()
+    .mockResolvedValue({ top: 80, mid: 50, bottom: 20 }),
+}));
+
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
 import { getOutletTiers } from "./portfolio";

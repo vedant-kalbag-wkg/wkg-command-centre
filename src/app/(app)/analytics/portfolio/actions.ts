@@ -10,11 +10,17 @@ import {
   getTopProductsCached,
 } from "@/lib/analytics/queries/portfolio";
 import { getBusinessEvents } from "@/lib/analytics/queries/trend-series";
-import { getThresholds } from "@/lib/analytics/thresholds-server";
+import {
+  getThresholds,
+  getOutletTierThresholds,
+} from "@/lib/analytics/thresholds-server";
 import { canonicaliseFilters } from "@/lib/analytics/canonicalise-filters";
 import { getCacheScopeKey } from "@/lib/analytics/cache-scope";
 import { getComparisonDates } from "@/lib/analytics/metrics";
-import type { ThresholdConfig } from "@/lib/analytics/thresholds";
+import type {
+  ThresholdConfig,
+  OutletTierConfig,
+} from "@/lib/analytics/thresholds";
 import {
   getHighPerformerData,
   getLowPerformerData,
@@ -89,6 +95,17 @@ export async function fetchPortfolioData(
 
 export async function fetchThresholdConfig(): Promise<ThresholdConfig> {
   return getThresholds();
+}
+
+// Phase 6 plan 06-05 — uniform reader names mirroring heat-map/actions.ts so
+// the portfolio client page can hydrate both cached config readers via a
+// single `Promise.all([fetchThresholds(), fetchOutletTierThresholds()])`.
+export async function fetchThresholds(): Promise<ThresholdConfig> {
+  return getThresholds();
+}
+
+export async function fetchOutletTierThresholds(): Promise<OutletTierConfig> {
+  return getOutletTierThresholds();
 }
 
 /**

@@ -63,9 +63,73 @@ describe("matchInBatchReversals", () => {
     expect(res.matches).toHaveLength(0);
     expect(res.unmatchedRefunds).toHaveLength(1);
   });
+
+  // Determinism: when two originals share the same transactionDate, the chosen
+  // original must not depend on the order rows arrive in the input array.
+  // The bug: prior to plan 06-07 the in-batch matcher's "most-recent-by-date"
+  // loop used `>` only — on tied dates it kept whichever index came first,
+  // which is determined by the caller's row arrival order (SQL row order has
+  // no stable tiebreaker, so the same input could produce different output).
+  it("in-batch tiebreaker also deterministic across 100 random input permutations", () => {
+    const original1 = row("o1", "Q5A1", "10.00", "2026-01-05", "loc-A");
+    const original2 = row("o2", "Q5A1", "10.00", "2026-01-05", "loc-B");
+    const refund = row("r1", "Q5A1", "-10.00", "2026-01-06", "loc-bk");
+    // Fixed seed via Math.random() is not seeded, but 100 random shuffles of a
+    // 3-element array exhaustively covers all 6 permutations many times over.
+    const results = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      const shuffled = [original1, original2, refund].sort(() => Math.random() - 0.5);
+      const res = matchInBatchReversals(shuffled);
+      expect(res.matches).toHaveLength(1);
+      results.add(res.matches[0].originalId);
+    }
+    expect(results.size).toBe(1);
+  });
+
+  it("in-batch tiebreaker prefers lower id when transactionDates equal", () => {
+    // Pass originals in [o2, o1] order to prove the matcher does NOT just take
+    // the first one — it deterministically picks o1 (lower id) regardless.
+    const o2 = row("o2", "Q5A1", "10.00", "2026-01-05", "loc-B");
+    const o1 = row("o1", "Q5A1", "10.00", "2026-01-05", "loc-A");
+    const refund = row("r1", "Q5A1", "-10.00", "2026-01-06", "loc-bk");
+    const res = matchInBatchReversals([o2, o1, refund]);
+    expect(res.matches).toHaveLength(1);
+    expect(res.matches[0].originalId).toBe("o1");
+  });
 });
 
 describe("applyCrossBatchMatches", () => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Orphan-rate baseline (measured by scripts/measure-reversal-orphan-rate.ts)
+  //
+  //   Staging YYYY-MM-DD:    <X>/<N> = <X.XX>% orphan rate   (TODO: fill from
+  //                          first staging measurement after deploy)
+  //   Production 2026-04-28: 11/36 = 30.56% orphan rate
+  //                          (Substantially higher than the analytics-audit
+  //                          ~2% estimate. Confirmed not a matcher bug per
+  //                          the data-window note below: imported sales window
+  //                          starts mid-2024, so any refunds for bookings
+  //                          before that window have no matchable original.)
+  //
+  // The orphan rate is the share of refund rows in `sales_records` where
+  // `is_reversal = true AND original_record_id IS NULL` after the in-batch +
+  // cross-batch matching passes at ingest. Per
+  // `tasks/handoff-2026-04-27-pr-28-open.md` §4 this gap is a known data
+  // property: refunds for bookings that predate the imported sales window
+  // never had a matchable original in the data, so they remain orphans. It
+  // is NOT a matcher bug.
+  //
+  // If a future re-run shows orphan rate > 5%, investigate:
+  //   - Did the matcher regress? (The deterministic-tiebreaker tests below
+  //     pin the contract; if they still pass, the matcher itself is fine.)
+  //   - Did the data shape change? (e.g. mid-batch ingest failures producing
+  //     more unmatched halves than usual.)
+  //   - Has the data window shrunk? (Refunds whose originals just rolled out
+  //     of the window will count as new orphans.)
+  //
+  // To re-measure:  DATABASE_URL=… npx tsx scripts/measure-reversal-orphan-rate.ts
+  // ─────────────────────────────────────────────────────────────────────────
+
   it("matches a partial refund against a larger committed original and flags it partial", () => {
     const refund = row("r1", "Q5A1", "-5.00", "2026-02-01", "loc-bk");
     const committed = row("o1", "Q5A1", "20.00", "2026-01-15", "loc-original");
@@ -99,5 +163,64 @@ describe("applyCrossBatchMatches", () => {
     const refund = row("r1", "ORPHAN", "-1.00", "2026-02-01", "loc-bk");
     const res = applyCrossBatchMatches([refund], []);
     expect(res.orphans).toEqual([refund]);
+  });
+
+  // Determinism: the cross-batch matcher used to depend on input arrival order
+  // when multiple candidates shared transactionDate (SQL `WHERE ref_no IN
+  // (...) AND net_amount > 0` returns rows in no guaranteed order absent an
+  // ORDER BY id). After plan 06-07: lower id wins on tied date, output stable.
+  it("cross-batch matches deterministically across 100 random input permutations", () => {
+    const refund = row("r1", "Q5A1", "-5.00", "2026-02-01", "loc-bk");
+    const candidates: ReversalCandidate[] = [
+      row("o1", "Q5A1", "20.00", "2026-01-15", "loc-A"),
+      row("o2", "Q5A1", "20.00", "2026-01-15", "loc-B"),
+      row("o3", "Q5A1", "20.00", "2026-01-15", "loc-C"),
+    ];
+    const results = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+      const res = applyCrossBatchMatches([refund], shuffled);
+      expect(res.matches).toHaveLength(1);
+      results.add(res.matches[0].originalId);
+    }
+    // Every permutation must select the same original — set size of 1 proves it.
+    expect(results.size).toBe(1);
+  });
+
+  it("cross-batch tiebreaker prefers lower id when transactionDates equal", () => {
+    // Pass [o2, o1] to prove the matcher does NOT default to first-seen.
+    const refund = row("r1", "Q5A1", "-5.00", "2026-02-01", "loc-bk");
+    const candidates: ReversalCandidate[] = [
+      row("o2", "Q5A1", "20.00", "2026-01-15", "loc-B"),
+      row("o1", "Q5A1", "20.00", "2026-01-15", "loc-A"),
+    ];
+    const res = applyCrossBatchMatches([refund], candidates);
+    expect(res.matches).toHaveLength(1);
+    expect(res.matches[0].originalId).toBe("o1");
+  });
+
+  // Regression scaffold for the production orphan-rate baseline above. The
+  // synthetic shape mirrors the real-world pattern: most refunds have an
+  // in-window original, but a tail of refunds reference originals that fell
+  // out of the data window. The script `measure-reversal-orphan-rate.ts`
+  // measures this over real data; this test pins the orphan-detection
+  // contract over a fixed fixture so refactors of the matcher cannot
+  // silently lose orphans (e.g. by accidentally treating them as matched).
+  it("orphan path: refunds with no in-window original become orphans (regression scaffold)", () => {
+    const refunds: ReversalCandidate[] = [
+      row("r1", "A", "-10.00", "2026-02-01", "loc"),
+      row("r2", "B", "-20.00", "2026-02-02", "loc"),
+      row("r3", "ORPHAN1", "-30.00", "2026-02-03", "loc"),
+      row("r4", "ORPHAN2", "-40.00", "2026-02-04", "loc"),
+      row("r5", "ORPHAN3", "-50.00", "2026-02-05", "loc"),
+    ];
+    const candidates: ReversalCandidate[] = [
+      row("o1", "A", "10.00", "2026-01-15", "loc"),
+      row("o2", "B", "20.00", "2026-01-16", "loc"),
+    ];
+    const res = applyCrossBatchMatches(refunds, candidates);
+    expect(res.matches).toHaveLength(2);
+    expect(res.orphans).toHaveLength(3);
+    expect(res.orphans.map((r) => r.id).sort()).toEqual(["r3", "r4", "r5"]);
   });
 });

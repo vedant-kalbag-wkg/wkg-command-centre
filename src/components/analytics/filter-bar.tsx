@@ -10,7 +10,7 @@ import {
   filtersToSearchParams,
   searchParamsToFilters,
 } from "@/lib/stores/analytics-filter-store";
-import { formatDroppedMessage } from "@/lib/analytics/url-filters";
+import { FILTER_KEYS, formatDroppedMessage } from "@/lib/analytics/url-filters";
 import { MultiSelectFilter } from "./multi-select-filter";
 import { DateRangePicker } from "./date-range-picker";
 import { Button } from "@/components/ui/button";
@@ -89,17 +89,28 @@ export function AnalyticsFilterBar({
   useEffect(() => {
     if (!hasHydratedRef.current) return;
     const id = setTimeout(() => {
-      const params = filtersToSearchParams(
+      const filterParams = filtersToSearchParams(
         useAnalyticsFilterStore.getState() as Parameters<typeof filtersToSearchParams>[0]
       );
-      router.replace(`?${params.toString()}`);
+      // Preserve non-filter URL params (e.g. `?redMax`, `?greenMin`,
+      // `?tierTop|Mid|Bottom` overrides from /settings/thresholds) by reading
+      // the live URL and stripping only the canonical FILTER_KEYS before
+      // re-merging the new filter values. Without this, every filter change
+      // clobbered the threshold overrides.
+      const merged = new URLSearchParams(window.location.search);
+      for (const key of FILTER_KEYS) merged.delete(key);
+      filterParams.forEach((v, k) => merged.set(k, v));
+      router.replace(`?${merged.toString()}`);
     }, 150);
     return () => clearTimeout(id);
   }, [filterSignature, router]);
 
   function handleReset() {
     store.clearAllFilters();
-    router.replace("?");
+    // Reset clears FILTERS only — preserve non-filter URL overrides.
+    const merged = new URLSearchParams(window.location.search);
+    for (const key of FILTER_KEYS) merged.delete(key);
+    router.replace(`?${merged.toString()}`);
   }
 
   const locationOptions = (options?.locations ?? []).map((l) => ({

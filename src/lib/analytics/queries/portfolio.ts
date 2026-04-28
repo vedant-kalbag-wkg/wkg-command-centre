@@ -20,6 +20,7 @@ import {
 import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getAnalyticsDisplayTimezone } from "@/lib/analytics/display-timezone-server";
+import { getOutletTierThresholdsCached } from "@/lib/analytics/thresholds-server";
 import { getComparisonDates, classifyOutletTier } from "@/lib/analytics/metrics";
 import { OUTLET_TIERS_LIMIT } from "@/lib/analytics/types";
 import type {
@@ -408,7 +409,13 @@ export async function getOutletTiers(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<OutletTiersResult> {
-  const whereClause = await buildPortfolioWhere(filters, userCtx);
+  // Phase 6 plan 06-05 — outlet-tier cutoffs lifted from hard-coded 80/50/20
+  // into `app_settings`. Load the cached config (24h TTL, invalidated on save
+  // via the shared "outlet_tiers" tag) and inject it into `classifyOutletTier`.
+  const [whereClause, tierConfig] = await Promise.all([
+    buildPortfolioWhere(filters, userCtx),
+    getOutletTierThresholdsCached(),
+  ]);
   const amountMode = buildAmountModeCondition(filters);
   const salesTxn = buildSalesTxnCondition();
 
@@ -497,7 +504,7 @@ export async function getOutletTiers(
       transactions: row.transactions,
       percentile,
       sharePercentage: totalRevenue > 0 ? (row.revenue / totalRevenue) * 100 : 0,
-      tier: classifyOutletTier(percentile),
+      tier: classifyOutletTier(percentile, tierConfig),
       hotelGroupName: row.hotelGroupName,
       kioskCount: row.kioskCount,
       numRooms: row.numRooms,

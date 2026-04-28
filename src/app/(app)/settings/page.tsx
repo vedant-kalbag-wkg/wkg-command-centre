@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays, ClipboardCheck, Gauge, Clock } from "lucide-react";
+import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays, ClipboardCheck, Gauge, Clock, MapPin } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import {
   Card,
@@ -203,6 +203,24 @@ export default async function SettingsPage() {
                   </div>
                   <CardDescription className="text-sm text-muted-foreground">
                     Configure traffic-light revenue thresholds (Red / Amber / Green) for analytics views.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+          )}
+
+          {isAdmin && (
+            <Link href="/settings/geocoding" className="group">
+              <Card className="h-full cursor-pointer border-border/40 transition-shadow group-hover:shadow-md">
+                <CardHeader>
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <MapPin className="w-5 h-5 text-primary" />
+                    </div>
+                    <CardTitle className="text-base font-medium">Location Geocoding</CardTitle>
+                  </div>
+                  <CardDescription className="text-sm text-muted-foreground">
+                    Populate latitude/longitude on locations via the Google Maps Geocoding API. Dry-run + skip-existing + per-row audit log.
                   </CardDescription>
                 </CardHeader>
               </Card>

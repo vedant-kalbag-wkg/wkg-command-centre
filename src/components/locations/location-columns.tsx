@@ -57,9 +57,9 @@ export function makeLocationColumns(
       );
     },
   },
-  // 2. Name — editable, but renders with link affordance via a separate detail-link column-trigger.
-  //    We keep the name itself inline-editable (primary spec requirement: all fields editable).
-  //    Users can still open the detail page via the dedicated row actions / "View" link.
+  // 2. Name — clickable link to the detail page; not inline-editable.
+  //    Edits happen on the detail page where related context (kiosks, contacts,
+  //    contracts, audit log) is visible alongside the rename.
   {
     accessorKey: "name",
     size: 220,
@@ -68,25 +68,15 @@ export function makeLocationColumns(
     header: ({ column }) => (
       <ColumnHeaderFilter column={column} label="Name" />
     ),
-    cell: ({ row, table }) => (
-      <div className="flex items-center gap-2 min-w-0">
-        <EditableCell
-          value={row.original.name}
-          rowId={row.original.id}
-          columnId="name"
-          table={table}
-          placeholder="—"
-        />
-        <Link
-          href={`/locations/${row.original.id}`}
-          className="shrink-0 text-[11px] text-muted-foreground hover:text-primary hover:underline"
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Open ${row.original.name}`}
-          title="Open detail"
-        >
-          open
-        </Link>
-      </div>
+    cell: ({ row }) => (
+      <Link
+        href={`/locations/${row.original.id}`}
+        className="block min-w-0 truncate text-foreground hover:text-primary hover:underline"
+        onClick={(e) => e.stopPropagation()}
+        title="Open detail"
+      >
+        {row.original.name || "—"}
+      </Link>
     ),
   },
   // 3. Hotel Group — editable, groupable, has header filter

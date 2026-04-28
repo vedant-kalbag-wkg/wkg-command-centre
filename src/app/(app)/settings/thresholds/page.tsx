@@ -14,7 +14,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { fetchThresholds, saveThresholds } from "./actions";
+import {
+  fetchThresholds,
+  saveThresholds,
+  fetchOutletTierThresholds,
+  saveOutletTierThresholds,
+} from "./actions";
 
 export default function ThresholdsPage() {
   const [redMax, setRedMax] = React.useState(500);
@@ -26,12 +31,29 @@ export default function ThresholdsPage() {
     text: string;
   } | null>(null);
 
+  // Phase 6 plan 06-05 — outlet-tier percentile cutoffs (defaults 80/50/20).
+  // Independent state + save handler so each card is a single-purpose form.
+  const [tierTop, setTierTop] = React.useState(80);
+  const [tierMid, setTierMid] = React.useState(50);
+  const [tierBottom, setTierBottom] = React.useState(20);
+  const [tierSaving, setTierSaving] = React.useState(false);
+  const [tierMessage, setTierMessage] = React.useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
   React.useEffect(() => {
-    fetchThresholds()
-      .then((config) => {
+    Promise.all([
+      fetchThresholds().then((config) => {
         setRedMax(config.redMax);
         setGreenMin(config.greenMin);
-      })
+      }),
+      fetchOutletTierThresholds().then((config) => {
+        setTierTop(config.top);
+        setTierMid(config.mid);
+        setTierBottom(config.bottom);
+      }),
+    ])
       .catch(() => {
         // Keep defaults on error
       })
@@ -50,6 +72,27 @@ export default function ThresholdsPage() {
       setMessage({ type: "success", text: "Thresholds saved successfully" });
     }
     setSaving(false);
+  };
+
+  const handleSaveTiers = async () => {
+    setTierSaving(true);
+    setTierMessage(null);
+
+    const result = await saveOutletTierThresholds({
+      top: tierTop,
+      mid: tierMid,
+      bottom: tierBottom,
+    });
+
+    if ("error" in result) {
+      setTierMessage({ type: "error", text: result.error });
+    } else {
+      setTierMessage({
+        type: "success",
+        text: "Outlet tier thresholds saved successfully",
+      });
+    }
+    setTierSaving(false);
   };
 
   const amberLow = redMax + 1;
@@ -160,6 +203,121 @@ export default function ThresholdsPage() {
                   <Button onClick={handleSave} disabled={saving}>
                     <Save className="mr-2 h-4 w-4" />
                     {saving ? "Saving..." : "Save Thresholds"}
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Phase 6 plan 06-05 — Outlet-tier percentile cutoffs */}
+          <Card data-testid="outlet-tier-form">
+            <CardHeader>
+              <CardTitle>Outlet Tier Cutoffs</CardTitle>
+              <CardDescription>
+                Configure the percentile cutoffs that classify outlets into
+                Premium / Standard / Developing / Emerging tiers. Values are
+                percentiles (0–100); the default 80 / 50 / 20 split mirrors
+                the original analytics-audit decision.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {loading ? (
+                <div className="animate-pulse space-y-4">
+                  <div className="h-10 rounded bg-muted" />
+                  <div className="h-10 rounded bg-muted" />
+                  <div className="h-10 rounded bg-muted" />
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="tierTop">
+                        Top cutoff
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          (≥ this percentile = Premium)
+                        </span>
+                      </Label>
+                      <Input
+                        id="tierTop"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={tierTop}
+                        onChange={(e) => setTierTop(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="tierMid">
+                        Mid cutoff
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          (≥ this percentile = Standard)
+                        </span>
+                      </Label>
+                      <Input
+                        id="tierMid"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={tierMid}
+                        onChange={(e) => setTierMid(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="tierBottom">
+                        Bottom cutoff
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          (≥ this percentile = Developing)
+                        </span>
+                      </Label>
+                      <Input
+                        id="tierBottom"
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={tierBottom}
+                        onChange={(e) =>
+                          setTierBottom(Number(e.target.value))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div className="rounded-lg border bg-muted/50 p-4">
+                    <p className="mb-2 text-sm font-medium">Preview</p>
+                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                      <span>Premium: ≥{tierTop}</span>
+                      <span className="text-muted-foreground">|</span>
+                      <span>
+                        Standard: {tierMid}–{Math.max(tierTop - 1, tierMid)}
+                      </span>
+                      <span className="text-muted-foreground">|</span>
+                      <span>
+                        Developing: {tierBottom}–
+                        {Math.max(tierMid - 1, tierBottom)}
+                      </span>
+                      <span className="text-muted-foreground">|</span>
+                      <span>Emerging: &lt;{tierBottom}</span>
+                    </div>
+                  </div>
+
+                  {tierMessage && (
+                    <div
+                      className={`rounded-lg border px-4 py-3 text-sm ${
+                        tierMessage.type === "error"
+                          ? "border-destructive/50 bg-destructive/10 text-destructive"
+                          : "border-green-200 bg-green-50 text-green-700"
+                      }`}
+                    >
+                      {tierMessage.text}
+                    </div>
+                  )}
+
+                  <Button onClick={handleSaveTiers} disabled={tierSaving}>
+                    <Save className="mr-2 h-4 w-4" />
+                    {tierSaving
+                      ? "Saving..."
+                      : "Save Outlet Tier Thresholds"}
                   </Button>
                 </>
               )}

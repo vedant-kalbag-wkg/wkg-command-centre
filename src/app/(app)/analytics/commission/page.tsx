@@ -148,8 +148,13 @@ export default function CommissionPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {/* Tooltip text authored 2026-04-28 — values derive from
+                fetchCommissionSummary (./actions.ts) which sums sales_records.commission_amount
+                under buildCommissionWhere (PR-15). No D-decision applies directly to
+                commission math; tooltips reflect the commission dashboard's own definitions. */}
             <KpiCard
               title="Total Commission"
+              tooltip="SUM(commission_amount) across sales_records in scope. The commission paid out (or owed) to operators based on their tier configuration. Region/location filters apply via the standard scoped-sales predicate (PR-15)."
               value={formatCurrency(d.summary.totalCommission)}
               change={
                 d.summary.commissionDelta !== null
@@ -161,6 +166,7 @@ export default function CommissionPage() {
             />
             <KpiCard
               title="Commissionable Revenue"
+              tooltip="SUM(netAmount) over sales_records that have a non-null commission_amount — i.e. the share of revenue that actually drove a commission payment. Excludes records where commission was zero or unconfigured."
               value={formatCurrency(d.summary.totalCommissionable)}
               change={
                 d.summary.commissionableDelta !== null
@@ -171,6 +177,7 @@ export default function CommissionPage() {
             />
             <KpiCard
               title="Average Rate"
+              tooltip="Total Commission ÷ Commissionable Revenue × 100. The blended effective commission rate across the in-scope records — not the average of per-record rates (which would be vulnerable to Simpson's paradox). Delta is shown in percentage points (pp)."
               value={`${d.summary.avgRate.toFixed(2)}%`}
               change={
                 d.summary.rateDelta !== null
@@ -185,6 +192,7 @@ export default function CommissionPage() {
             />
             <KpiCard
               title="Records with Commission"
+              tooltip="COUNT(*) of sales_records in scope where commission_amount is not null. Useful as a denominator sanity check — if this is zero, there's no commission data flowing for the selected scope."
               value={formatNumber(d.summary.recordCount)}
               change={
                 d.summary.recordDelta !== null

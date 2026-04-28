@@ -5,6 +5,15 @@ vi.mock('next/cache', () => ({
   unstable_cache: (fn: unknown) => fn,
 }));
 
+// Phase 6 plan 06-05 — `getOutletTiers` now consumes
+// `getOutletTierThresholdsCached`. Stub with defaults so the DB-free cached-
+// exports smoke test continues to run without `db.select`.
+vi.mock('@/lib/analytics/thresholds-server', () => ({
+  getOutletTierThresholdsCached: vi
+    .fn()
+    .mockResolvedValue({ top: 80, mid: 50, bottom: 20 }),
+}));
+
 import {
   getPortfolioSummaryCached,
   getCategoryPerformanceCached,

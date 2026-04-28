@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+const overrideBaseURL = process.env.PLAYWRIGHT_BASE_URL;
+
 export default defineConfig({
   testDir: "./tests",
   testMatch: "**/*.spec.ts",
@@ -9,12 +11,14 @@ export default defineConfig({
   outputDir: "./playwright-output",
   reporter: [["list"], ["html", { outputFolder: "./playwright-report", open: "never" }]],
   use: {
-    baseURL: "http://localhost:3003",
+    baseURL: overrideBaseURL ?? "http://localhost:3003",
     screenshot: "only-on-failure",
   },
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3003",
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: overrideBaseURL
+    ? undefined
+    : {
+        command: "npm run dev",
+        url: "http://localhost:3003",
+        reuseExistingServer: !process.env.CI,
+      },
 });

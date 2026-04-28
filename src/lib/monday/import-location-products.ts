@@ -28,6 +28,7 @@ import {
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import type { db as defaultDb } from "@/db";
+import { mondayQueryWithRetry } from "@/lib/monday/client";
 
 const HOTEL_BOARD_IDS = [1356570756, 1743012104, 5026387784, 5092887865];
 const BOARD_NAMES: Record<number, string> = {
@@ -109,47 +110,37 @@ export async function runMondayImport(
       : Date.now();
 
   // ────────────────────────────────────────────────────────────
-  // Monday API client (closure captures the token)
+  // Monday API client — extracted to @/lib/monday/client (Phase 6 plan
+  // 06-02). The client reads MONDAY_API_TOKEN from process.env, so we
+  // bridge the dep-injected token into the env for the duration of the
+  // import (restoring the prior value on completion to avoid leaking
+  // ambient state into other calls).
   // ────────────────────────────────────────────────────────────
+  const previousToken = process.env.MONDAY_API_TOKEN;
+  process.env.MONDAY_API_TOKEN = mondayApiToken;
   async function mondayQuery(query: string): Promise<unknown> {
-    const MAX_RETRIES = 5;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const res = await fetch("https://api.monday.com/v2", {
-        method: "POST",
-        headers: {
-          Authorization: mondayApiToken,
-          "Content-Type": "application/json",
-          "API-Version": "2024-10",
-        },
-        body: JSON.stringify({ query }),
-      });
-
-      if (res.status === 429) {
-        const wait = Math.pow(2, attempt) * 1000;
-        logger("RATE_LIMIT", `Retrying in ${wait}ms...`);
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
+    try {
+      // Wrap the extracted retry helper so the rate-limit path emits the
+      // existing "RATE_LIMIT" log line. The helper itself doesn't take a
+      // logger; we accept the loss of fine-grained per-attempt logs in
+      // exchange for a single shared retry implementation.
+      logger("MONDAY", "Issuing GraphQL query (with retry)");
+      return await mondayQueryWithRetry<unknown>(query, {});
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Preserve the legacy error shape for any caller that pattern-matches
+      // on it. Rate-limit and other retryable errors come through as
+      // "Monday API errors: ..." from the new client; remap to the legacy
+      // "Monday.com GraphQL error" prefix used by this script.
+      if (message.startsWith("Monday API errors: ")) {
+        throw new Error(
+          `Monday.com GraphQL error: ${message.slice("Monday API errors: ".length)}`,
+        );
       }
-
-      const json = (await res.json()) as {
-        data?: unknown;
-        errors?: Array<{ message: string }>;
-      };
-      if (json.errors?.length) {
-        const msg = json.errors.map((e) => e.message).join("; ");
-        if (msg.includes("Rate limit") || msg.includes("complexity")) {
-          const wait = Math.pow(2, attempt) * 1000;
-          logger("RATE_LIMIT", `Complexity limit, retrying in ${wait}ms...`);
-          await new Promise((r) => setTimeout(r, wait));
-          continue;
-        }
-        throw new Error(`Monday.com GraphQL error: ${msg}`);
-      }
-
-      return json.data;
+      throw err;
     }
-    throw new Error("Monday.com API: max retries exceeded");
   }
+  try {
 
   // ────────────────────────────────────────────────────────────
   // Fetch all hotels with subitems
@@ -583,14 +574,25 @@ export async function runMondayImport(
       ? performance.now()
       : Date.now();
 
-  return {
-    rowsInserted: inserted,
-    placeholdersCreated,
-    placeholderNames: placeholderHotelNames,
-    hotelsSkipped: skippedNoLoc,
-    placeholdersSkippedNoRegion,
-    productsResolved: productMap.size,
-    providersResolved: providerMap.size,
-    durationMs: endedAt - startedAt,
-  };
+    return {
+      rowsInserted: inserted,
+      placeholdersCreated,
+      placeholderNames: placeholderHotelNames,
+      hotelsSkipped: skippedNoLoc,
+      placeholdersSkippedNoRegion,
+      productsResolved: productMap.size,
+      providersResolved: providerMap.size,
+      durationMs: endedAt - startedAt,
+    };
+  } finally {
+    // Restore the prior MONDAY_API_TOKEN value. `delete` on `previousToken
+    // === undefined` so `'MONDAY_API_TOKEN' in process.env` returns false
+    // again (matches the pre-call state for callers that rely on env-var
+    // presence checks).
+    if (previousToken === undefined) {
+      delete process.env.MONDAY_API_TOKEN;
+    } else {
+      process.env.MONDAY_API_TOKEN = previousToken;
+    }
+  }
 }
