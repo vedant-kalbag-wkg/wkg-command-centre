@@ -1,3 +1,12 @@
+/**
+ * Multi-location regression coverage lives in `multi-location.spec.ts`
+ * (Phase 6 plan 06-02). To verify the spec catches PR #29's
+ * `ANY(${ids})` Drizzle bug:
+ *   git revert --no-commit fbcce77
+ *   npx playwright test tests/kiosk-config-groups/multi-location.spec.ts
+ *   # the list-page test must FAIL
+ *   git revert --abort
+ */
 import { test, expect } from "@playwright/test";
 import { signInAsAdmin } from "../helpers/auth";
 
