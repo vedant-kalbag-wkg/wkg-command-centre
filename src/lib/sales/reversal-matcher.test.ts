@@ -99,6 +99,34 @@ describe("matchInBatchReversals", () => {
 });
 
 describe("applyCrossBatchMatches", () => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Orphan-rate baseline (measured by scripts/measure-reversal-orphan-rate.ts)
+  //
+  //   Staging YYYY-MM-DD:    <X>/<N> = <X.XX>% orphan rate   (TODO: fill from
+  //                          first staging measurement after deploy)
+  //   Production YYYY-MM-DD: <X>/<N> = <X.XX>% orphan rate   (TODO: fill from
+  //                          first prod measurement; analytics audit estimated
+  //                          ~2% — confirm the actual number here)
+  //
+  // The orphan rate is the share of refund rows in `sales_records` where
+  // `is_reversal = true AND original_record_id IS NULL` after the in-batch +
+  // cross-batch matching passes at ingest. Per
+  // `tasks/handoff-2026-04-27-pr-28-open.md` §4 this gap is a known data
+  // property: refunds for bookings that predate the imported sales window
+  // never had a matchable original in the data, so they remain orphans. It
+  // is NOT a matcher bug.
+  //
+  // If a future re-run shows orphan rate > 5%, investigate:
+  //   - Did the matcher regress? (The deterministic-tiebreaker tests below
+  //     pin the contract; if they still pass, the matcher itself is fine.)
+  //   - Did the data shape change? (e.g. mid-batch ingest failures producing
+  //     more unmatched halves than usual.)
+  //   - Has the data window shrunk? (Refunds whose originals just rolled out
+  //     of the window will count as new orphans.)
+  //
+  // To re-measure:  DATABASE_URL=… npx tsx scripts/measure-reversal-orphan-rate.ts
+  // ─────────────────────────────────────────────────────────────────────────
+
   it("matches a partial refund against a larger committed original and flags it partial", () => {
     const refund = row("r1", "Q5A1", "-5.00", "2026-02-01", "loc-bk");
     const committed = row("o1", "Q5A1", "20.00", "2026-01-15", "loc-original");
@@ -166,5 +194,30 @@ describe("applyCrossBatchMatches", () => {
     const res = applyCrossBatchMatches([refund], candidates);
     expect(res.matches).toHaveLength(1);
     expect(res.matches[0].originalId).toBe("o1");
+  });
+
+  // Regression scaffold for the production orphan-rate baseline above. The
+  // synthetic shape mirrors the real-world pattern: most refunds have an
+  // in-window original, but a tail of refunds reference originals that fell
+  // out of the data window. The script `measure-reversal-orphan-rate.ts`
+  // measures this over real data; this test pins the orphan-detection
+  // contract over a fixed fixture so refactors of the matcher cannot
+  // silently lose orphans (e.g. by accidentally treating them as matched).
+  it("orphan path: refunds with no in-window original become orphans (regression scaffold)", () => {
+    const refunds: ReversalCandidate[] = [
+      row("r1", "A", "-10.00", "2026-02-01", "loc"),
+      row("r2", "B", "-20.00", "2026-02-02", "loc"),
+      row("r3", "ORPHAN1", "-30.00", "2026-02-03", "loc"),
+      row("r4", "ORPHAN2", "-40.00", "2026-02-04", "loc"),
+      row("r5", "ORPHAN3", "-50.00", "2026-02-05", "loc"),
+    ];
+    const candidates: ReversalCandidate[] = [
+      row("o1", "A", "10.00", "2026-01-15", "loc"),
+      row("o2", "B", "20.00", "2026-01-16", "loc"),
+    ];
+    const res = applyCrossBatchMatches(refunds, candidates);
+    expect(res.matches).toHaveLength(2);
+    expect(res.orphans).toHaveLength(3);
+    expect(res.orphans.map((r) => r.id).sort()).toEqual(["r3", "r4", "r5"]);
   });
 });
