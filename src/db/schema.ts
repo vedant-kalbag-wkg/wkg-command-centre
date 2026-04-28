@@ -989,6 +989,49 @@ export const actionItems = pgTable("action_items", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// =============================================================================
+// Phase 6 Plan 06-01 — D8 multi-POS merge proposals
+//
+// Persists per-cluster admin decisions made via the
+// /settings/duplicates/merge-review UI. Source CSV at
+// `tasks/analytics-audit/multi-pos-merge-proposal.csv` enumerates the 22
+// clusters; admin walks through each and saves a decision row here keyed on
+// (canonical_id, defunct_id). The bulk-merge primitive (src/lib/multi-pos-merge.ts)
+// reads `decision IN ('approved','swapped')` rows where `applied_at IS NULL`
+// and rewrites every FK to `locations.id` from defunct → canonical, then
+// stamps `applied_at`. `decision='address_fix'` rows are surfaced for manual
+// data-quality fixes (Phase 5.7 ride-along) and do NOT trigger a merge.
+// =============================================================================
+
+export const mergeProposals = pgTable(
+  "merge_proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clusterId: integer("cluster_id").notNull(),
+    canonicalId: uuid("canonical_id")
+      .notNull()
+      .references(() => locations.id),
+    defunctId: uuid("defunct_id")
+      .notNull()
+      .references(() => locations.id),
+    // CHECK constraint enforced at DB layer in migration 0038 — Drizzle's
+    // `text({ enum: [...] })` only types the value at the TS layer.
+    decision: text("decision", {
+      enum: ["approved", "swapped", "rejected", "address_fix"],
+    }).notNull(),
+    notes: text("notes"),
+    decidedBy: text("decided_by").notNull(),
+    decidedByName: text("decided_by_name").notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).defaultNow().notNull(),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+  },
+  (t) => ({
+    pairUniq: unique("merge_proposals_pair_unique").on(t.canonicalId, t.defunctId),
+    byCluster: index("merge_proposals_cluster_idx").on(t.clusterId),
+    byApplied: index("merge_proposals_applied_idx").on(t.appliedAt),
+  }),
+);
+
 // eventLog — lightweight analytics usage tracking. userId is nullable to
 // support anonymous / system events (e.g. scheduled exports).
 export const eventLog = pgTable(

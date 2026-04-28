@@ -267,6 +267,13 @@
       "when": 1777336801015,
       "tag": "0037_drop_kiosks_kiosk_config_group_id",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0038_create_merge_proposals",
+      "breakpoints": true
     }
   ]
 }
