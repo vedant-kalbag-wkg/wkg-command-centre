@@ -94,3 +94,42 @@ The script logs `Password reset for <email> (role=admin, userId=..., accountId=.
 ### Reference
 
 The prod admin account is `vedant.kalbag@weknowgroup.com` (per the auto-memory entry "Prod admin account"); the canonical prod URL is `https://wkg-command-centre.vercel.app/`. The script will not work against `wkg-kiosk-tool.vercel.app` because that alias was removed in D12.
+
+## Vercel preview env vars — `BETTER_AUTH_URL` must use the git-branch alias
+
+Better Auth defaults `trustedOrigins` to `BETTER_AUTH_URL` only. Setting it to a per-deploy URL (`wkg-command-centre-<hash>-vedant-kalbag-wkgs-projects.vercel.app`) breaks every redeploy because Vercel mints a new `<hash>` each build, and the now-stale `BETTER_AUTH_URL` no longer matches the request origin → all `/api/auth/*` calls return `403 Invalid origin`.
+
+The only stable URL on Vercel that survives redeploys of the same branch is the git-branch alias:
+
+```
+wkg-command-centre-git-<sanitized-branch>-vedant-kalbag-wkgs-projects.vercel.app
+```
+
+Vercel auto-generates this alias and re-points it at the latest deploy of the branch. Find it via `vercel alias ls | grep <branch>` once the project is linked. When setting Vercel env vars on a preview branch, always use this alias for `BETTER_AUTH_URL`:
+
+```bash
+echo "https://wkg-command-centre-git-<sanitized-branch>-vedant-kalbag-wkgs-projects.vercel.app" | \
+  vercel env add BETTER_AUTH_URL preview <full-branch-name>
+```
+
+The same applies to any future origin-pinned secret: pin to the alias, not the per-deploy URL. Drive UAT in Playwright via the alias too, otherwise the browser ends up at a deploy URL that mismatches `BETTER_AUTH_URL`.
+
+## Playwright specs against preview deploys (not just `--list`)
+
+Listing a Playwright spec proves the file parses; running it proves the user-facing path actually works. Phase 6 plan 06-05 shipped with `tests/analytics-heat-map/url-overrides.spec.ts` that listed clean but never ran live, and a real regression (filter-bar wiping non-filter URL params) escaped to prod-shape preview UAT.
+
+Before declaring any phase that adds Playwright specs "done":
+
+1. `playwright.config.ts` reads `PLAYWRIGHT_BASE_URL` — when set, the dev-server `webServer` is skipped and tests run against the URL as-is.
+2. After Vercel preview is up and `BETTER_AUTH_URL` is set to the git-branch alias (above), run the new specs against it:
+
+   ```bash
+   PLAYWRIGHT_BASE_URL=https://wkg-command-centre-git-<branch>-vedant-kalbag-wkgs-projects.vercel.app \
+   TEST_ADMIN_EMAIL='<admin-email>' \
+   TEST_ADMIN_PASSWORD='<admin-password>' \
+     npx playwright test tests/<phase-spec-path>
+   ```
+
+3. If the spec fails, fix the regression before merging — `--list` passing is not sufficient evidence.
+
+For destructive flows (06-01 multi-POS merge `--apply`, 06-06 geocoding `Apply` against real Google Maps), the operator-driven manual checklist in the plan's `*-SUMMARY.md` is the bar — Playwright should not run those steps.

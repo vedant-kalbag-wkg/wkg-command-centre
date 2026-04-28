@@ -90,7 +90,12 @@ function hasKey(sp: SearchParamsLike, key: string): boolean {
   return sp[key] !== undefined;
 }
 
-const FILTER_KEYS = [
+// Canonical list of search-param keys owned by the analytics filter bar.
+// Components that mutate the URL (filter-bar auto-apply, reset, etc.) MUST
+// only touch these keys so that non-filter overrides — `redMax`, `greenMin`,
+// `tierTop`, `tierMid`, `tierBottom` from /settings/thresholds; future
+// per-page params — survive a filter change. See filter-bar.tsx.
+export const FILTER_KEYS = [
   "from",
   "to",
   "hotels",

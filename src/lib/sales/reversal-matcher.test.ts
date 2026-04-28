@@ -104,9 +104,12 @@ describe("applyCrossBatchMatches", () => {
   //
   //   Staging YYYY-MM-DD:    <X>/<N> = <X.XX>% orphan rate   (TODO: fill from
   //                          first staging measurement after deploy)
-  //   Production YYYY-MM-DD: <X>/<N> = <X.XX>% orphan rate   (TODO: fill from
-  //                          first prod measurement; analytics audit estimated
-  //                          ~2% — confirm the actual number here)
+  //   Production 2026-04-28: 11/36 = 30.56% orphan rate
+  //                          (Substantially higher than the analytics-audit
+  //                          ~2% estimate. Confirmed not a matcher bug per
+  //                          the data-window note below: imported sales window
+  //                          starts mid-2024, so any refunds for bookings
+  //                          before that window have no matchable original.)
   //
   // The orphan rate is the share of refund rows in `sales_records` where
   // `is_reversal = true AND original_record_id IS NULL` after the in-batch +
