@@ -26,11 +26,12 @@
  */
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import {
   applyBulkMerge,
   type MergePair,
 } from "@/lib/multi-pos-merge";
+import { mergeProposals } from "@/db/schema";
 
 const APPLY = process.argv.includes("--apply");
 const ETL_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -116,12 +117,14 @@ async function main(): Promise<void> {
     );
 
     // Stamp applied_at on every applied row so re-runs are no-ops.
+    // Drizzle's inArray() handles single-element arrays correctly; the prior
+    // raw `ANY(${ids}::uuid[])` form crashed on a 1-row array under
+    // node-postgres because the binding unwrapped to a bare string.
     const ids = pending.map((p) => p.id);
-    await db.execute(sql`
-      UPDATE merge_proposals
-         SET applied_at = NOW()
-       WHERE id = ANY(${ids}::uuid[])
-    `);
+    await db
+      .update(mergeProposals)
+      .set({ appliedAt: new Date() })
+      .where(inArray(mergeProposals.id, ids));
 
     console.log("\nApplied successfully. Result:");
     console.log(JSON.stringify(result, null, 2));
