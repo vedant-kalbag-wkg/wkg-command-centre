@@ -125,7 +125,7 @@ These are the gray-area calls. Decisions here change the shape of the work in ph
 - [x] **7.8** "Show archived" toggle in location list. — `?archived=1` query param drives `listLocations({ includeArchived })`; new `ShowArchivedToggle` in the page header; underlying "Archived" column already existed (hidden by default).
 - [x] **7.9** Banking edits: write field-level audit log entries (currently coarse). — `updateBankingDetails` now diffs old vs new banking blob and emits one `audit_logs` row per changed field (`bankingDetails.<field>`) with redacted values, instead of one coarse `bankingDetails: [REDACTED]` per save. No-op saves don't pollute the log.
 - [x] **7.10** Trial-ending-soon notification (per D11). — `getTrialsEndingSoon(daysAhead)` server action + `TrialEndingBanner` rendered at the top of `/kiosks` when ≥1 active location has `freeTrialEndDate` ≤ 30 days out. Lists the first 5 by date with "X days left" indicators and a "+ N more" overflow.
-- [ ] **7.11** Analytics treatment of `freeTrialEndDate` deferred — pick up alongside the maintenance-fee recurring-revenue work when that lands (P3, blocked on a future maintenance-fee design decision).
+- [ ] **7.11** [DEFERRED to v2: maintenance-fee work] Analytics treatment of `freeTrialEndDate` — pickup tied to the broader maintenance-fee recurring-revenue work when that lands. Tracked as REPORT-V2-03 in `.planning/REQUIREMENTS.md`. Per audit-fix Phase 6 plan 06-04 (2026-04-28).
 
 ## Phase 8 — Process / regression hardening
 
