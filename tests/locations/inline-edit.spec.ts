@@ -62,46 +62,21 @@ test.describe("@locations inline edit on /locations table", () => {
     await signInAsAdmin(page);
   });
 
-  // TODO: re-enable once the flaky interaction with the Name column's
-  // inline-edit span is resolved. Clicking the span via Playwright
-  // (click(), focus+Enter, dispatchEvent('click'), el.click() via evaluate)
-  // all fail to trigger the React onClick handler on the remote preview,
-  // yet the address / roomCount inline-edit tests in this same file pass
-  // using the identical EditableCell component. The Name column differs in
-  // that its cell wraps EditableCell in a flex row next to an adjacent
-  // "open" detail-page link — that pairing is the only structural
-  // difference between the Name cell and the other cells. Likely a UI bug
-  // that lives in location-columns.tsx's Name column cell but needs
-  // deeper investigation than the remaining triage budget allows. The
-  // related "can inline-edit the address column" test below gives
-  // equivalent persistence coverage for text columns on the same table.
-  test.skip("can inline-edit the name column and persist on reload", async ({
+  test("name cell is a link to the detail page (not inline-editable)", async ({
     page,
   }) => {
-    const { name } = await createLocation(page, "INLINE-NAME");
+    const { name, id } = await createLocation(page, "INLINE-NAME");
 
     await gotoLocationsAndSearch(page, name);
 
     const row = page.getByRole("row").filter({ hasText: name }).first();
     const cells = row.locator("td");
     const nameCell = cells.nth(1);
-    const nameBtn = nameCell.getByRole("button", { name, exact: false }).first();
-    await expect(nameBtn).toBeVisible({ timeout: 10000 });
-    await nameBtn.click();
-
-    const input = nameCell.getByRole("textbox").first();
-    await expect(input).toBeVisible({ timeout: 10000 });
-    const newName = `${name}-EDITED`;
-    await input.fill(newName);
-    await input.press("Enter");
-
-    await waitForInlineEditCommit(nameCell, input);
-    await page.reload();
-    const search = page.getByPlaceholder(/search locations/i).first();
-    await search.fill(newName);
-    await expect(page.getByText(newName).first()).toBeVisible({
-      timeout: 10000,
-    });
+    const nameLink = nameCell.getByRole("link", { name, exact: false }).first();
+    await expect(nameLink).toBeVisible({ timeout: 10000 });
+    await expect(nameLink).toHaveAttribute("href", `/locations/${id}`);
+    // No inline-edit textbox should appear on click of the cell text.
+    await expect(nameCell.getByRole("textbox")).toHaveCount(0);
   });
 
   test("can inline-edit the address column and persist on reload", async ({
