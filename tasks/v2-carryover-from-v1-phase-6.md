@@ -120,6 +120,54 @@ Pattern repeats across every analytics dashboard.
 
 ---
 
+## Email infrastructure (carry-over from `/gsd:complete-milestone` session 2026-04-28)
+
+### V2-EMAIL-01: Transactional email provider — Resend (primary), Brevo (fallback)
+
+**State:** `src/lib/email.ts` uses `nodemailer.createTransport` with `host: process.env.SMTP_HOST || "localhost"` and `port: 1025` (MailHog dev default). In prod this means **no email is actually sent** unless `SMTP_HOST/PORT/USER/PASS` are populated in Vercel env — and they currently aren't. Forgot-password works in code but silently fails to deliver.
+
+**Decision (locked 2026-04-28):** **Resend** for primary; **Brevo** documented as fallback (not implemented). Resend chosen for: cleanest Next.js/Vercel DX, EU region (Frankfurt) for GDPR alignment, free tier covers expected volume (3k/mo), trivial drop-in behind existing `sendPasswordResetEmail` / `sendInviteEmail` / `sendExternalInviteEmail` API surface.
+
+**Why Brevo as fallback (not SES):** Brevo is EU-based, has its own sending domain story, and can run alongside Resend on the same `EMAIL_FROM` for failover with minimal refactor. AWS SES (eu-west-2) was on the menu but adds bounce/complaint handling on top of integration; Brevo is the easier escape hatch if Resend deliverability disappoints.
+
+**Fix path:**
+1. Choose sending domain (`weknowgroup.com` or `weknow.co`) and add SPF/DKIM/DMARC records per Resend onboarding.
+2. Add `RESEND_API_KEY` + `EMAIL_FROM` (and optional `EMAIL_REPLY_TO`) to Vercel env (production + preview).
+3. Replace `nodemailer.createTransport` in `src/lib/email.ts` with Resend SDK call (`@resend/node`); preserve the three exported functions' signatures so call sites at `src/lib/auth.ts:18-22` don't change.
+4. Keep MailHog/`localhost:1025` path for local dev — gate on `process.env.NODE_ENV === 'production'` or presence of `RESEND_API_KEY`.
+5. Verify forgot-password end-to-end against Vercel preview alias (per `CLAUDE.md` "Vercel preview env vars" section).
+6. Document Brevo wiring in `docs/email-fallback-brevo.md` — env vars, switch mechanism (env-driven `EMAIL_PROVIDER=resend|brevo`), and the trigger conditions (sustained Resend deliverability issues / cost).
+
+**Cost estimate:** ~2 hours for Resend integration including DNS round-trip; ~30 minutes for Brevo write-up.
+
+### V2-EMAIL-02: Self-serve change-password from `/account`
+
+**State:** No authenticated change-password UI exists. Better Auth exposes `authClient.changePassword({ currentPassword, newPassword })` and the corresponding server-side `auth.api.changePassword` — neither is wired.
+
+**Why deferred:** v1.0 admin-only audience can already rotate via `scripts/reset-admin-password.ts` (CLAUDE.md "Prod admin password rotation"); other users get rotated by admin via Better Auth admin plugin. Self-serve is needed once the user base broadens or external (analytics-portal) users land.
+
+**Fix path:** Build `/account/security` route with current-password verification + new-password form; call `authClient.changePassword`; show "password updated" toast on success; trigger an email confirmation via Resend ("Your password was changed at {timestamp} from {ip} — if this wasn't you, …").
+
+### V2-EMAIL-03: Forgot-password reliability sweep
+
+**State:** `auth.emailAndPassword.sendResetPassword` hook (`src/lib/auth.ts:13-24`) is wired and dispatches to one of three branded templates (reset / internal-invite / external-invite). The templates render fine but never actually deliver in prod due to V2-EMAIL-01. Resolving V2-EMAIL-01 implicitly fixes this — but a follow-up manual UAT against prod is needed: invite a throwaway user, click link, set password, sign in.
+
+**Fix path:** Bundled with V2-EMAIL-01 verification step.
+
+### V2-EMAIL-04: Transactional alerts infrastructure (NOTIF-V2-01/02 + REPORT-V2-01 substrate)
+
+**State:** Existing v2 requirements `NOTIF-V2-01` (status-change notifications), `NOTIF-V2-02` (kiosk-offline alerts), and `REPORT-V2-01` (scheduled reports via email) all assume an email-sending substrate. This requirement captures the substrate itself: a single `sendTransactional({ template, to, data })` helper on top of Resend, a small set of branded templates (alert / digest / report-link), and a queue/retry pattern fit for serverless (probably a `transactional_email_jobs` table + cron worker, or Resend's batch API).
+
+**Why a separate item:** Builds the rails so NOTIF-V2-01/02 and REPORT-V2-01 don't each reinvent retry/template/audit-log handling. Should land before the first consumer.
+
+**Fix path:**
+1. Decide queue strategy: synchronous-with-best-effort vs persisted-job-table-with-cron. Persisted is safer for "kiosk offline >N hours" alerts where a deploy mid-trigger shouldn't drop the alert.
+2. Schema: `email_jobs (id, template, to, payload jsonb, status enum, attempts, last_error, sent_at, created_at)` + audit_log entries on send.
+3. Worker: Vercel Cron hitting an `/api/cron/email-jobs` route that drains the queue (low concurrency, exponential backoff).
+4. Templates extending the existing `buildBrandedEmail` helper in `src/lib/email.ts` so brand stays consistent.
+
+---
+
 ## Vercel infrastructure
 
 ### V2-INFRA-01: GitHub auto-delete-after-merge for branches
@@ -141,6 +189,7 @@ Pattern repeats across every analytics dashboard.
 | Test coverage | V2-TEST-01, V2-TEST-02 | 1-2 hours |
 | Refactoring | V2-REF-01 | Bundle with broader RSC refactor |
 | Integration | V2-MONDAY-01 | 1-3 days depending on path |
+| Email infra | V2-EMAIL-01, V2-EMAIL-02, V2-EMAIL-03, V2-EMAIL-04 | 1-2 days (Resend wire-up + change-pw UI + alerts substrate) |
 | Infra | V2-INFRA-01 | 5 minutes |
 
 When `/gsd:complete-milestone` runs and creates v2 PROJECT.md, these items should be incorporated into the v2 requirements set + scope/non-goals discussion.
