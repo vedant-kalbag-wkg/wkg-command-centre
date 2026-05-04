@@ -1,10 +1,11 @@
 ---
 phase: 7
 slug: data-foundation-rebuild
-status: draft
+status: approved
 shadcn_initialized: true
 preset: base-nova
 created: 2026-05-04
+reviewed_at: 2026-05-04
 ---
 
 # Phase 7 — UI Design Contract
@@ -47,12 +48,16 @@ Exceptions: Table row touch target minimum 44px height (already applied as `min-
 
 ## Typography
 
-| Role | Size | Weight | Line Height |
-|------|------|--------|-------------|
-| Body | 14px | 400 (Book) | 1.5 |
-| Label | 12px | 500 (Medium) | 1.4 |
-| Heading | 20px | 600 (semibold) | 1.2 |
-| Display | 28px | 700 (Bold, -10 kerning) | 1.2 |
+Two weights only (WeKnow brand allows Light 300, Book 400, Medium 500, Bold 700 — 600 semibold is NOT a Circular Pro weight):
+
+| Role | Size | Weight | Line Height | Notes |
+|------|------|--------|-------------|-------|
+| Body | 14px | 400 (Book) | 1.5 | Default prose and table cells |
+| Label | 12px | 400 (Book) | 1.4 | Secondary labels, captions |
+| Heading | 20px | 700 (Bold) | 1.2 | Section headings, dialog titles |
+| Display | 28px | 700 (Bold) | 1.2 | Page-level display text |
+
+Bold (-10 kerning, per WeKnow brand guidelines): apply `tracking-[-0.01em]` to all `font-bold` elements. Do NOT use `font-semibold` (weight 600) anywhere — use `font-bold` (weight 700) for emphasis.
 
 Source: `globals.css` `@theme inline` block, WeKnow brand guidelines.
 
@@ -69,12 +74,14 @@ Source: `globals.css` `@theme inline` block, WeKnow brand guidelines.
 | Destructive | `#F41E56` (`--color-wk-destructive`) | Destructive actions only (archive confirmation, undo locked state) |
 
 Accent (`#00A6D3`) reserved for:
-- Selected canonical record ring in MergeDialog (`border-primary bg-primary/5`)
+- Selected canonical record ring in MergeDialog (`border-primary bg-primary/10`)
 - Selected conflict chip in MergeDialog (`border-primary bg-primary/10 text-primary`)
 - Selected table row background (`bg-primary/20`)
 - Table row hover (`bg-primary/10`)
 - Primary CTA buttons (`bg-primary text-primary-foreground`)
 - Merge button in BulkToolbar
+
+Tint rule: minimum tint is 10% (`bg-primary/10`). Do NOT use `bg-primary/5` — below WeKnow brand minimum.
 
 Warning (`#F4BA1E`) reserved for:
 - Same-name guardrail Alert banner on `/locations` page (D-08)
@@ -92,6 +99,8 @@ Source: `globals.css`, WeKnow brand guidelines, `bulk-toolbar.tsx`.
 ## Surfaces and Interaction Contracts
 
 ### Surface 1: /locations page — Same-name guardrail banner (new)
+
+**Primary visual anchor:** The warning Alert banner above the table. It is the first element in the viewport on this page when duplicates exist; the table below is supporting context.
 
 **Trigger:** One or more same-name location groups exist in the DB (detected server-side).
 
@@ -117,6 +126,9 @@ Existing component: `src/components/table/merge-dialog.tsx`. Extend; do not recr
 **Phase 7 additions (D-01, D-03):**
 
 **Step 2.5 — Consequences preview (new, insert before DialogFooter):**
+
+Primary visual anchor for step 2.5: the consequences-preview block is the focal point — destination canonical record name displayed at top of the block, followed by the changes list, with the footer CTA as secondary. The `bg-muted/30` container establishes this as a distinct summary zone.
+
 - Section heading (Label): "What will happen"
 - Bulleted list (ul, `space-y-1 text-sm text-muted-foreground`):
   - "{sourceIds.length} location{s} will be archived"
@@ -141,6 +153,8 @@ Existing: `src/components/table/bulk-toolbar.tsx`. Merge button renders when `on
 
 **No visual change required.** The button already matches the contract: `Merge` icon + "Merge" label, `border-primary` hover, height 8 (32px).
 
+**Label note:** The BulkToolbar renders "Merge" (single word) as a space-constrained abbreviated label in the fixed bottom strip. This is intentional — the full primary CTA label "Merge locations" appears only in the MergeDialog footer CTA. Do not expand the toolbar label.
+
 **Minimum selection guard (D-01):** Already enforced by `selectedCount >= 2` condition. For sentinel triage, this guard is relaxed to `selectedCount >= 1` (reassigning a single orphan is valid). Pass `mergeMinCount={1}` prop — BulkToolbar needs this prop added.
 
 ---
@@ -158,7 +172,7 @@ Rendered only when `audit_log.event_type === "location_merge"`.
 **Active state (undo available):**
 ```
 <section className="border rounded-xl p-4 space-y-3">
-  <h3 className="text-sm font-medium">Undo this merge</h3>
+  <h3 className="text-sm font-bold tracking-[-0.01em]">Undo this merge</h3>
   <p className="text-sm text-muted-foreground">
     Restores {N} archived locations and reassigns {K} kiosks to their original locations.
     Sales records will be re-attributed. This action is logged.
@@ -171,7 +185,7 @@ Undo confirmation: inline confirmation pattern (not a separate dialog) — butto
 
 **Locked state (D-05):** Button replaced with:
 ```
-<p className="text-sm text-muted-foreground flex items-center gap-1.5">
+<p className="text-sm text-muted-foreground flex items-center gap-2">
   <Lock className="size-3.5 shrink-0" />
   Undo locked: {reason}
 </p>
@@ -188,9 +202,11 @@ Where `reason` is one of:
 
 **Layout:** `PageHeader` ("System Health") + card grid (2-column on md+).
 
+**Primary visual anchor:** Status pills on each card are the primary visual anchor. They communicate actionability at a glance; card body text and CTAs are supporting context.
+
 **Same-name status card (D-08):**
 - Card title: "Duplicate location names"
-- Status pill: `bg-[#F4BA1E]/10 text-[#8A6B0E] rounded-full px-2 py-0.5 text-xs font-medium` — "Action required" when duplicates exist, `bg-[#68D871]/10 text-[#2E7D32]` — "Clean" when none.
+- Status pill: `bg-[#F4BA1E]/10 text-[#8A6B0E] rounded-full px-2 py-0.5 text-xs font-bold tracking-[-0.01em]` — "Action required" when duplicates exist, `bg-[#68D871]/10 text-[#2E7D32]` — "Clean" when none.
 - Body: "{N} group{s} with same name" or "No duplicate names detected."
 - CTA: "Resolve in Locations" → links to `/locations?filter=same-name`.
 
@@ -223,6 +239,7 @@ No new UI surface added in Phase 7. Import status is surfaced via existing `/set
 | Primary CTA — merge | "Merge locations" |
 | Primary CTA — sentinel reassign | "Reassign kiosks" |
 | Primary CTA — undo merge | "Undo merge" |
+| BulkToolbar merge button label | "Merge" (abbreviated; space-constrained toolbar — intentional, see Surface 3) |
 | Same-name banner heading | "Duplicate location names detected" |
 | Same-name banner body | "{N} location groups share the same name. Select affected rows and use Merge to consolidate them." |
 | Empty state — /admin/health all clear | "System is clean. No action required." |
@@ -237,7 +254,6 @@ No new UI surface added in Phase 7. Import status is surfaced via existing `/set
 | MergeDialog consequences — kiosks | "All kiosk assignments re-pointed to {targetName}" |
 | MergeDialog consequences — sales | "All sales records re-attributed to {targetName}" |
 | MergeDialog consequences — snapshot | "A snapshot of original data will be saved to audit log" |
-| BulkToolbar merge button label | "Merge" |
 | Sentinel location display name | "LOCATION_NEEDED" (all-caps, as sentinel identifier) |
 
 Source: D-01 through D-08 from 07-CONTEXT.md; existing copy patterns from bulk-toolbar.tsx and merge-dialog.tsx.
@@ -268,6 +284,8 @@ No third-party registries. All components are either shadcn official or existing
 5. **`/admin/health` page:** New file at `src/app/(app)/admin/health/page.tsx`. Admin-gated with `requireRole("admin")`. Two server-computed counts: same-name groups, LOCATION_NEEDED kiosk count.
 
 6. **Audit log detail page:** New file at `src/app/(app)/settings/audit-log/[id]/page.tsx`. Admin-gated. Undo section conditional on event_type.
+
+7. **Weight usage:** Replace all `font-semibold` with `font-bold tracking-[-0.01em]` throughout Phase 7 components. Weight 600 (semibold) is not a Circular Pro weight — do not use it.
 
 ---
 
