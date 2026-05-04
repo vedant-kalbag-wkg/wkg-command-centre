@@ -439,6 +439,23 @@ export async function _commitImportForActor(
     console.error("Commission calculation failed (non-blocking):", err);
   }
 
+  // Opportunistic prune: import_stagings rows hold raw_row + parsed_row JSONB
+  // that is never read again after commit. Keep 1 day for post-mortem then
+  // drop. Runs on every commit (UI + Azure ETL); idempotent — only deletes
+  // rows whose parent import is already terminal AND older than the window.
+  try {
+    await db.execute(sql`
+      DELETE FROM import_stagings
+       WHERE import_id IN (
+         SELECT id FROM sales_imports
+          WHERE status IN ('committed', 'failed', 'rolled_back')
+            AND uploaded_at < now() - interval '1 day'
+       )
+    `);
+  } catch (err) {
+    console.error("import_stagings retention prune failed (non-blocking):", err);
+  }
+
   return { committedRows };
 }
 
