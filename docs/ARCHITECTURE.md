@@ -32,18 +32,31 @@ A map of how `wkg-command-centre` is put together so a new developer can navigat
 src/
   app/
     (app)/                     # signed-in app shell — every page here requires a session
-      analytics/               # heat-map, commission, pivot, regions, location-groups
+                               # (auth gating in (app)/layout.tsx)
+      admin/                   # admin-only ops surfaces (user mgmt, etc.)
+      analytics/               # heat-map, commission, pivot-table, regions, location-groups,
+                               #   hotel-groups, portfolio, trend-builder, experiments, flags,
+                               #   actions-dashboard, maturity, compare
       installations/           # project tracker (Gantt, milestones, members)
       kiosks/                  # kiosk list & detail, assignments
+      kiosk-config-groups/     # hardware/config templates
       locations/               # hotels/venues; merge proposals, contract docs (S3)
-      portal/                  # external-user surface (limited views)
-      settings/
+      products/                # product + provider catalogue
+      settings/                # users, data-import, data-quality, duplicates, geocoding,
+                               #   outlet-types, outlet-exclusions, pipeline-stages,
+                               #   thresholds, audit-log, business-events, analytics-display,
+                               #   analytics-presets
         data-import/           # Monday import, sales CSV import, Azure ETL trigger
-        data-quality/          # duplicate dismissals, audit log, geocoding
+        data-quality/          # duplicate dismissals, geocoding review
         outlet-types/          # outlet code → POS/product classification
         thresholds/            # configurable analytics thresholds
         pipeline-stages/       # installation status workflow
-    (auth)/                    # sign-in, forgot-password, accept-invite
+    (auth)/                    # login, reset-password, set-password
+    portal/                    # external-user surface — sibling of (app)/, NOT nested.
+                               #   Has its own PortalLayout with its own session check.
+                               #   FEATURE-PAUSED 2026-04-25: routes redirect to
+                               #   /portal/coming-soon. See portal/layout.tsx for the
+                               #   revival recipe.
     api/
       auth/[...all]/route.ts   # Better Auth catch-all (only HTTP API surface for auth)
       etl/azure/run/route.ts   # Cron + manual ETL trigger (token-gated)
@@ -130,7 +143,7 @@ The ETL route declares `export const runtime = "nodejs"` and sets `maxDuration =
 | `viewer` | Read-only app surface; same scoping as member |
 | `system` | ETL only — automation actor for sales imports. Never user-facing. |
 
-`userType=external` overrides the role surface to portal-only views. Internal-only sensitive fields (commission, costs) are filtered server-side regardless of role when `userType=external`.
+`userType=external` overrides the role surface to portal-only views. Internal-only sensitive fields (commission, costs) are filtered server-side regardless of role when `userType=external`. **The portal is currently feature-paused (2026-04-25)** — external sessions land on `/portal/coming-soon`. The `userType` plumbing is still in place for revival; see `src/app/portal/layout.tsx`.
 
 ### Background work
 
