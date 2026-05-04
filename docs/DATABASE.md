@@ -8,7 +8,7 @@ Reference for the data model, driver wiring, migration workflow, and the things 
 |---|---|
 | Engine | Postgres 15+ (15.x on Neon today; 16/17 on Azure Flexible Server fine) |
 | ORM | Drizzle (`drizzle-orm`, `drizzle-kit` for migrations) |
-| Schema source | `src/db/schema.ts` (single file, ~37 `pgTable`s) |
+| Schema source | `src/db/schema.ts` (single file, 45 `pgTable`s) |
 | Migrations | `migrations/*.sql` — generated, never hand-edited once committed |
 | Driver | Auto-detected: `@neondatabase/serverless` for `*.neon.tech`, `postgres-js` otherwise |
 | SSL | `sslmode=verify-full` (drizzle-kit normalises any weaker mode) |
@@ -137,7 +137,17 @@ Source of truth: `src/db/schema.ts`. The list below is the navigation map; the f
 | `analyticsPresets` / `analyticsSavedViews` | Named filter/groupby combos. |
 | `eventCategories` / `businessEvents` | Calendar overlay for analytics (e.g. holidays). |
 | `weatherCache` | Cache for weather data joined into analytics. |
-| `experimentCohorts` | A/B-style grouping; name unique per user (migration `0035`). |
+| `experimentCohorts` | A/B-style cohort grouping; name unique per user (migration `0035`). |
+| `eventLog` | Lightweight analytics usage tracking (action type + jsonb metadata + timestamp). `userId` is nullable to allow system events. |
+
+### Operations workflow
+
+| Table | Purpose |
+|---|---|
+| `locationFlags` | Operator flags on a location (`relocate` / `monitor` / `strategic_exception`) with reason + resolution. Drives the data-quality review surface. |
+| `actionItems` | Open work items derived from flags / data-quality findings / manual entry. Status workflow `open` → `in_progress` → `resolved` / `cancelled`; optionally tied to a location and an owner. |
+| `mergeProposals` | Pending location merges (cluster_id + canonical/defunct + decision). Applied via `lib/multi-pos-merge.ts`; CHECK constraint on `decision` enum at the DB layer (migration `0038`). |
+| `duplicateDismissals` | Operator decisions on duplicate suggestions — prevents re-flagging. |
 
 ### Settings & operational
 
@@ -146,8 +156,6 @@ Source of truth: `src/db/schema.ts`. The list below is the navigation map; the f
 | `appSettings` | Singleton settings rows (k/v). |
 | `pipelineStages` | Configurable installation status workflow. |
 | `auditLogs` | Append-only operational log. `entity_id` is text (not uuid) so we can audit string-keyed entities (migration `0010`). |
-| `duplicateDismissals` | Operator decisions on duplicate suggestions — prevents re-flagging. |
-| `merge_proposals` | Pending location merges (migration `0038`). |
 
 ## Key invariants (do not break)
 
@@ -161,7 +169,7 @@ Source of truth: `src/db/schema.ts`. The list below is the navigation map; the f
 
 ## Migration workflow
 
-`drizzle-kit` is the only migration tool. The `migrations/` directory has 38 forward migrations and a `meta/` snapshot — it's append-only after merge.
+`drizzle-kit` is the only migration tool. The `migrations/` directory has 39 forward migrations (`0000`–`0038`) and a `meta/` snapshot — it's append-only after merge.
 
 ```bash
 # 1. Edit src/db/schema.ts.

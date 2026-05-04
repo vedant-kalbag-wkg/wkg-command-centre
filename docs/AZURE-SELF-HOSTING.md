@@ -134,6 +134,11 @@ Then a multi-stage Dockerfile:
 FROM node:22-bookworm AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
+# If npm ci fails with `Missing: @emnapi/...` or a `Cannot find module
+# '@*/binding-linux-x64-gnu'` error, the lockfile was generated on macOS
+# and is missing Linux x64 platform entries. See the runbook in CLAUDE.md
+# ("npm lockfile must stay in sync") — fix is a Docker-based regen, not
+# a CI retry.
 RUN npm ci
 COPY . .
 RUN npm run build

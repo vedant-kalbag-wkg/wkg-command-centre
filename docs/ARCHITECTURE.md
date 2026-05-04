@@ -50,7 +50,7 @@ src/
       export/excel/route.ts    # Streaming xlsx download
       export/csv/route.ts      # Streaming CSV download
   db/
-    schema.ts                  # Single source of truth — ~37 pgTables
+    schema.ts                  # Single source of truth — ~45 pgTables
     index.ts                   # Driver auto-detect (Neon vs postgres-js)
     is-neon-url.ts             # `.neon.tech` host check
     execute-rows.ts            # Normalises driver-specific .execute() return shape
@@ -109,7 +109,7 @@ Only four exist:
 | `/api/export/excel` | Streams a generated xlsx — too large for Server Action JSON return |
 | `/api/export/csv` | Same — streamed download |
 
-All four declare `export const runtime = "nodejs"` (no edge). The ETL route also sets `maxDuration = 300` because blob enumeration can be slow.
+The ETL route declares `export const runtime = "nodejs"` and sets `maxDuration = 300` (blob enumeration can be slow). The other three rely on the App Router default — which is also the Node runtime in this codebase, since nothing opts into Edge. **Do not add `runtime = "edge"` anywhere**: the DB driver, `nodemailer`, `@aws-sdk`, `@azure/storage-blob`, and `pg` all need Node.
 
 ### Auth model
 
@@ -140,6 +140,7 @@ All four declare `export const runtime = "nodejs"` (no edge). The ETL route also
 | Monday.com import | Operator-triggered in `/settings/data-import/monday` | Server action under `pg_try_advisory_lock` (key: import-specific constant) |
 | Sales CSV import | Operator-triggered in `/settings/data-import/sales` | Stage → review → commit; staging table pruned 1d retention (#32) |
 | Reset admin password | CLI: `scripts/reset-admin-password.ts` | Bypasses sign-up; documented in CLAUDE.md |
+| (future) NetSuite ETL | TBD | `docs/smoke-checklist-netsuite-etl.md` exists as a smoke checklist; the runtime path is not yet wired |
 
 All long-running work uses Postgres advisory locks (`pg_try_advisory_lock`) so two operators clicking the same button or two cron runs overlapping is a 409, not data corruption.
 
