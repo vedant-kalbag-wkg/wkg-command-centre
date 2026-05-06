@@ -404,14 +404,27 @@ export async function runMondayImport(
     };
   }
 
-  // Load location lookup by outlet code
+  // Load location lookup by Monday item id (Phase 07-06).
+  //
+  // Pre-07-06 this map was keyed by `locations.outlet_code` so we could
+  // resolve `mirror9` outlet codes back to the location row. Now that the
+  // hotel-import path stamps every row with `monday_item_id`, the lookup is
+  // direct: every hotel item processed here has a corresponding row in
+  // `locations` (inserted by `runHotelLocationImport` upstream in the
+  // runbook), so we can resolve item.id → locations.id without round-tripping
+  // through mirror9.
   const locRows = await db
-    .select({ id: locations.id, outletCode: locations.outletCode })
+    .select({ id: locations.id, mondayItemId: locations.mondayItemId })
     .from(locations);
-  const locMap = new Map(
-    locRows.filter((l) => l.outletCode).map((l) => [l.outletCode!, l.id]),
+  const locMapByMondayId = new Map<string, string>(
+    locRows
+      .filter((l) => l.mondayItemId !== null)
+      .map((l) => [l.mondayItemId!, l.id]),
   );
-  logger("IMPORT", `Loaded ${locMap.size} locations with outlet codes`);
+  logger(
+    "IMPORT",
+    `Loaded ${locMapByMondayId.size} locations with Monday item ids`,
+  );
 
   // Region code → id lookup for placeholder creation. We fetch once up front
   // so the main loop stays pure (no DB reads in the hot path).
@@ -429,17 +442,20 @@ export async function runMondayImport(
 
   /**
    * Create (or find, if it already exists from a prior run) a placeholder
-   * location for a Monday hotel with no mirror9 outlet code. Returns null
-   * when the hotel's board has no unambiguous regional default (so the
-   * caller can skip + log instead of silently mis-attributing). The
-   * outletCode is `MONDAY-<mondayItemId>` — the MONDAY- prefix is also
-   * the signal the /settings/outlet-types admin UI uses to badge the row
-   * as "Imported from Monday" (see pipeline.ts::reviewReason).
+   * location for a Monday hotel with no mirror3__1 customer code. Returns
+   * null when the hotel's board has no unambiguous regional default (so the
+   * caller can skip + log instead of silently mis-attributing).
+   *
+   * Phase 07-06 — placeholder locations are now keyed by `mondayItemId`
+   * (universal idempotency key) and have NULL `customer_code`. Pre-07-06
+   * they used a `MONDAY-<mondayItemId>` outlet_code as the dedup key; that
+   * column is gone. The "Imported from Monday" badge in the
+   * /settings/outlet-types admin UI now keys off the absence of customer_code
+   * combined with the audit-log entry's metadata (see pipeline.ts).
    */
   async function createPlaceholderLocation(
     hotel: HotelWithProducts,
   ): Promise<string | null> {
-    const outletCode = `MONDAY-${hotel.mondayItemId}`;
     const regionCode = BOARD_REGION[hotel.boardId];
     if (!regionCode) return null;
     const primaryRegionId = regionByCode.get(regionCode);
@@ -452,23 +468,24 @@ export async function runMondayImport(
 
     const notes =
       `Imported from Monday (mondayItemId=${hotel.mondayItemId}) on ` +
-      `${new Date().toISOString().slice(0, 10)} — no outlet code on mirror9, ` +
+      `${new Date().toISOString().slice(0, 10)} — no customer code on mirror3__1, ` +
       `needs manual review (verify region + set type). Board=${BOARD_NAMES[hotel.boardId]}.`;
 
-    // onConflictDoNothing on (primaryRegionId, outletCode) — the existing
-    // unique constraint. Returning can be empty if the row already exists
-    // from a prior run, in which case we SELECT to get the id.
+    // ON CONFLICT target → mondayItemId (the universal idempotency key).
+    // Returning can be empty if the row already exists from a prior run, in
+    // which case we SELECT it back by the same key.
     const [inserted] = await db
       .insert(locations)
       .values({
         name: hotel.hotelName,
-        outletCode,
+        normalisedName: normaliseName(hotel.hotelName),
+        mondayItemId: hotel.mondayItemId,
         primaryRegionId,
         locationType: null,
         notes,
       })
       .onConflictDoNothing({
-        target: [locations.primaryRegionId, locations.outletCode],
+        target: locations.mondayItemId,
       })
       .returning({ id: locations.id });
 
@@ -489,16 +506,11 @@ export async function runMondayImport(
       return inserted.id;
     }
 
-    // Already exists — look it up.
+    // Already exists — look it up by mondayItemId.
     const [existing] = await db
       .select({ id: locations.id })
       .from(locations)
-      .where(
-        and(
-          eq(locations.primaryRegionId, primaryRegionId),
-          eq(locations.outletCode, outletCode),
-        ),
-      );
+      .where(eq(locations.mondayItemId, hotel.mondayItemId));
     return existing.id;
   }
 
@@ -609,12 +621,18 @@ export async function runMondayImport(
         continue;
       }
     } else {
-      // Case 2: hotel has outlet codes on mirror9 — resolve each to an
-      // existing location. If NONE resolve, skip (unchanged behaviour).
-      for (const code of hotel.outletCodes) {
-        const locId = locMap.get(code);
-        if (locId) locationIds.push(locId);
-      }
+      // Case 2: hotel has outlet codes on mirror9 — resolve directly via
+      // mondayItemId (Phase 07-06). The mirror9 outlet codes are no longer
+      // a useful key (they used to map onto locations.outlet_code, which is
+      // gone), but the import-hotel-locations path stamps every Monday item
+      // with mondayItemId so the lookup is one-shot.
+      //
+      // hotel.outletCodes is retained on the in-memory record for telemetry
+      // (the operator dashboard still surfaces "X mirror9 codes seen" as a
+      // sanity check) but isn't used as the resolution key here. A single
+      // location per Monday item is the post-07-06 invariant.
+      const locId = locMapByMondayId.get(hotel.mondayItemId);
+      if (locId) locationIds.push(locId);
       if (locationIds.length === 0) {
         skippedNoLoc++;
         continue;
