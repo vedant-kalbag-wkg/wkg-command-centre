@@ -69,7 +69,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
       .insert(locations)
       .values({
         name: "Hotel A",
-        outletCode: "OUT-A",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });

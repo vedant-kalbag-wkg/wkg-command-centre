@@ -47,7 +47,7 @@ describe('analytics dimension tables', () => {
   it('locationHotelGroupMemberships: links location to hotelGroup with cascade delete', async () => {
     const [loc] = await ctx.db
       .insert(locations)
-      .values({ name: 'Test Hotel', outletCode: 'DIM-HG', primaryRegionId: ukRegionId })
+      .values({ name: 'Test Hotel', primaryRegionId: ukRegionId })
       .returning();
     const [hg] = await ctx.db.insert(hotelGroups).values({ name: 'Test Group' }).returning();
     await ctx.db.insert(locationHotelGroupMemberships).values({ locationId: loc.id, hotelGroupId: hg.id });
@@ -61,7 +61,7 @@ describe('analytics dimension tables', () => {
   it('locationRegionMemberships: composite PK prevents duplicates', async () => {
     const [loc] = await ctx.db
       .insert(locations)
-      .values({ name: 'Dup Test', outletCode: 'DIM-DUP', primaryRegionId: ukRegionId })
+      .values({ name: 'Dup Test', primaryRegionId: ukRegionId })
       .returning();
     const [reg] = await ctx.db.insert(regions).values({ name: 'SouthRegion', code: 'SOUTH' }).returning();
     await ctx.db.insert(locationRegionMemberships).values({ locationId: loc.id, regionId: reg.id });
@@ -75,7 +75,7 @@ describe('analytics dimension tables', () => {
   it('locationRegionMemberships: UNIQUE(location_id) prevents two-region membership', async () => {
     const [loc] = await ctx.db
       .insert(locations)
-      .values({ name: 'OneRegion Test', outletCode: 'DIM-ONE-REG', primaryRegionId: ukRegionId })
+      .values({ name: 'OneRegion Test', primaryRegionId: ukRegionId })
       .returning();
     const [other] = await ctx.db.insert(regions).values({ name: 'OtherRegion', code: 'OTHER' }).returning();
     await ctx.db.insert(locationRegionMemberships).values({ locationId: loc.id, regionId: ukRegionId });
@@ -87,7 +87,7 @@ describe('analytics dimension tables', () => {
   it('locationGroupMemberships: links + cascade', async () => {
     const [loc] = await ctx.db
       .insert(locations)
-      .values({ name: 'Group Test', outletCode: 'DIM-GRP', primaryRegionId: ukRegionId })
+      .values({ name: 'Group Test', primaryRegionId: ukRegionId })
       .returning();
     const [lg] = await ctx.db.insert(locationGroups).values({ name: 'Test LocGroup' }).returning();
     await ctx.db.insert(locationGroupMemberships).values({ locationId: loc.id, locationGroupId: lg.id });
@@ -101,7 +101,7 @@ describe('analytics dimension tables', () => {
   it('locationGroupMemberships: UNIQUE(location_id) prevents two-group membership', async () => {
     const [loc] = await ctx.db
       .insert(locations)
-      .values({ name: 'OneGroup Test', outletCode: 'DIM-ONE-LG', primaryRegionId: ukRegionId })
+      .values({ name: 'OneGroup Test', primaryRegionId: ukRegionId })
       .returning();
     const [lg1] = await ctx.db.insert(locationGroups).values({ name: 'OneGroup A' }).returning();
     const [lg2] = await ctx.db.insert(locationGroups).values({ name: 'OneGroup B' }).returning();
@@ -126,7 +126,7 @@ describe('analytics dimension tables', () => {
 
     const [loc] = await ctx.db
       .insert(locations)
-      .values({ name: 'JV Test Hotel', outletCode: 'DIM-JV', primaryRegionId: ukRegionId })
+      .values({ name: 'JV Test Hotel', primaryRegionId: ukRegionId })
       .returning();
     await ctx.db
       .insert(locationHotelGroupMemberships)
@@ -170,7 +170,7 @@ describe('analytics dimension tables', () => {
   it('hotelGroups: stay N:N — same location may belong to two groups', async () => {
     const [loc] = await ctx.db
       .insert(locations)
-      .values({ name: 'NN Test Hotel', outletCode: 'DIM-HG-NN', primaryRegionId: ukRegionId })
+      .values({ name: 'NN Test Hotel', primaryRegionId: ukRegionId })
       .returning();
     const [a] = await ctx.db.insert(hotelGroups).values({ name: 'NN Group A' }).returning();
     const [b] = await ctx.db.insert(hotelGroups).values({ name: 'NN Group B' }).returning();

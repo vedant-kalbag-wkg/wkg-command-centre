@@ -71,7 +71,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Classified Hotel",
-        outletCode: "CLS",
+
         primaryRegionId: regionId,
         locationType: "hotel",
       })
@@ -81,7 +81,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Archived Unknown",
-        outletCode: "ARC",
+
         primaryRegionId: regionId,
         archivedAt: new Date("2025-01-01"),
       })
@@ -91,7 +91,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Unclassified Outlet",
-        outletCode: "UNC",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -115,7 +115,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Example Hotel (no mirror9 code)",
-        outletCode: "MONDAY-xyz123",
+
         primaryRegionId: regionId,
         notes:
           "Imported from Monday (mondayItemId=xyz123) — no outlet code on mirror9, needs manual review",
@@ -138,7 +138,7 @@ describe("outlet-types server actions (pipeline)", () => {
     // `locationType IS NULL`; the MONDAY-* prefix is only a display signal.
     await ctx.db.insert(locations).values({
       name: "Already Classified Monday Hotel",
-      outletCode: "MONDAY-abc789",
+
       primaryRegionId: regionId,
       locationType: "hotel",
       notes: "Imported from Monday (mondayItemId=abc789)",
@@ -153,7 +153,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Outlet With Sales",
-        outletCode: "SLS",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -211,7 +211,7 @@ describe("outlet-types server actions (pipeline)", () => {
   test("suggestedType is populated from the classifier (outletCode 'IN' → online)", async () => {
     await ctx.db.insert(locations).values({
       name: "Online Booking",
-      outletCode: "IN",
+
       primaryRegionId: regionId,
     });
 
@@ -225,7 +225,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Classify Me",
-        outletCode: "CLM",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -261,9 +261,9 @@ describe("outlet-types server actions (pipeline)", () => {
     const inserts = await ctx.db
       .insert(locations)
       .values([
-        { name: "Loc A", outletCode: "LA", primaryRegionId: regionId },
-        { name: "Loc B", outletCode: "LB", primaryRegionId: regionId },
-        { name: "Loc C", outletCode: "LC", primaryRegionId: regionId, locationType: "hotel" },
+        { name: "Loc A", primaryRegionId: regionId },
+        { name: "Loc B", primaryRegionId: regionId },
+        { name: "Loc C", primaryRegionId: regionId, locationType: "hotel" },
       ])
       .returning({ id: locations.id });
 
@@ -298,7 +298,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Region-Tagged Outlet",
-        outletCode: "RGT",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -332,7 +332,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Move Me",
-        outletCode: "MVM",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -367,7 +367,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Stay Put",
-        outletCode: "STP",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -400,13 +400,13 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Q5 in UK",
-        outletCode: "Q5",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
     await ctx.db.insert(locations).values({
       name: "Q5 in DE",
-      outletCode: "Q5",
+
       primaryRegionId: otherRegion.id,
     });
 
@@ -434,9 +434,9 @@ describe("outlet-types server actions (pipeline)", () => {
     const inserts = await ctx.db
       .insert(locations)
       .values([
-        { name: "Loc A", outletCode: "BLA", primaryRegionId: regionId },
-        { name: "Loc B", outletCode: "BLB", primaryRegionId: regionId },
-        { name: "Loc C", outletCode: "BLC", primaryRegionId: regionId },
+        { name: "Loc A", primaryRegionId: regionId },
+        { name: "Loc B", primaryRegionId: regionId },
+        { name: "Loc C", primaryRegionId: regionId },
       ])
       .returning({ id: locations.id });
 
@@ -483,7 +483,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Q5 UK",
-        outletCode: "Q5",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -491,13 +491,13 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "M3 UK",
-        outletCode: "M3",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
     await ctx.db.insert(locations).values({
       name: "Q5 DE",
-      outletCode: "Q5",
+
       primaryRegionId: otherRegion.id,
     });
 
@@ -542,7 +542,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Should Not Move",
-        outletCode: "SNM",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -573,18 +573,18 @@ describe("outlet-types server actions (pipeline)", () => {
     await ctx.db.insert(locations).values([
       {
         name: "NULL Outlet",
-        outletCode: "NUL",
+
         primaryRegionId: regionId,
       },
       {
         name: "Classified Hotel",
-        outletCode: "CLS",
+
         primaryRegionId: regionId,
         locationType: "hotel",
       },
       {
         name: "Archived Outlet",
-        outletCode: "ARC",
+
         primaryRegionId: regionId,
         archivedAt: new Date("2025-01-01"),
       },
@@ -620,7 +620,7 @@ describe("outlet-types server actions (pipeline)", () => {
   test("includeClassified=true: a classified MONDAY-* row reports reviewReason='classified' (classification wins over Monday placeholder)", async () => {
     await ctx.db.insert(locations).values({
       name: "Reclassified Monday Hotel",
-      outletCode: "MONDAY-abc789",
+
       primaryRegionId: regionId,
       locationType: "hotel",
       notes: "Imported from Monday (mondayItemId=abc789)",
@@ -639,7 +639,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Should Not Change",
-        outletCode: "NCH",
+
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });

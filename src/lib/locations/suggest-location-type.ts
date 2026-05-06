@@ -2,7 +2,14 @@ import type { LocationType } from "@/lib/analytics/types";
 
 export type LocationSignals = {
   name: string;
-  outletCode: string;
+  /**
+   * Phase 07-06 — was the LOCATION's outlet_code (now gone). Callers from
+   * the new schema pass either NULL (the column is gone) or the location's
+   * customer_code under the same field name. The "IN" / "BK" heuristics
+   * below are kept for legacy-shape signals (the kiosks-driven classifier
+   * passes the kiosk's outlet_code and DOES still see these tokens).
+   */
+  outletCode: string | null;
   hotelGroup?: string | null;
   numRooms?: number | null;
   starRating?: number | null;

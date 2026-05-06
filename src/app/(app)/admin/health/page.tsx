@@ -18,14 +18,11 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { db } from "@/db";
-import { kioskAssignments, kiosks, locations } from "@/db/schema";
+import { kioskAssignments, kiosks } from "@/db/schema";
 import { executeRowsFromResult } from "@/db/execute-rows";
 import { detectSameNameGroups } from "@/lib/locations/same-name-detection";
 import { requireRole } from "@/lib/rbac";
-import {
-  LOCATION_NEEDED_NAME,
-  LOCATION_NEEDED_OUTLET_CODE,
-} from "@/lib/sentinel";
+import { getSentinelLocationId } from "@/lib/sentinel";
 
 export default async function AdminHealthPage() {
   await requireRole("admin");
@@ -35,20 +32,16 @@ export default async function AdminHealthPage() {
   const sameNameCount = sameNameGroups.length;
 
   // ── Surface 5 Card 2 — unmatched kiosks (sentinel orphans) ──────────────
-  // Resolve the sentinel id by its canonical (outlet_code, name) pair. If the
-  // sentinel hasn't been seeded yet (e.g. fresh dev DB pre-runbook), the
-  // orphan card surfaces a Clean state — there's nothing to be orphaned to.
-  const sentinelRows = await db
-    .select({ id: locations.id })
-    .from(locations)
-    .where(
-      and(
-        eq(locations.outletCode, LOCATION_NEEDED_OUTLET_CODE),
-        eq(locations.name, LOCATION_NEEDED_NAME),
-      ),
-    )
-    .limit(1);
-  const sentinelId = sentinelRows[0]?.id ?? null;
+  // Phase 07-06 — the sentinel is now resolved by (name, GLOBAL region) via
+  // `getSentinelLocationId`. The helper throws if the sentinel row is
+  // missing (e.g. fresh dev DB pre-runbook); we tolerate that and surface a
+  // Clean state — there's nothing to be orphaned to.
+  let sentinelId: string | null = null;
+  try {
+    sentinelId = await getSentinelLocationId(db);
+  } catch {
+    sentinelId = null;
+  }
 
   let orphanCount = 0;
   if (sentinelId) {

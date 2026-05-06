@@ -165,7 +165,7 @@ describe("runAzureEtl (integration)", () => {
       .insert(locations)
       .values({
         name: "Staycity Greenwich",
-        outletCode: "Q5",
+
         primaryRegionId: ukRegionId,
       });
 
