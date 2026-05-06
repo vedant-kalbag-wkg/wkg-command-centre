@@ -46,6 +46,7 @@ import {
 import { ETL_AZURE_LOCK_KEY } from "@/lib/sales/etl/advisory-lock";
 import { LocalFileSource } from "@/lib/sales/local-file-source";
 import { runAssetsImport } from "@/lib/monday/import-assets";
+import { runHeathrowImport } from "@/lib/monday/import-heathrow";
 import { runHotelLocationImport } from "@/lib/monday/import-hotel-locations";
 import { runMondayImport } from "@/lib/monday/import-location-products";
 import { normaliseName } from "@/lib/normalise";
@@ -246,6 +247,7 @@ async function main(): Promise<void> {
   let regionByCode = new Map<string, string>();
   let hotelResult: Awaited<ReturnType<typeof runHotelLocationImport>> | undefined;
   let assetsResult: Awaited<ReturnType<typeof runAssetsImport>> | undefined;
+  let heathrowResult: Awaited<ReturnType<typeof runHeathrowImport>> | undefined;
   let tierResult: Awaited<ReturnType<typeof runMondayImport>> | undefined;
 
   try {
@@ -330,15 +332,23 @@ async function main(): Promise<void> {
     console.log(`  Sentinel location id = ${sentinelId}`);
 
     // ── STEP 4: Hotel-location import (Monday → locations) ─────────────────
+    // Resolver hoisted so STEP 4c (Heathrow import) can reuse it. Same map,
+    // same patterns; the country token from a LocationValue (e.g. "UK") drops
+    // into mapGroupTitleToRegionCode unchanged.
+    const resolveRegionIdByGroup = async (
+      _boardId: number,
+      groupTitle: string,
+    ): Promise<string | null> => {
+      const code = mapGroupTitleToRegionCode(groupTitle);
+      if (!code) return null;
+      return regionByCode.get(code) ?? null;
+    };
+
     console.log(`\n--- STEP 4: Hotel-location import ---`);
     hotelResult = await runHotelLocationImport({
       mondayApiToken,
       db: drizzleDb,
-      resolveRegionIdByGroup: async (_boardId, groupTitle) => {
-        const code = mapGroupTitleToRegionCode(groupTitle);
-        if (!code) return null;
-        return regionByCode.get(code) ?? null;
-      },
+      resolveRegionIdByGroup,
       logger: (phase, msg) => console.log(`  [${phase}] ${msg}`),
     });
     console.log(
@@ -346,6 +356,7 @@ async function main(): Promise<void> {
         `skipped-existing=${hotelResult.locationsSkippedExisting} ` +
         `skipped-no-outlet=${hotelResult.hotelsSkippedNoOutletCode} ` +
         `skipped-no-region=${hotelResult.hotelsSkippedNoRegion} ` +
+        `placeholder=${hotelResult.placeholderLocationsCreated} ` +
         `hotelIdMap=${hotelResult.hotelMondayIdToLocationId.size} ` +
         `(took ${hotelResult.durationMs}ms)`,
     );
@@ -391,6 +402,28 @@ async function main(): Promise<void> {
         console.log(`    - mondayHotelId=${id}`);
       }
     }
+
+    // ── STEP 4c: Heathrow Express SSMs board (board 1356657751) ────────────
+    // Standalone shape: outlet_code1 (text) instead of mirror9, codes can be
+    // slash-separated, kiosks live in this board (no Assets cross-references)
+    // so they're synthesised inline. "In Progress" group → placeholder
+    // location, no kiosks (mirrors the "Ready to Launch" pattern).
+    console.log(`\n--- STEP 4c: Heathrow Express SSMs import ---`);
+    heathrowResult = await runHeathrowImport({
+      mondayApiToken,
+      db: drizzleDb,
+      resolveRegionIdByGroup,
+      logger: (phase, msg) => console.log(`  [${phase}] ${msg}`),
+    });
+    console.log(
+      `  Heathrow: live-locations=${heathrowResult.liveLocationsInserted} ` +
+        `placeholder-locations=${heathrowResult.placeholderLocationsCreated} ` +
+        `kiosks-inserted=${heathrowResult.kiosksInserted} ` +
+        `assignments=${heathrowResult.assignmentsInserted} ` +
+        `skipped-no-outlet=${heathrowResult.itemsSkippedNoOutlet} ` +
+        `skipped-no-region=${heathrowResult.itemsSkippedNoRegion} ` +
+        `(took ${heathrowResult.durationMs}ms)`,
+    );
 
     // ── STEP 5: Commission tier import (Monday → location_products) ────────
     console.log(`\n--- STEP 5: Commission tier import ---`);
@@ -444,6 +477,7 @@ async function main(): Promise<void> {
             hotelMondayIdToLocationId: hotelResult.hotelMondayIdToLocationId.size,
           },
           assetsResult,
+          heathrowResult,
           tierResult,
           sentinelId,
           globalRegionId,

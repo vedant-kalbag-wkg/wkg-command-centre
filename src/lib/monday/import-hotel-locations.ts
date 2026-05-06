@@ -44,23 +44,60 @@ const BOARD_NAMES: Record<number, string> = {
 // Custom item fragment — mirror9 is a Monday MirrorValue (outlet code mirrored
 // from a downstream board) so we MUST request `display_value` via the typed
 // inline fragment; the default `text` field on a MirrorValue is null. We also
-// pull `group { id title }` so the runbook can resolve region per item.
+// pull `group { id title }` so the runbook can resolve region per item, and
+// `location` (LocationValue.text contains the address — the trailing `, <country>`
+// is the per-item region fallback when the group title doesn't resolve, e.g.
+// for the "Ready to Launch" group on board 1743012104 which mixes UK/DE/ES/PT).
 const HOTEL_ITEM_FRAGMENT = `
   id
   name
   group { id title }
-  column_values(ids: ["mirror9"]) {
+  column_values(ids: ["mirror9", "location"]) {
     id
     type
+    text
     ... on MirrorValue { display_value }
   }
 `;
+
+// Pending-deployment groups: hotels here have `Number of SSMs` set but no
+// outlet code yet (mirror9 empty, no Assets entry). Per the operator workflow
+// they get imported as placeholder locations (`outlet_code = TODO-<itemId>`)
+// so they appear in the system; kiosks are attached when the actual install
+// happens. Match is case-insensitive on group title.
+const PENDING_GROUP_PATTERNS: RegExp[] = [
+  /^\s*ready to launch\s*$/i,
+];
+
+// Placeholder outlet code prefix for pending-deployment locations. The Monday
+// item id makes it unique within a region and trivially greppable in the UI.
+export const PLACEHOLDER_OUTLET_PREFIX = "TODO-";
+
+function isPendingGroup(groupTitle: string): boolean {
+  return PENDING_GROUP_PATTERNS.some((re) => re.test(groupTitle));
+}
+
+// Pull the trailing country from a Monday LocationValue's `text` field, e.g.
+// "Novotel London Bridge, Southwark Bridge Road, London, UK" → "UK". Returns
+// the last comma-separated token, trimmed. Used as a region-resolution fallback
+// when the group title doesn't match an existing pattern.
+function extractCountryFromLocation(item: MondayItem): string | null {
+  const cv = item.column_values.find((c) => c.id === "location");
+  const text = cv?.text?.trim();
+  if (!text) return null;
+  const tokens = text.split(",").map((s) => s.trim()).filter(Boolean);
+  return tokens.length > 0 ? tokens[tokens.length - 1] : null;
+}
 
 export type HotelLocationImportResult = {
   locationsInserted: number;
   locationsSkippedExisting: number;
   hotelsSkippedNoOutletCode: number;
   hotelsSkippedNoRegion: number;
+  /** Pending-deployment locations imported with a TODO-<itemId> placeholder
+   * outlet code (no kiosk attached). Operator updates outlet_code via the
+   * merge/edit UI when the kiosk arrives on Monday. */
+  placeholderLocationsCreated: number;
   /** Group titles encountered that the resolver couldn't map. */
   unmappedGroupTitles: string[];
   /** Monday hotel item id → `locations.id`. Populated for every hotel that
@@ -116,6 +153,7 @@ export async function runHotelLocationImport(
   let locationsSkippedExisting = 0;
   let hotelsSkippedNoOutletCode = 0;
   let hotelsSkippedNoRegion = 0;
+  let placeholderLocationsCreated = 0;
   const unmappedTitles = new Set<string>();
   const hotelMondayIdToLocationId = new Map<string, string>();
 
@@ -129,15 +167,33 @@ export async function runHotelLocationImport(
       })) {
         boardCount++;
         const outletCodes = extractOutletCodes(item);
-        if (outletCodes.length === 0) {
+        const groupTitle =
+          (item as MondayItem & { group?: { title?: string } }).group?.title ??
+          "";
+
+        // Pending-deployment hotels: mirror9 empty + group is "Ready to Launch".
+        // Import as placeholder location, no kiosk attached. Region falls back
+        // to the country in the LocationValue (`, UK` / `, Germany` / etc.)
+        // since the plain "Ready to Launch" group title doesn't resolve and
+        // mixes regions.
+        const isPlaceholder = outletCodes.length === 0 && isPendingGroup(groupTitle);
+
+        if (outletCodes.length === 0 && !isPlaceholder) {
           hotelsSkippedNoOutletCode++;
           continue;
         }
 
-        const groupTitle =
-          (item as MondayItem & { group?: { title?: string } }).group?.title ??
-          "";
-        const primaryRegionId = await resolveRegionIdByGroup(boardId, groupTitle);
+        // Resolve region: try group title first, fall back to LocationValue's
+        // trailing country token. The runbook's mapper accepts any string and
+        // matches against GROUP_TITLE_REGION_PATTERNS, so the country name
+        // (e.g. "UK", "Germany", "Spain") drops in cleanly.
+        let primaryRegionId = await resolveRegionIdByGroup(boardId, groupTitle);
+        if (!primaryRegionId) {
+          const country = extractCountryFromLocation(item);
+          if (country) {
+            primaryRegionId = await resolveRegionIdByGroup(boardId, country);
+          }
+        }
         if (!primaryRegionId) {
           hotelsSkippedNoRegion++;
           if (groupTitle) unmappedTitles.add(groupTitle);
@@ -145,10 +201,13 @@ export async function runHotelLocationImport(
         }
 
         // One location per hotel (per the v2 data-model rule "one location per
-        // hotel, N kiosks via kiosk_assignments"). The location's primary
-        // outlet_code is the FIRST mirror9 code; per-kiosk outlet codes are
-        // imported separately from the Monday Assets board.
-        const primaryOutletCode = outletCodes[0];
+        // hotel, N kiosks via kiosk_assignments"). For deployed hotels: primary
+        // outlet_code = first mirror9 code; per-kiosk codes come from Assets.
+        // For pending-deployment hotels: primary outlet_code = TODO-<itemId>
+        // placeholder; operator updates via merge/edit UI when kiosk arrives.
+        const primaryOutletCode = isPlaceholder
+          ? `${PLACEHOLDER_OUTLET_PREFIX}${item.id}`
+          : outletCodes[0];
         const inserted = await db
           .insert(locations)
           .values({
@@ -164,7 +223,8 @@ export async function runHotelLocationImport(
 
         let locationId: string;
         if (inserted.length > 0) {
-          locationsInserted++;
+          if (isPlaceholder) placeholderLocationsCreated++;
+          else locationsInserted++;
           locationId = inserted[0].id;
         } else {
           locationsSkippedExisting++;
@@ -205,6 +265,7 @@ export async function runHotelLocationImport(
     locationsSkippedExisting,
     hotelsSkippedNoOutletCode,
     hotelsSkippedNoRegion,
+    placeholderLocationsCreated,
     unmappedGroupTitles: [...unmappedTitles].sort(),
     hotelMondayIdToLocationId,
     boardsProcessed: HOTEL_BOARD_IDS.length,
