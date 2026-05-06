@@ -48,6 +48,7 @@ import { LocalFileSource } from "@/lib/sales/local-file-source";
 import { runAssetsImport } from "@/lib/monday/import-assets";
 import { runHotelLocationImport } from "@/lib/monday/import-hotel-locations";
 import { runMondayImport } from "@/lib/monday/import-location-products";
+import { normaliseName } from "@/lib/normalise";
 import {
   LOCATION_NEEDED_ADDRESS,
   LOCATION_NEEDED_NAME,
@@ -280,15 +281,24 @@ async function main(): Promise<void> {
 
     // ── STEP 3: Ensure LOCATION_NEEDED sentinel ────────────────────────────
     console.log(`\n--- STEP 3: Ensure LOCATION_NEEDED sentinel ---`);
+    // Plan 07-04 fix: sentinel's `normalised_name` MUST be the result of
+    // normaliseName(LOCATION_NEEDED_NAME) — i.e. "locationneeded" — so the
+    // same-name detection helper can exclude it via the canonical
+    // SENTINEL_NORMALISED constant. The previous form passed `$1` (the
+    // literal "LOCATION_NEEDED" with underscore) which broke the contract:
+    // the helper would never see the sentinel, but any row inserted with
+    // `normaliseName(name)` and the same shape would have a different
+    // value and slip past the exclusion.
     await client.query(
       `INSERT INTO locations (name, outlet_code, address, primary_region_id, normalised_name)
-       VALUES ($1, $2, $3, $4, $1)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (primary_region_id, outlet_code) DO NOTHING`,
       [
         LOCATION_NEEDED_NAME,
         LOCATION_NEEDED_OUTLET_CODE,
         LOCATION_NEEDED_ADDRESS,
         globalRegionId,
+        normaliseName(LOCATION_NEEDED_NAME),
       ],
     );
     const sentinelRow = await client.query<{ id: string }>(

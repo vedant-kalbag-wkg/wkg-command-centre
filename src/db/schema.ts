@@ -16,6 +16,7 @@ import {
   time,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // =============================================================================
 // Better Auth tables
@@ -238,6 +239,18 @@ export const locations = pgTable(
       t.primaryRegionId,
       t.outletCode,
     ),
+    // Phase 7 Plan 07-04 (DATA-03) — partial unique index over the canonical
+    // normalised name, scoped to active rows. Two active rows with the same
+    // normalised name fail at INSERT/UPDATE; archived rows (and the sentinel,
+    // whose normalised name is "locationneeded" — explicitly excluded by the
+    // detection helper, not by the index) can coexist freely. Backfilled in
+    // Task 1 Step 1 before this index lands so the CREATE INDEX never fails
+    // on legacy data.
+    normalisedNameUniqueActive: uniqueIndex(
+      "locations_normalised_name_unique_active",
+    )
+      .on(t.normalisedName)
+      .where(sql`archived_at IS NULL`),
   }),
 );
 

@@ -26,9 +26,10 @@ import {
   locationProducts,
   regions,
 } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import type { db as defaultDb } from "@/db";
 import { mondayQueryWithRetry } from "@/lib/monday/client";
+import { normaliseName } from "@/lib/normalise";
 
 const HOTEL_BOARD_IDS = [1356570756, 1743012104, 5026387784, 5092887865];
 const BOARD_NAMES: Record<number, string> = {
@@ -56,6 +57,21 @@ const PLACEHOLDER_IMPORT_BOARDS = new Set<number>([
   5092887865, // Australia DCM
 ]);
 
+/**
+ * Phase 7 Plan 07-04 (DATA-03 D-09) — same-name candidate detection.
+ *
+ * One entry per Monday hotel item whose `normaliseName(item.name)` matches
+ * an existing active locations row that does NOT belong to the same Monday
+ * import. Surfaced both in the dry-run return value AND as a single
+ * `dry_import_warning` audit-log entry summarising the batch.
+ */
+export type SameNameWarning = {
+  normalisedName: string;
+  mondayItemId: string;
+  itemName: string;
+  collidingLocationIds: string[];
+};
+
 export type MondayImportResult = {
   rowsInserted: number;
   placeholdersCreated: number;
@@ -72,12 +88,37 @@ export type MondayImportResult = {
   productsResolved: number;
   providersResolved: number;
   durationMs: number;
+  /**
+   * Phase 7 Plan 07-04 — same-name candidates detected for this run. In
+   * dry-run mode the array is computed before any DB writes (other than the
+   * single `dry_import_warning` audit entry); in normal-import mode it is
+   * always `[]` (the import does not currently insert hotels — that's the
+   * job of import-hotel-locations.ts — so there's nothing for this pass to
+   * warn against).
+   */
+  sameNameWarnings: SameNameWarning[];
 };
 
 export type MondayImportDeps = {
   mondayApiToken: string;
   db: typeof defaultDb;
   logger?: (phase: string, msg: string) => void;
+  /**
+   * Phase 7 Plan 07-04 — when `true`, run all read-only steps (Monday fetch,
+   * resolve outlet codes, compute same-name warnings) but skip writes that
+   * mutate `location_products`, `products`, `providers`, `locations`. The
+   * single `dry_import_warning` audit-log entry is the only intentional
+   * write in dry-run mode, and it is conditional on `persistWarnings`
+   * (defaults to `true` so the dry-run leaves a forensic trail).
+   */
+  dryRun?: boolean;
+  /**
+   * Phase 7 Plan 07-04 — when `false` and `dryRun=true`, suppress the
+   * `dry_import_warning` audit-log entry. Useful in tests that assert the
+   * caller's return-value contract without depending on audit_logs state.
+   * Default: `true`.
+   */
+  persistWarnings?: boolean;
 };
 
 interface SubitemData {
@@ -103,7 +144,13 @@ const noopLogger = () => {};
 export async function runMondayImport(
   deps: MondayImportDeps,
 ): Promise<MondayImportResult> {
-  const { mondayApiToken, db, logger = noopLogger } = deps;
+  const {
+    mondayApiToken,
+    db,
+    logger = noopLogger,
+    dryRun = false,
+    persistWarnings = true,
+  } = deps;
   const startedAt =
     typeof performance !== "undefined" && typeof performance.now === "function"
       ? performance.now()
@@ -265,7 +312,97 @@ export async function runMondayImport(
   // ────────────────────────────────────────────────────────────
   const hotels = await fetchAllHotelsWithProducts();
 
-  logger("IMPORT", "Starting location product import...");
+  logger(
+    "IMPORT",
+    dryRun
+      ? "Dry-run: computing same-name warnings only (no writes)..."
+      : "Starting location product import...",
+  );
+
+  // ────────────────────────────────────────────────────────────
+  // Phase 7 Plan 07-04 (DATA-03 D-09) — same-name candidate detection.
+  //
+  // Build a map from `normalised_name` to the list of active `locations.id`
+  // rows that have it. Then, for every hotel we're about to import, compute
+  // `normaliseName(hotel.hotelName)` and emit a warning if the normalised
+  // name already belongs to active locations rows.
+  //
+  // We deliberately do this BEFORE any DB writes so the dry-run path is
+  // side-effect-free (other than the single `dry_import_warning` audit log
+  // entry, which is intentional). In normal-import mode we still compute the
+  // warnings (cheap) but never emit the audit entry; the warnings are
+  // returned in the result for the caller to surface.
+  // ────────────────────────────────────────────────────────────
+  const sameNameWarnings: SameNameWarning[] = [];
+  const activeLocationsRows = await db
+    .select({
+      id: locations.id,
+      normalisedName: locations.normalisedName,
+    })
+    .from(locations)
+    .where(isNull(locations.archivedAt));
+  const normalisedNameToActiveIds = new Map<string, string[]>();
+  for (const row of activeLocationsRows) {
+    if (!row.normalisedName) continue;
+    const list = normalisedNameToActiveIds.get(row.normalisedName) ?? [];
+    list.push(row.id);
+    normalisedNameToActiveIds.set(row.normalisedName, list);
+  }
+  for (const hotel of hotels) {
+    const norm = normaliseName(hotel.hotelName);
+    if (!norm) continue;
+    const colliding = normalisedNameToActiveIds.get(norm);
+    if (!colliding || colliding.length === 0) continue;
+    sameNameWarnings.push({
+      normalisedName: norm,
+      mondayItemId: hotel.mondayItemId,
+      itemName: hotel.hotelName,
+      collidingLocationIds: colliding,
+    });
+  }
+  if (sameNameWarnings.length > 0) {
+    logger(
+      "IMPORT",
+      `Same-name warnings: ${sameNameWarnings.length} Monday item(s) collide with existing active locations`,
+    );
+    if (dryRun && persistWarnings) {
+      // Single audit-log entry summarising the batch — keeps the log
+      // forensically useful without flooding it with one row per warning.
+      await db.insert(auditLogs).values({
+        actorId: "system:runMondayImport",
+        actorName: "System (Monday import dry-run)",
+        entityType: "system",
+        entityId: "monday-import",
+        entityName: "Monday hotel import (dry-run)",
+        action: "dry_import_warning",
+        metadata: {
+          warnings: sameNameWarnings.length,
+          sample: sameNameWarnings.slice(0, 5),
+        },
+      });
+    }
+  }
+
+  // Dry-run short-circuit — bail out before any further DB writes. We still
+  // return the same-shape result so callers can pattern-match on counts.
+  if (dryRun) {
+    const endedAt =
+      typeof performance !== "undefined" &&
+      typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    return {
+      rowsInserted: 0,
+      placeholdersCreated: 0,
+      placeholderNames: [],
+      hotelsSkipped: 0,
+      placeholdersSkippedNoRegion: 0,
+      productsResolved: 0,
+      providersResolved: 0,
+      durationMs: endedAt - startedAt,
+      sameNameWarnings,
+    };
+  }
 
   // Load location lookup by outlet code
   const locRows = await db
@@ -583,6 +720,10 @@ export async function runMondayImport(
       productsResolved: productMap.size,
       providersResolved: providerMap.size,
       durationMs: endedAt - startedAt,
+      // Phase 7 Plan 07-04 — populated above before any DB writes; carried
+      // through to the normal-import return so callers don't need to branch
+      // on dryRun to read the field.
+      sameNameWarnings,
     };
   } finally {
     // Restore the prior MONDAY_API_TOKEN value. `delete` on `previousToken
