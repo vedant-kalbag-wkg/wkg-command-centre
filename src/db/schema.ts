@@ -283,6 +283,24 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Phase 7 Plan 07-03 — N→1 location-merge snapshot-before-commit (D-03 / DATA-02).
+// Each row captures the pre-merge FK state for a single forward-merge transaction.
+// Linked 1:1 to the merge audit-log entry via auditLogId. The undo server action
+// (src/app/(app)/admin/audit-log/[id]/actions/undo-merge.ts) replays the payload
+// to reverse FK migrations and restore archived rows; the snapshot row is
+// DELETEd on successful undo (the row's existence is the single source of truth
+// for "undo still available").
+export const locationMergeSnapshots = pgTable("location_merge_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  auditLogId: uuid("audit_log_id")
+    .notNull()
+    .references(() => auditLogs.id),
+  payload: jsonb("payload").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 // User views — saved filter/sort/group configurations
 export const userViews = pgTable("user_views", {
   id: uuid("id").primaryKey().defaultRandom(),

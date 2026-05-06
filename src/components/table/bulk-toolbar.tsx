@@ -45,6 +45,11 @@ interface BulkToolbarProps<T> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   table: Table<T>;
   csvFileName: string;
+  // Phase 7 Plan 07-03 — minimum selection count to surface the Merge button.
+  // Defaults to 2 (canonical N→1 merge needs ≥2 rows). Sentinel triage on
+  // /locations/<sentinel-id> passes 1 — operator selects ≥1 orphan kiosk row
+  // and the dialog renders in reassign mode (isSentinelTriage=true).
+  mergeMinCount?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +67,7 @@ export function BulkToolbar<T>({
   onClearSelection,
   table,
   csvFileName,
+  mergeMinCount,
 }: BulkToolbarProps<T>) {
   const [editDialogOpen, setEditDialogOpen] = React.useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = React.useState(false);
@@ -238,7 +244,7 @@ export function BulkToolbar<T>({
             <Edit className="h-3.5 w-3.5" />
             Edit
           </Button>
-          {onMerge && selectedCount >= 2 && (
+          {onMerge && selectedCount >= (mergeMinCount ?? 2) && (
             <Button
               variant="outline"
               size="sm"
