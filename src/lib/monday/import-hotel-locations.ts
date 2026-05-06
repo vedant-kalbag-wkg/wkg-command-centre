@@ -2,9 +2,14 @@
 //
 // Lifts hotel rows from the 4 Monday hotel boards into the `locations` table.
 // Monday is the SoT for hotel identity in v1.1 — every reseed re-derives
-// `locations` from these boards. Idempotent: re-running on an already-reseeded
-// DB is a no-op (dedup via the `(primary_region_id, outlet_code)` unique
-// constraint).
+// `locations` from these boards.
+//
+// Phase 7 Plan 07-06 — `customer_code` is now the canonical hotel-level
+// identifier (RPS account code, mirrored from Monday's `mirror3__1`).
+// Outlet codes are strictly per-kiosk and live on the Assets board, not on
+// hotels. This importer populates `customer_code` (when present on the
+// hotel item) and uses `monday_item_id` as the universal idempotency key
+// (every Monday item has a stable id).
 //
 // Region resolution is per-item, by Monday `group.title`. The hotel boards on
 // Monday partition items into groups whose titles encode the region (e.g.
@@ -23,7 +28,7 @@
 // Mirrors the structural shape of `src/lib/monday/import-location-products.ts`
 // (deps injection, logger, retry-aware cursor pagination via the shared client).
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import type { db as defaultDb } from "@/db";
 import { locations } from "@/db/schema";
@@ -41,18 +46,18 @@ const BOARD_NAMES: Record<number, string> = {
   5092887865: "Australia DCM",
 };
 
-// Custom item fragment — mirror9 is a Monday MirrorValue (outlet code mirrored
-// from a downstream board) so we MUST request `display_value` via the typed
-// inline fragment; the default `text` field on a MirrorValue is null. We also
-// pull `group { id title }` so the runbook can resolve region per item, and
-// `location` (LocationValue.text contains the address — the trailing `, <country>`
-// is the per-item region fallback when the group title doesn't resolve, e.g.
-// for the "Ready to Launch" group on board 1743012104 which mixes UK/DE/ES/PT).
+// Custom item fragment — `mirror3__1` is "Cust_cd (RPS)", a Monday MirrorValue
+// that mirrors the customer code from the Assets board's `text9`. Like
+// `mirror9` it requires `display_value` via a typed inline fragment (the
+// default `text` field on a MirrorValue is null). We pull `group { id title }`
+// for region resolution and `location` (LocationValue.text contains the
+// address — the trailing `, <country>` is the per-item region fallback when
+// the group title doesn't resolve).
 const HOTEL_ITEM_FRAGMENT = `
   id
   name
   group { id title }
-  column_values(ids: ["mirror9", "location"]) {
+  column_values(ids: ["mirror3__1", "location"]) {
     id
     type
     text
@@ -61,21 +66,26 @@ const HOTEL_ITEM_FRAGMENT = `
 `;
 
 // Pending-deployment groups: hotels here have `Number of SSMs` set but no
-// outlet code yet (mirror9 empty, no Assets entry). Per the operator workflow
-// they get imported as placeholder locations (`outlet_code = TODO-<itemId>`)
+// outlet code yet (no Assets entry). Per the operator workflow they get
+// imported as placeholder locations (NULL customer_code, monday_item_id set)
 // so they appear in the system; kiosks are attached when the actual install
 // happens. Match is case-insensitive on group title.
 const PENDING_GROUP_PATTERNS: RegExp[] = [
   /^\s*ready to launch\s*$/i,
 ];
 
-// Placeholder outlet code prefix for pending-deployment locations. The Monday
-// item id makes it unique within a region and trivially greppable in the UI.
-export const PLACEHOLDER_OUTLET_PREFIX = "TODO-";
-
 function isPendingGroup(groupTitle: string): boolean {
   return PENDING_GROUP_PATTERNS.some((re) => re.test(groupTitle));
 }
+
+/**
+ * Phase 07-06 — kept exported only for backward-compat with
+ * `import-heathrow.ts`, which uses it as a kiosk-id prefix when synthesising
+ * placeholder kiosks for Heathrow's "In Progress" group. The previous
+ * meaning ("placeholder outlet_code on locations") is gone — this is now a
+ * pure naming convention shared between the two importers.
+ */
+export const PLACEHOLDER_OUTLET_PREFIX = "TODO-";
 
 // Pull the trailing country from a Monday LocationValue's `text` field, e.g.
 // "Novotel London Bridge, Southwark Bridge Road, London, UK" → "UK". Returns
@@ -92,12 +102,18 @@ function extractCountryFromLocation(item: MondayItem): string | null {
 export type HotelLocationImportResult = {
   locationsInserted: number;
   locationsSkippedExisting: number;
-  hotelsSkippedNoOutletCode: number;
+  /** Hotels skipped because the group title couldn't be mapped to a region
+   * AND the LocationValue had no usable country fallback. */
   hotelsSkippedNoRegion: number;
-  /** Pending-deployment locations imported with a TODO-<itemId> placeholder
-   * outlet code (no kiosk attached). Operator updates outlet_code via the
-   * merge/edit UI when the kiosk arrives on Monday. */
+  /** Pending-deployment locations imported with NULL customer_code (no kiosk
+   * attached). Operator updates customer_code via the merge/edit UI when the
+   * kiosk arrives on Monday. */
   placeholderLocationsCreated: number;
+  /** Phase 07-06 — count of locations imported with a populated
+   * `customer_code` (i.e. items where `mirror3__1` had a non-empty
+   * display_value). Visibility into Live Estate's ~87.7% coverage and the
+   * sparser placeholder-board coverage. */
+  customerCodesPopulated: number;
   /** Group titles encountered that the resolver couldn't map. */
   unmappedGroupTitles: string[];
   /** Monday hotel item id → `locations.id`. Populated for every hotel that
@@ -127,14 +143,32 @@ export type HotelLocationImportDeps = {
 
 const noopLogger = (_phase: string, _msg: string) => {};
 
-function extractOutletCodes(item: MondayItem): string[] {
-  const mirror = item.column_values.find((cv) => cv.id === "mirror9");
+/**
+ * Read `mirror3__1` (Cust_cd (RPS)) and dedupe comma-separated codes.
+ *
+ * Multi-kiosk hotels show comma-duplicated codes ("2357, 2357") because the
+ * mirror aggregates across each kiosk's row on Assets — same hotel = same
+ * account = single dedup'd code per the operator. Returns the single
+ * deduplicated code or null when the mirror is empty / unset.
+ *
+ * If the mirror surprisingly contains DIFFERENT codes (which would mean the
+ * Monday board has the same hotel mapped to multiple RPS accounts — operator
+ * data error), we still return the first non-empty token so the import doesn't
+ * fail; the same-name detection + merge UI surfaces the inconsistency.
+ */
+function extractCustomerCode(item: MondayItem): string | null {
+  const mirror = item.column_values.find((cv) => cv.id === "mirror3__1");
   const display = mirror?.display_value?.trim();
-  if (!display) return [];
-  return display
+  if (!display) return null;
+  const tokens = display
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+  if (tokens.length === 0) return null;
+  // Per operator: same hotel = same RPS account, so "1234, 1234" → "1234".
+  // We dedupe and return the first; if there are multiple distinct values we
+  // still return the first (the merge / same-name surface will catch it).
+  return tokens[0];
 }
 
 export async function runHotelLocationImport(
@@ -151,9 +185,9 @@ export async function runHotelLocationImport(
 
   let locationsInserted = 0;
   let locationsSkippedExisting = 0;
-  let hotelsSkippedNoOutletCode = 0;
   let hotelsSkippedNoRegion = 0;
   let placeholderLocationsCreated = 0;
+  let customerCodesPopulated = 0;
   const unmappedTitles = new Set<string>();
   const hotelMondayIdToLocationId = new Map<string, string>();
 
@@ -166,22 +200,22 @@ export async function runHotelLocationImport(
         itemFragment: HOTEL_ITEM_FRAGMENT,
       })) {
         boardCount++;
-        const outletCodes = extractOutletCodes(item);
+        const customerCode = extractCustomerCode(item);
         const groupTitle =
           (item as MondayItem & { group?: { title?: string } }).group?.title ??
           "";
 
-        // Pending-deployment hotels: mirror9 empty + group is "Ready to Launch".
-        // Import as placeholder location, no kiosk attached. Region falls back
-        // to the country in the LocationValue (`, UK` / `, Germany` / etc.)
-        // since the plain "Ready to Launch" group title doesn't resolve and
-        // mixes regions.
-        const isPlaceholder = outletCodes.length === 0 && isPendingGroup(groupTitle);
+        // Pending-deployment hotels: customer_code empty + group is "Ready to
+        // Launch". Import as placeholder location (NULL customer_code), no
+        // kiosk attached. Region falls back to the country in the
+        // LocationValue (`, UK` / `, Germany` / etc.) since the plain "Ready
+        // to Launch" group title doesn't resolve and mixes regions.
+        const isPlaceholder = customerCode === null && isPendingGroup(groupTitle);
 
-        if (outletCodes.length === 0 && !isPlaceholder) {
-          hotelsSkippedNoOutletCode++;
-          continue;
-        }
+        // Phase 07-06 — items without a customer_code on non-pending boards
+        // are still imported (the column is nullable). Pre-07-06 these were
+        // skipped because outlet_code was NOT NULL; that constraint is gone.
+        // We track customer-code coverage in `customerCodesPopulated`.
 
         // Resolve region: try group title first, fall back to LocationValue's
         // trailing country token. The runbook's mapper accepts any string and
@@ -200,31 +234,33 @@ export async function runHotelLocationImport(
           continue;
         }
 
-        // One location per hotel (per the v2 data-model rule "one location per
-        // hotel, N kiosks via kiosk_assignments"). For deployed hotels: primary
-        // outlet_code = first mirror9 code; per-kiosk codes come from Assets.
-        // For pending-deployment hotels: primary outlet_code = TODO-<itemId>
-        // placeholder; operator updates via merge/edit UI when kiosk arrives.
-        const primaryOutletCode = isPlaceholder
-          ? `${PLACEHOLDER_OUTLET_PREFIX}${item.id}`
-          : outletCodes[0];
+        // One location per hotel (per the v2 data-model rule "one location
+        // per hotel, N kiosks via kiosk_assignments"). customer_code is
+        // populated when present on mirror3__1; placeholders keep it NULL.
+        // ON CONFLICT target → monday_item_id (the universal idempotency
+        // key, populated for every imported row).
         const inserted = await db
           .insert(locations)
           .values({
             name: item.name,
             normalisedName: normaliseName(item.name),
-            outletCode: primaryOutletCode,
+            customerCode,
+            mondayItemId: item.id,
             primaryRegionId,
           })
           .onConflictDoNothing({
-            target: [locations.primaryRegionId, locations.outletCode],
+            target: locations.mondayItemId,
           })
           .returning({ id: locations.id });
 
         let locationId: string;
         if (inserted.length > 0) {
-          if (isPlaceholder) placeholderLocationsCreated++;
-          else locationsInserted++;
+          if (isPlaceholder) {
+            placeholderLocationsCreated++;
+          } else {
+            locationsInserted++;
+          }
+          if (customerCode !== null) customerCodesPopulated++;
           locationId = inserted[0].id;
         } else {
           locationsSkippedExisting++;
@@ -233,12 +269,7 @@ export async function runHotelLocationImport(
           const existing = await db
             .select({ id: locations.id })
             .from(locations)
-            .where(
-              and(
-                eq(locations.primaryRegionId, primaryRegionId),
-                eq(locations.outletCode, primaryOutletCode),
-              ),
-            )
+            .where(eq(locations.mondayItemId, item.id))
             .limit(1);
           if (existing.length === 0) continue; // shouldn't happen, defensive
           locationId = existing[0].id;
@@ -263,9 +294,9 @@ export async function runHotelLocationImport(
   return {
     locationsInserted,
     locationsSkippedExisting,
-    hotelsSkippedNoOutletCode,
     hotelsSkippedNoRegion,
     placeholderLocationsCreated,
+    customerCodesPopulated,
     unmappedGroupTitles: [...unmappedTitles].sort(),
     hotelMondayIdToLocationId,
     boardsProcessed: HOTEL_BOARD_IDS.length,
