@@ -37,7 +37,6 @@ describe('remaining analytics tables (M1 Task 1.8)', () => {
       .insert(locations)
       .values({
         name: 'Weather Test Hotel',
-        outletCode: 'ANALYTICS-WEATHER',
         primaryRegionId: uk.id,
       })
       .returning();

@@ -245,7 +245,9 @@ export async function getLocationGroupDetail(
   }>(sql`
     SELECT
       ${salesRecords.locationId} AS location_id,
-      COALESCE(${locations.outletCode}, '') AS outlet_code,
+      -- Phase 07-06 — surface customer_code under the existing outlet_code
+      -- output column name (UI label stays "Outlet Code").
+      COALESCE(${locations.customerCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
       COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
@@ -254,7 +256,7 @@ export async function getLocationGroupDetail(
       ${locations.starRating}::text AS star_rating
     FROM ${baseFromWithLocationGroups()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
-    GROUP BY ${salesRecords.locationId}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}, ${locations.starRating}
+    GROUP BY ${salesRecords.locationId}, ${locations.customerCode}, ${locations.name}, ${locations.numRooms}, ${locations.starRating}
     ORDER BY revenue DESC
   `);
 
