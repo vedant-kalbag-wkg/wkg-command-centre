@@ -42,15 +42,36 @@
     {
       "id": "07-05",
       "name": "Verify + UAT runbook + prod cutover (Plan E)",
-      "status": "not_started",
+      "status": "in_progress",
+      "blocked_by": "07-06",
       "scope_includes": [
         "Provision Vercel preview deploy from gsd/phase-07-data-foundation-rebuild branch",
         "Run live Playwright suite against preview alias (closes Task 4 of 07-03 + 07-04)",
-        "Apply migration 0039 to prod via drizzle-kit migrate (NOT raw SQL)",
+        "Apply migrations 0039 + 0040 to prod via drizzle-kit migrate (NOT raw SQL)",
         "Run scripts/v2-wipe-and-reseed.ts --apply against prod (operator-gated)",
-        "Phase 7 verification suite — golden constants from 07-PREFLIGHT-REPORT.md",
-        "47 sentinel-attached outlet codes operator triage path documented"
+        "Phase 7 verification suite (updated for new schema)",
+        "Document 50-kiosk Monday-side operator gap as known follow-up"
+      ],
+      "completed_in_plan": [
+        "scripts/verify-data-reset.ts (committed 970bdb5)",
+        "07-UAT-RUNBOOK.md (committed e34fc7c)",
+        "Live UAT-branch reseed against prod-canonical Jan 2026 corpus — 95103 / £1,783,083.58 byte-perfect"
       ]
+    },
+    {
+      "id": "07-06",
+      "name": "customer_code as primary location identifier (full Path B refactor)",
+      "status": "not_started",
+      "scope_includes": [
+        "Migration 0040: drop locations.outlet_code (preserve as notes), add locations.monday_item_id, add partial unique on (region, customer_code)",
+        "Update schema.ts to reflect new shape",
+        "Importer changes: populate customer_code from Monday mirror3__1 (hotel boards) and text4 (Heathrow); ON CONFLICT on monday_item_id",
+        "Sentinel + merge: re-key from outlet_code to customer_code or name",
+        "Dimension-resolver: add Pass 0 for customer_code lookup",
+        "Refactor ~30 analytics + settings call sites to use customer_code or kiosk-joined outlet_code",
+        "Update verify-data-reset for new schema; refresh goldens to new prod baseline"
+      ],
+      "rationale": "Domain model correction discovered during Plan 07-05 UAT — customer_code is the per-hotel-account identifier, outlet_code is per-kiosk. Schema's locations.outlet_code conflated the two. Re-scope authorized by user during UAT iteration."
     },
     {
       "id": "phase-7-verify",
