@@ -14,13 +14,19 @@
 // runbook surfaces the count so the operator can either add a regions row or
 // fix the group title on Monday before the next reseed.
 //
+// Kiosk creation is NOT done here — kiosks come from the Monday Assets board
+// via `runAssetsImport` (the canonical SoT for per-kiosk outlet codes). This
+// importer's only job is `locations`. It returns a `hotelMondayIdToLocationId`
+// map so the runbook can chain the assets-import step with hotel-resolution
+// already loaded.
+//
 // Mirrors the structural shape of `src/lib/monday/import-location-products.ts`
 // (deps injection, logger, retry-aware cursor pagination via the shared client).
 
 import { and, eq } from "drizzle-orm";
 
 import type { db as defaultDb } from "@/db";
-import { kioskAssignments, kiosks, locations } from "@/db/schema";
+import { locations } from "@/db/schema";
 import { iterateBoardItems, type MondayItem } from "@/lib/monday/client";
 import { normaliseName } from "@/lib/normalise";
 
@@ -55,13 +61,13 @@ export type HotelLocationImportResult = {
   locationsSkippedExisting: number;
   hotelsSkippedNoOutletCode: number;
   hotelsSkippedNoRegion: number;
-  /** One kiosk row per outlet code in mirror9 (multiple per hotel). */
-  kiosksInserted: number;
-  kiosksSkippedExisting: number;
-  /** kiosk_assignments rows linking each kiosk to its hotel's location. */
-  assignmentsInserted: number;
   /** Group titles encountered that the resolver couldn't map. */
   unmappedGroupTitles: string[];
+  /** Monday hotel item id → `locations.id`. Populated for every hotel that
+   * landed in `locations` (whether newly inserted or already existed). The
+   * runbook hands this to `runAssetsImport` so each Asset's
+   * `link_to_hotel_ssms` can be resolved to a real location id. */
+  hotelMondayIdToLocationId: Map<string, string>;
   boardsProcessed: number;
   durationMs: number;
 };
@@ -110,12 +116,8 @@ export async function runHotelLocationImport(
   let locationsSkippedExisting = 0;
   let hotelsSkippedNoOutletCode = 0;
   let hotelsSkippedNoRegion = 0;
-  let kiosksInserted = 0;
-  let kiosksSkippedExisting = 0;
-  let assignmentsInserted = 0;
   const unmappedTitles = new Set<string>();
-  const ETL_ACTOR_ID = "00000000-0000-0000-0000-000000000001";
-  const ETL_ACTOR_NAME = "System (hotel-import)";
+  const hotelMondayIdToLocationId = new Map<string, string>();
 
   try {
     for (const boardId of HOTEL_BOARD_IDS) {
@@ -144,8 +146,8 @@ export async function runHotelLocationImport(
 
         // One location per hotel (per the v2 data-model rule "one location per
         // hotel, N kiosks via kiosk_assignments"). The location's primary
-        // outlet_code is the FIRST mirror9 code; the rest become kiosks
-        // attached via kiosk_assignments below.
+        // outlet_code is the FIRST mirror9 code; per-kiosk outlet codes are
+        // imported separately from the Monday Assets board.
         const primaryOutletCode = outletCodes[0];
         const inserted = await db
           .insert(locations)
@@ -166,7 +168,8 @@ export async function runHotelLocationImport(
           locationId = inserted[0].id;
         } else {
           locationsSkippedExisting++;
-          // Look up the existing row's id so we can still attach the kiosks.
+          // Look up the existing row's id so we can still emit the
+          // hotel-id → location-id mapping for the assets-import step.
           const existing = await db
             .select({ id: locations.id })
             .from(locations)
@@ -181,57 +184,7 @@ export async function runHotelLocationImport(
           locationId = existing[0].id;
         }
 
-        // Create one kiosk + one kiosk_assignment per outlet code. The kiosk
-        // is keyed by `kiosk_id = MONDAY-<mondayItemId>-<index>` for
-        // determinism on re-import (kiosk_id is unique). Outlet code lives on
-        // the kiosk; sales-ETL resolves outlet codes via kiosks.outlet_code.
-        for (let idx = 0; idx < outletCodes.length; idx++) {
-          const outletCode = outletCodes[idx];
-          const kioskId = `MONDAY-${item.id}-${idx}`;
-          const kioskInsert = await db
-            .insert(kiosks)
-            .values({ kioskId, outletCode })
-            .onConflictDoNothing({ target: kiosks.kioskId })
-            .returning({ id: kiosks.id });
-
-          let kioskUuid: string;
-          if (kioskInsert.length > 0) {
-            kiosksInserted++;
-            kioskUuid = kioskInsert[0].id;
-          } else {
-            kiosksSkippedExisting++;
-            const existingKiosk = await db
-              .select({ id: kiosks.id })
-              .from(kiosks)
-              .where(eq(kiosks.kioskId, kioskId))
-              .limit(1);
-            if (existingKiosk.length === 0) continue;
-            kioskUuid = existingKiosk[0].id;
-          }
-
-          // Skip the assignment INSERT when one already exists for this
-          // (kiosk, location) pair — re-import idempotency. There's no
-          // unique constraint on the pair, so we explicitly check.
-          const existingAssignment = await db
-            .select({ id: kioskAssignments.id })
-            .from(kioskAssignments)
-            .where(
-              and(
-                eq(kioskAssignments.kioskId, kioskUuid),
-                eq(kioskAssignments.locationId, locationId),
-              ),
-            )
-            .limit(1);
-          if (existingAssignment.length === 0) {
-            await db.insert(kioskAssignments).values({
-              kioskId: kioskUuid,
-              locationId,
-              assignedBy: ETL_ACTOR_ID,
-              assignedByName: ETL_ACTOR_NAME,
-            });
-            assignmentsInserted++;
-          }
-        }
+        hotelMondayIdToLocationId.set(item.id, locationId);
       }
 
       logger(
@@ -252,10 +205,8 @@ export async function runHotelLocationImport(
     locationsSkippedExisting,
     hotelsSkippedNoOutletCode,
     hotelsSkippedNoRegion,
-    kiosksInserted,
-    kiosksSkippedExisting,
-    assignmentsInserted,
     unmappedGroupTitles: [...unmappedTitles].sort(),
+    hotelMondayIdToLocationId,
     boardsProcessed: HOTEL_BOARD_IDS.length,
     durationMs: Date.now() - t0,
   };

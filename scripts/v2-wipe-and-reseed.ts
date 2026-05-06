@@ -45,6 +45,7 @@ import {
 } from "@/app/(app)/settings/data-import/sales/pipeline";
 import { ETL_AZURE_LOCK_KEY } from "@/lib/sales/etl/advisory-lock";
 import { LocalFileSource } from "@/lib/sales/local-file-source";
+import { runAssetsImport } from "@/lib/monday/import-assets";
 import { runHotelLocationImport } from "@/lib/monday/import-hotel-locations";
 import { runMondayImport } from "@/lib/monday/import-location-products";
 import {
@@ -223,6 +224,7 @@ async function main(): Promise<void> {
   let globalRegionId: string | undefined;
   let regionByCode = new Map<string, string>();
   let hotelResult: Awaited<ReturnType<typeof runHotelLocationImport>> | undefined;
+  let assetsResult: Awaited<ReturnType<typeof runAssetsImport>> | undefined;
   let tierResult: Awaited<ReturnType<typeof runMondayImport>> | undefined;
 
   try {
@@ -314,8 +316,7 @@ async function main(): Promise<void> {
         `skipped-existing=${hotelResult.locationsSkippedExisting} ` +
         `skipped-no-outlet=${hotelResult.hotelsSkippedNoOutletCode} ` +
         `skipped-no-region=${hotelResult.hotelsSkippedNoRegion} ` +
-        `kiosks=${hotelResult.kiosksInserted} ` +
-        `assignments=${hotelResult.assignmentsInserted} ` +
+        `hotelIdMap=${hotelResult.hotelMondayIdToLocationId.size} ` +
         `(took ${hotelResult.durationMs}ms)`,
     );
     if (hotelResult.unmappedGroupTitles.length > 0) {
@@ -325,6 +326,39 @@ async function main(): Promise<void> {
       );
       for (const t of hotelResult.unmappedGroupTitles) {
         console.log(`    - "${t}"`);
+      }
+    }
+
+    // ── STEP 4b: Assets import (kiosks) ────────────────────────────────────
+    // Monday Assets board is the canonical SoT for per-kiosk outlet codes —
+    // each item's `outlet_code1` is the code that appears in NetSuite sales
+    // rows, and `link_to_hotel_ssms` resolves to the hotel created in STEP 4.
+    // This replaces the previous mirror9-fan-out kiosk synthesis (which
+    // covered only ~244/291 GB sales codes; airport/transit codes like CB,
+    // T2, T3 live on Assets but never on a hotel mirror9 row).
+    console.log(`\n--- STEP 4b: Assets import (kiosks) ---`);
+    assetsResult = await runAssetsImport({
+      mondayApiToken,
+      db: drizzleDb,
+      hotelMondayIdToLocationId: hotelResult.hotelMondayIdToLocationId,
+      logger: (phase, msg) => console.log(`  [${phase}] ${msg}`),
+    });
+    console.log(
+      `  Assets: kiosks-inserted=${assetsResult.kiosksInserted} ` +
+        `kiosks-skipped-existing=${assetsResult.kiosksSkippedExisting} ` +
+        `assignments=${assetsResult.assignmentsInserted} ` +
+        `skipped-no-outlet=${assetsResult.assetsSkippedNoOutletCode} ` +
+        `skipped-no-linked-hotel=${assetsResult.assetsSkippedNoLinkedHotel} ` +
+        `skipped-hotel-not-resolvable=${assetsResult.assetsSkippedHotelNotResolvable} ` +
+        `(took ${assetsResult.durationMs}ms)`,
+    );
+    if (assetsResult.unmappedHotelMondayIds.length > 0) {
+      console.log(
+        `  WARN: ${assetsResult.unmappedHotelMondayIds.length} asset(s) point at ` +
+          `hotel ids missing from the import map (sample of up to 50):`,
+      );
+      for (const id of assetsResult.unmappedHotelMondayIds.slice(0, 10)) {
+        console.log(`    - mondayHotelId=${id}`);
       }
     }
 
@@ -354,7 +388,14 @@ async function main(): Promise<void> {
           runMode: APPLY ? "apply" : "dry-run",
           lockKey: LOCK_KEY,
           phase: "structural",
-          hotelResult,
+          // hotelResult.hotelMondayIdToLocationId is a Map — JSON.stringify
+          // emits `{}` for Maps, which is fine for the audit row (we only
+          // need the structural import counts here, not the lookup table).
+          hotelResult: {
+            ...hotelResult,
+            hotelMondayIdToLocationId: hotelResult.hotelMondayIdToLocationId.size,
+          },
+          assetsResult,
           tierResult,
           sentinelId,
           globalRegionId,
