@@ -19,7 +19,7 @@
  * Filtering:
  *   --check=<family> runs only the named invariant family. Families:
  *     locations | kiosks | sales | orphans | same_name | sentinel
- *     | assigned_at | audit_log
+ *     | assigned_at | audit_log | customer_code
  *   Useful for VALIDATION.md per-task-row commands and triaging individual
  *   failures without re-running the entire suite.
  *
@@ -178,23 +178,29 @@ async function runInvariants(
     // LOCATION_NEEDED sentinel: existence is a hard pass/fail; orphan count
     // attached to it is informational — surfaced as WARN, not FAIL, because
     // orphans are an expected by-product of sales-ETL (D-06 / DATA-04).
+    //
+    // Phase 07-06 — sentinel keying changed to (name='LOCATION_NEEDED',
+    // primary_region_id = GLOBAL region's id). The previous outlet_code
+    // sentinel value is gone (migration 0040).
     const sentinel = await client.query<{ id: string }>(`
-      SELECT id FROM locations
-      WHERE outlet_code = '__LOCATION_NEEDED__' AND name = 'LOCATION_NEEDED'
+      SELECT l.id
+      FROM locations l
+      INNER JOIN regions r ON r.id = l.primary_region_id
+      WHERE l.name = 'LOCATION_NEEDED' AND r.code = 'GLOBAL'
       LIMIT 1
     `);
     if (sentinel.rows.length === 0) {
       results.push({
         name: "LOCATION_NEEDED sentinel exists",
         status: "fail",
-        expected: "1 row",
+        expected: "1 row (name=LOCATION_NEEDED, region=GLOBAL)",
         actual: "0 rows",
       });
     } else {
       results.push({
         name: "LOCATION_NEEDED sentinel exists",
         status: "pass",
-        expected: "1 row",
+        expected: "1 row (name=LOCATION_NEEDED, region=GLOBAL)",
         actual: "1 row",
       });
       const orphans = await client.query<{ c: number }>(
@@ -209,6 +215,33 @@ async function runInvariants(
         detail: c === 0 ? "no orphans — clean" : `${c} orphan kiosks pending triage`,
       });
     }
+  }
+
+  if (include("customer_code")) {
+    // Phase 07-06 — customer_code coverage. WARN-level (operator-driven —
+    // the count depends on how many Live Estate hotels have mirror3__1
+    // populated on Monday, plus AU live + Heathrow Hilton Metropole).
+    // Surfaced as informational evidence that the importer's Pass 0
+    // resolution path actually has data to land on.
+    const r = await client.query<{ c: number }>(
+      `SELECT COUNT(*)::int AS c FROM locations
+       WHERE customer_code IS NOT NULL AND archived_at IS NULL`,
+    );
+    const actual = r.rows[0].c;
+    // Operator-confirmed lower bound from the Monday probe: ~328 Live
+    // Estate hotels (87.7% of 374) + ~12 AU live + 1 Heathrow + 30 RTL
+    // with codes ≈ 320+ when the dataset is healthy.
+    const expectedFloor = 320;
+    results.push({
+      name: "locations.customer_code coverage (Phase 07-06 Pass 0 input)",
+      status: actual >= expectedFloor ? "pass" : "warn",
+      expected: `>= ${expectedFloor}`,
+      actual,
+      detail:
+        actual >= expectedFloor
+          ? "Pass 0 resolution path has expected data shape"
+          : `customer_code coverage below floor — verify Monday mirror3__1 population`,
+    });
   }
 
   if (include("assigned_at")) {
