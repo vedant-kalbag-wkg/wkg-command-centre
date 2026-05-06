@@ -65,8 +65,9 @@ type MockOptions = {
  */
 function buildMockDb(opts: MockOptions = {}) {
   // Pre-merge selects (outside the transaction).
-  // applyLocationMerge order:
-  //   1. SELECT {id} FROM locations WHERE outletCode=__LOCATION_NEEDED__ AND name=LOCATION_NEEDED LIMIT 1
+  // applyLocationMerge order (Phase 07-06):
+  //   1. SELECT {id} FROM locations INNER JOIN regions ... WHERE name=LOCATION_NEEDED AND code=GLOBAL LIMIT 1
+  //      (via getSentinelLocationId — uses .innerJoin in the chain)
   //   2. SELECT {name} FROM locations WHERE id=canonicalId LIMIT 1
   // Inside the transaction, then per-FK-table selects (kiosk_assignments,
   // sales_records primary, sales_records processed, location_products,
@@ -113,13 +114,22 @@ function buildMockDb(opts: MockOptions = {}) {
   };
 
   // Outer (db.select) — used by the sentinel + canonical-name lookups.
-  const makeOuterSelect = () => ({
-    from: () => ({
-      where: () => ({
-        limit: () => Promise.resolve(outerSelectQueue.shift() ?? []),
+  // Phase 07-06: the sentinel resolution now joins through `regions`, so the
+  // chain for that call is select().from().innerJoin().where().limit(). The
+  // canonical-name select stays select().from().where().limit(). We expose
+  // both shapes by making `.from()` return an object that has BOTH
+  // `.innerJoin()` and `.where()` — the chain ultimately funnels into the
+  // same `outerSelectQueue.shift()` regardless of branch.
+  const makeOuterSelect = () => {
+    const drain = () => Promise.resolve(outerSelectQueue.shift() ?? []);
+    const whereChain = () => ({ limit: drain });
+    return {
+      from: () => ({
+        where: whereChain,
+        innerJoin: () => ({ where: whereChain }),
       }),
-    }),
-  });
+    };
+  };
 
   // Inner tx select — used by per-FK preselects + canonical pre-write read.
   // The canonical pre-write read uses .limit(1); the per-FK preselects don't.

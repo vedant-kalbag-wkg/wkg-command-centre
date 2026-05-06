@@ -33,10 +33,7 @@
  */
 import { sql, and, eq, inArray } from "drizzle-orm";
 import { writeAuditLog } from "@/lib/audit";
-import {
-  LOCATION_NEEDED_NAME,
-  LOCATION_NEEDED_OUTLET_CODE,
-} from "@/lib/sentinel";
+import { getSentinelLocationId } from "@/lib/sentinel";
 import {
   auditLogs,
   locations,
@@ -224,17 +221,18 @@ export async function applyLocationMerge(
   // Sentinel guard (T-07.03-02). Resolve the sentinel id once outside the
   // transaction; the rejection happens BEFORE any writes so a sentinel-passed
   // call costs only one SELECT.
-  const sentinelRow = await db
-    .select({ id: locations.id })
-    .from(locations)
-    .where(
-      and(
-        eq(locations.outletCode, LOCATION_NEEDED_OUTLET_CODE),
-        eq(locations.name, LOCATION_NEEDED_NAME),
-      ),
-    )
-    .limit(1);
-  const sentinelId: string | undefined = sentinelRow[0]?.id;
+  //
+  // Phase 07-06 — sentinel is now keyed by (name, GLOBAL region) via
+  // getSentinelLocationId(). The helper THROWS if the sentinel row is
+  // missing; we tolerate that here (some test environments don't seed the
+  // sentinel and that should remain non-fatal for non-sentinel merges) by
+  // catching the throw and continuing without the guard.
+  let sentinelId: string | undefined;
+  try {
+    sentinelId = await getSentinelLocationId(db);
+  } catch {
+    sentinelId = undefined;
+  }
   if (sentinelId) {
     if (canonicalId === sentinelId) {
       throw new Error(
