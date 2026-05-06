@@ -17,6 +17,14 @@ type AnyDb = any;
 export type DimensionInput = {
   rowNumber: number;
   outletCode: string;
+  /**
+   * Phase 07-06 — `customer_code` from the sales CSV (`Cust_cd`). When
+   * populated, the dimension resolver consults it FIRST (Pass 0) to resolve
+   * the location via `locations.customer_code` — the new canonical
+   * hotel-level identifier. Empty string / null falls through to the
+   * kiosk-side outlet_code fallback (Pass 1).
+   */
+  customerCode: string | null;
   productName: string;
   /** Preferred key for product resolution. Parser guarantees non-empty. */
   netsuiteCode: string;
@@ -53,21 +61,39 @@ export type ResolvedRow =
     };
 
 /**
- * Resolve outletCode / netsuiteCode+productName / providerName to FK ids,
- * scoped to a single region.
+ * Resolve outletCode / customerCode / netsuiteCode+productName / providerName
+ * to FK ids, scoped to a single region.
  *
- * Contract:
- *   - Outlets are looked up by `(primary_region_id, outlet_code)` — the same
- *     code in a different region is a distinct location.
- *   - Products are resolved in three passes:
- *       1. match on `products.netsuite_code` (unique, region-agnostic);
- *       2. match on `products.name` where `netsuite_code IS NULL`, then
- *          back-fill the code (and any null category/api columns) so
- *          subsequent runs match by the strong key;
- *       3. auto-create with all NetSuite columns populated.
- *   - Providers are resolved by name; unknown names are auto-created.
- *   - Unknown outlet codes for the region produce a row-level validation
- *     error whose message names both the code and the region id.
+ * Location resolution passes (Phase 07-06):
+ *
+ *   - **Pass 0 (top priority — new):** if the sales row has a non-empty
+ *     `customerCode`, look up `locations.customer_code = customerCode AND
+ *     primary_region_id = regionId`. This is the canonical hotel-level
+ *     identifier and matches the way the sales CSV's `Cust_cd` column maps
+ *     to the location row.
+ *   - **Pass 1 (fallback):** for rows that didn't resolve in Pass 0, look
+ *     up `kiosks.outlet_code = outletCode` and follow the active
+ *     `kiosk_assignments.location_id` to get the location. This handles
+ *     the v2 model where outlet codes are per-kiosk attributes — a sales
+ *     row with no `customerCode` (legacy data, or a Heathrow row with no
+ *     RPS account) still resolves through the kiosk's own outlet code.
+ *   - **Pass 2 (sentinel):** anything still unresolved falls to
+ *     `opts.sentinelLocationId` if set, otherwise produces a validation
+ *     error. The Plan C merge UI surfaces the sentinel orphans for triage.
+ *
+ * Pre-07-06 the first pass keyed off `locations.outlet_code` directly. That
+ * column is gone (migration 0040); this resolver was the LAST consumer of
+ * the conflated kiosk-vs-hotel outlet_code semantic, so removing it
+ * completes the Phase 7 schema correction.
+ *
+ * Products are resolved in three passes (unchanged):
+ *   1. match on `products.netsuite_code` (unique, region-agnostic);
+ *   2. match on `products.name` where `netsuite_code IS NULL`, then
+ *      back-fill the code (and any null category/api columns) so
+ *      subsequent runs match by the strong key;
+ *   3. auto-create with all NetSuite columns populated.
+ *
+ * Providers are resolved by name; unknown names are auto-created.
  *
  * Concurrency precondition: the caller must serialise invocation (the ETL
  * entrypoint holds a Postgres advisory lock; see design doc §"concurrency").
@@ -84,28 +110,58 @@ export async function resolveDimensions(
 
   const { regionId } = opts;
 
-  // ---- Outlet lookup (region-scoped, batched) --------------------------------
-  const outletCodes = Array.from(new Set(rows.map((r) => r.outletCode)));
-  const locRows = await db
-    .select({ id: locations.id, outletCode: locations.outletCode })
-    .from(locations)
-    .where(
-      and(
-        eq(locations.primaryRegionId, regionId),
-        inArray(locations.outletCode, outletCodes),
-      ),
-    );
-  const locByCode = new Map<string, string>();
-  for (const r of locRows as Array<{ id: string; outletCode: string }>) {
-    locByCode.set(r.outletCode, r.id);
+  // ---- Location resolution ---------------------------------------------------
+  //
+  // Two maps drive the per-row resolution at the bottom of the function:
+  //   - `locByCustomerCode` — populated by Pass 0 when the row has a
+  //     non-empty customerCode that matches a row on locations.
+  //   - `locByOutletCode` — populated by Pass 1 (kiosk → assignment → location)
+  //     for any outletCode that didn't resolve via Pass 0.
+  // The per-row assembly checks them in that order.
+
+  // ---- Pass 0 — customer_code lookup (region-scoped) -------------------------
+  const customerCodes = Array.from(
+    new Set(
+      rows
+        .map((r) => r.customerCode)
+        .filter((c): c is string => c !== null && c.length > 0),
+    ),
+  );
+  const locByCustomerCode = new Map<string, string>();
+  if (customerCodes.length > 0) {
+    const ccRows = await db
+      .select({ id: locations.id, customerCode: locations.customerCode })
+      .from(locations)
+      .where(
+        and(
+          eq(locations.primaryRegionId, regionId),
+          inArray(locations.customerCode, customerCodes),
+        ),
+      );
+    for (const r of ccRows as Array<{ id: string; customerCode: string | null }>) {
+      if (r.customerCode) locByCustomerCode.set(r.customerCode, r.id);
+    }
   }
 
-  // Fallback path: per the v2 data-model rule "outlet_code is per-kiosk", a
-  // sales row's outlet code may match a kiosk rather than a location. Resolve
-  // those via kiosks.outlet_code → kiosk_assignments.location_id (currently
-  // active assignment, scoped to the active region).
-  const stillMissing = outletCodes.filter((c) => !locByCode.has(c));
-  if (stillMissing.length > 0) {
+  // ---- Pass 1 — kiosks.outlet_code → kiosk_assignments.location_id ----------
+  // Only consult this for outlet codes whose row didn't already resolve via
+  // Pass 0 (avoid touching the kiosk_assignments table when the answer is
+  // already in hand). Active-assignment scoped + region-scoped through the
+  // location.
+  const outletCodesNeedingPass1 = Array.from(
+    new Set(
+      rows
+        .filter((r) => {
+          if (r.customerCode && locByCustomerCode.has(r.customerCode)) {
+            return false; // resolved by Pass 0
+          }
+          return true;
+        })
+        .map((r) => r.outletCode),
+    ),
+  );
+  const locByOutletCode = new Map<string, string>();
+  if (outletCodesNeedingPass1.length > 0) {
     const kioskRows = await db
       .select({
         outletCode: kiosks.outletCode,
@@ -116,7 +172,7 @@ export async function resolveDimensions(
       .innerJoin(locations, eq(locations.id, kioskAssignments.locationId))
       .where(
         and(
-          inArray(kiosks.outletCode, stillMissing),
+          inArray(kiosks.outletCode, outletCodesNeedingPass1),
           isNull(kioskAssignments.unassignedAt),
           eq(locations.primaryRegionId, regionId),
         ),
@@ -125,8 +181,8 @@ export async function resolveDimensions(
       outletCode: string | null;
       locationId: string;
     }>) {
-      if (r.outletCode && !locByCode.has(r.outletCode)) {
-        locByCode.set(r.outletCode, r.locationId);
+      if (r.outletCode && !locByOutletCode.has(r.outletCode)) {
+        locByOutletCode.set(r.outletCode, r.locationId);
       }
     }
   }
@@ -255,7 +311,15 @@ export async function resolveDimensions(
   return rows.map<ResolvedRow>((r) => {
     const errors: RowValidationError[] = [];
 
-    let locationId = locByCode.get(r.outletCode);
+    // Phase 07-06 — Pass 0 (customer_code) → Pass 1 (kiosk outlet_code) →
+    // sentinel fallback. The first non-undefined map hit wins.
+    let locationId: string | undefined;
+    if (r.customerCode) {
+      locationId = locByCustomerCode.get(r.customerCode);
+    }
+    if (!locationId) {
+      locationId = locByOutletCode.get(r.outletCode);
+    }
     if (!locationId) {
       if (opts.sentinelLocationId) {
         // Phase 7 fallback — unmatched outlet code is routed to the

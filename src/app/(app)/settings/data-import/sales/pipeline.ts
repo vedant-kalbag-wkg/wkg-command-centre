@@ -124,6 +124,10 @@ export async function _stageImportForActor(
   const dimensionInputs: DimensionInput[] = parsedRows.map((r) => ({
     rowNumber: r.rowNumber,
     outletCode: r.parsed.outletCode,
+    // Phase 07-06 — plumb customer_code through to the resolver. The CSV
+    // parser already extracts `Cust_cd` into `parsed.customerCode`; the
+    // resolver uses it as the Pass 0 lookup key against `locations.customer_code`.
+    customerCode: r.parsed.customerCode,
     productName: r.parsed.productName,
     netsuiteCode: r.parsed.netsuiteCode,
     categoryCode: r.parsed.categoryCode,
