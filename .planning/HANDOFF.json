@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-06T08:05:24Z",
+  "timestamp": "2026-05-06T15:06:02Z",
   "phase": "07",
   "phase_name": "data-foundation-rebuild",
   "phase_dir": ".planning/phases/07-data-foundation-rebuild",
   "plan": 5,
-  "task": 1,
-  "total_tasks": 5,
+  "task": 3,
+  "total_tasks": 3,
   "status": "paused",
   "completed_tasks": [
     {
@@ -26,52 +26,75 @@
       "id": "07-03",
       "name": "Location-merge UI + Undo + sentinel triage",
       "status": "done",
-      "commits": ["e8cb741", "659bcd2"],
-      "human_checkpoint_pending": "Task 4 — visual UI verify + live Vercel preview-deploy run; folded into Plan 07-05's preview-deploy provisioning"
+      "commits": ["e8cb741", "659bcd2"]
     },
     {
       "id": "07-04",
       "name": "Same-name guardrails + admin/health + audit-log nav + Phase 7 migration",
       "status": "done",
       "commits": ["96dfb12", "c80ff4e"],
-      "summary": ".planning/phases/07-data-foundation-rebuild/07-04-SUMMARY.md",
-      "human_checkpoint_pending": "Task 4 — visual UI verify + live Vercel preview-deploy run"
+      "summary": ".planning/phases/07-data-foundation-rebuild/07-04-SUMMARY.md"
+    },
+    {
+      "id": "07-05-1+2",
+      "name": "Plan 07-05 Task 1+2 — verify-data-reset.ts + UAT runbook",
+      "status": "done",
+      "commits": ["970bdb5", "e34fc7c"]
+    },
+    {
+      "id": "07-05-runbook-fixes",
+      "name": "Runbook reliability fixes — fee fallbacks + Phase 2 client swap",
+      "status": "done",
+      "commits": ["f3984df"],
+      "context": "Discovered while reseeding UAT with the prod-canonical Jan 2026 CSV (95103 rows). Without these fixes 47k of 95k rows reject at staging (Booking Fee/Cash Handling Fee with empty Code) and the Phase 2 commit dies on Neon's connection idle-kill mid-95k-row INSERT."
+    },
+    {
+      "id": "07-05-heathrow-rtl",
+      "name": "Heathrow Express SSMs board + Ready to Launch placeholder import",
+      "status": "done",
+      "commits": ["17f9ab1"],
+      "context": "Operator flagged board 1356657751 (Heathrow Express SSMs) was missing from import. Added new module `import-heathrow.ts` for the structurally-different board (outlet_code1 text vs mirror9, slash-separators, no Assets cross-references). RTL pre-deployment hotels imported as placeholder locations with TODO-<itemId> codes."
+    },
+    {
+      "id": "07-06",
+      "name": "customer_code as primary location identifier (Path B refactor)",
+      "status": "done",
+      "commits": [
+        "cdab726",
+        "dede2f3",
+        "5361810",
+        "57a74e1",
+        "103c874",
+        "2b29acc",
+        "a041d53",
+        "e763994",
+        "82a1950",
+        "5601cf1",
+        "bbb4fe1",
+        "ee18b53",
+        "36440cf",
+        "3347a72",
+        "ed729f2"
+      ],
+      "summary": ".planning/phases/07-data-foundation-rebuild/07-06-SUMMARY.md",
+      "context": "Discovered during 07-05 UAT iteration that locations.outlet_code conflates kiosk-level with hotel-level identity. Customer code = hotel/RPS account; outlet code = per-SSM. Migration 0040 dropped locations.outlet_code, added locations.monday_item_id, added partial unique on (region, customer_code). 364 locations now carry customer_code on UAT (UK 254 / ES 54 / DE 44 / AU 12). Sales corpus byte-perfect against goldens (95103 / £1,783,083.58)."
     }
   ],
   "remaining_tasks": [
     {
-      "id": "07-05",
-      "name": "Verify + UAT runbook + prod cutover (Plan E)",
-      "status": "in_progress",
-      "blocked_by": "07-06",
-      "scope_includes": [
-        "Provision Vercel preview deploy from gsd/phase-07-data-foundation-rebuild branch",
-        "Run live Playwright suite against preview alias (closes Task 4 of 07-03 + 07-04)",
-        "Apply migrations 0039 + 0040 to prod via drizzle-kit migrate (NOT raw SQL)",
-        "Run scripts/v2-wipe-and-reseed.ts --apply against prod (operator-gated)",
-        "Phase 7 verification suite (updated for new schema)",
-        "Document 50-kiosk Monday-side operator gap as known follow-up"
-      ],
-      "completed_in_plan": [
-        "scripts/verify-data-reset.ts (committed 970bdb5)",
-        "07-UAT-RUNBOOK.md (committed e34fc7c)",
-        "Live UAT-branch reseed against prod-canonical Jan 2026 corpus — 95103 / £1,783,083.58 byte-perfect"
-      ]
-    },
-    {
-      "id": "07-06",
-      "name": "customer_code as primary location identifier (full Path B refactor)",
+      "id": "07-05-Task-3",
+      "name": "Plan 07-05 Task 3 — execute UAT loop end-to-end (provision Vercel preview, run Playwright, operator gate, prod cutover)",
       "status": "not_started",
       "scope_includes": [
-        "Migration 0040: drop locations.outlet_code (preserve as notes), add locations.monday_item_id, add partial unique on (region, customer_code)",
-        "Update schema.ts to reflect new shape",
-        "Importer changes: populate customer_code from Monday mirror3__1 (hotel boards) and text4 (Heathrow); ON CONFLICT on monday_item_id",
-        "Sentinel + merge: re-key from outlet_code to customer_code or name",
-        "Dimension-resolver: add Pass 0 for customer_code lookup",
-        "Refactor ~30 analytics + settings call sites to use customer_code or kiosk-joined outlet_code",
-        "Update verify-data-reset for new schema; refresh goldens to new prod baseline"
-      ],
-      "rationale": "Domain model correction discovered during Plan 07-05 UAT — customer_code is the per-hotel-account identifier, outlet_code is per-kiosk. Schema's locations.outlet_code conflated the two. Re-scope authorized by user during UAT iteration."
+        "Provision Vercel preview deploy from gsd/phase-07-data-foundation-rebuild branch",
+        "Set BETTER_AUTH_URL to git-branch alias per CLAUDE.md (NOT a per-deploy hash)",
+        "Run live Playwright specs against the preview alias (tests/locations/{merge,same-name-banner,sentinel}.spec.ts) — these may need updates for the customer_code refactor",
+        "Resolve 4 same-name + customer_code conflicts via merge UI at /settings/duplicates (Clayton Hotel + 3 AU duplicates)",
+        "Apply migrations 0039 + 0040 to prod via drizzle-kit migrate",
+        "Run scripts/v2-wipe-and-reseed.ts --apply against prod (operator-gated; full corpus, no --max-csv cap; uses WKG_NETSUITE_VK.csv per the Jan 2026 prod-canonical seed)",
+        "Run scripts/verify-data-reset.ts against prod and capture 07-VERIFY-REPORT-prod.json",
+        "Document 50-kiosk Monday operator-data gap as known follow-up (hotels claim SSMs but no Assets entries) — see /tmp/ssm-gap.log"
+      ]
     },
     {
       "id": "phase-7-verify",
@@ -82,68 +105,85 @@
   "blockers": [],
   "human_actions_pending": [
     {
-      "action": "Visual UI verify against .planning/phases/07-data-foundation-rebuild/07-UI-SPEC.md (Surfaces 1-5)",
-      "context": "Task 4 of Plans 07-03 + 07-04 — operator must boot dev server, walk through merge dialog / sentinel triage / audit-log detail page / banner / admin/health page",
+      "action": "Resolve 4 same-name + customer_code conflicts via merge UI at /settings/duplicates",
+      "context": "Plan 07-06 logged 4 locations with [Phase 07-06] notes flagging real-data conflicts (Clayton Hotel + 3 AU duplicates where two distinct Monday hotels share an RPS account or normalised name). Merge UI uses bigram-Jaccard similarity, will surface them.",
       "blocking": false,
-      "deferred_to": "Plan 07-05's preview-deploy gate"
+      "urgency": "before-prod-cutover-but-not-immediately"
     },
     {
-      "action": "Run Playwright specs live against Vercel preview alias",
-      "context": "tests/locations/{merge,same-name-banner,sentinel}.spec.ts — 8 tests total. PLAYWRIGHT_BASE_URL must point at the gsd/phase-07-... branch alias",
-      "blocking": false,
-      "deferred_to": "Plan 07-05"
-    },
-    {
-      "action": "Operator decides on the 47 sentinel-attached outlet codes",
-      "context": "75% of GB Feb 2026 sales rows route to LOCATION_NEEDED because airport/transit codes (CB, UG, T2, T3, M3, M5 ...) are not on Monday Assets nor hotel boards. Plan C's merge UI is the operator path; or extend Monday with these outlets before reseed",
+      "action": "Resolve 50-kiosk Monday operator-data gap (hotels with Number of SSMs > Σ linked Assets)",
+      "context": "Most Leonardo Germany hotels + 8 RTL UK hotels + Spain stragglers have Number of SSMs set on Monday but no Assets-board entries. Pure operator data hygiene; code can't synthesise. Full list at /tmp/ssm-gap.log. Recommendation per earlier user decision: accept the gap, document in 07-05-SUMMARY.md.",
       "blocking": false
+    },
+    {
+      "action": "Provision Vercel preview deploy with BETTER_AUTH_URL = git-branch alias",
+      "context": "Per CLAUDE.md `Vercel preview env vars` — BETTER_AUTH_URL must be the git-branch alias (https://wkg-command-centre-git-gsd-phase-07-data-foundation-rebuild-vedant-kalbag-wkgs-projects.vercel.app), NOT a per-deploy hash. Otherwise every redeploy 403s.",
+      "blocking": true,
+      "urgency": "blocks-Task-3-Step-4-Playwright"
+    },
+    {
+      "action": "Operator decision on prod cutover after UAT report",
+      "context": "Once Playwright is green and verify-data-reset on UAT shows the new schema is correct, present the synthesised summary and await operator's `go` / `no-go` / `re-investigate`. Hard `no-go` conditions in 07-UAT-RUNBOOK.md.",
+      "blocking": true,
+      "urgency": "blocks-Task-3-Step-7-prod-mutation"
     }
   ],
   "decisions": [
     {
-      "decision": "Two-phase tx (structural reseed atomic, per-CSV sales) instead of one big tx",
-      "rationale": "Neon's 512MB project storage cap killed single-tx full reseed mid-COMMIT",
-      "phase": "07-02"
+      "decision": "Use WKG_NETSUITE_VK.csv (the prod-canonical Jan 2026 seed, 95103 rows) as the UAT and prod corpus instead of the alphabetically-first Feb 2026 CSV that was being picked",
+      "rationale": "User confirmed this was the EXACT file used to seed prod originally. Lines = 95104 (95103 data + header) which exactly matches GOLDEN_SALES_RECORDS=95103. Sales gross revenue against this corpus is £1,783,083.58, exact match to GOLDEN_TOTAL_REVENUE_GROSS_GBP.",
+      "phase": "07-05"
     },
     {
-      "decision": "GOLDEN_TOTAL_REVENUE_GROSS_GBP (decimal pounds), not _PENCE",
-      "rationale": "Schema is numeric(12,2) decimal pounds per Plan A snapshot",
-      "phase": "07-01"
+      "decision": "Pre-seed canonical fee fallbacks (Booking Fee→9991, Cash Handling Fee→9992) inside Phase 1's atomic tx",
+      "rationale": "Without these, 47k of 95k sales rows reject at staging because the upstream NetSuite export elides Code on WKG-collected fee rows. Mappings sourced from src/lib/csv/sales-csv.ts:180-183 and src/lib/commission/processor.ts:109.",
+      "phase": "07-05"
     },
     {
-      "decision": "Drop kiosk synthesis from import-hotel-locations.ts; import kiosks separately from Monday Assets board",
-      "rationale": "Mirror9 fan-out from hotel boards is a subset of NetSuite outlet codes; Monday Assets (board 1426737864, 488 items) is the canonical per-kiosk SoT",
-      "phase": "07-02"
+      "decision": "Phase 1 → Phase 2 connection swap in scripts/v2-wipe-and-reseed.ts",
+      "rationale": "Single PoolClient held for ~6 min during Phase 1's Monday GraphQL fan-out gets killed mid-Phase-2 95k-row INSERT by Neon's serverless connection idle/duration limits. Swap to a fresh client after Phase 1 commits, re-acquire advisory lock on the new session.",
+      "phase": "07-05"
     },
     {
-      "decision": "Group-title → region resolution in hotel importer (vs board → region)",
-      "rationale": "Hotel boards partition items by region inside groups (\"Live: UK Hotels\", etc.); only AU board had unambiguous board-level region",
-      "phase": "07-02"
+      "decision": "Heathrow Express SSMs board (1356657751) imported via dedicated runHeathrowImport, not generalised into runHotelLocationImport",
+      "rationale": "Structurally different shape: outlet_code1 (text, slash-separated) instead of mirror9 (mirror, comma-separated); items mix transit venues with hotels; zero Assets cross-references so kiosks must be synthesised inline. Separation keeps both importers focused.",
+      "phase": "07-05"
     },
     {
-      "decision": "Lock keys: 738294105 (Azure ETL), 738294106 (Monday import), 738294107 (wipe runbook), 738294108 (location merge UI forward + undo via xact-scoped variant)",
-      "rationale": "Distinct keys prevent runbook ↔ ETL ↔ merge-UI collisions; same key for forward+undo intentionally serialises overlapping operations",
-      "phase": "07-02 / 07-03"
+      "decision": "Ready to Launch group hotels imported as placeholder locations (no kiosks, NULL customer_code, monday_item_id set)",
+      "rationale": "Operator decision: import them as locations now even without outlet codes / Assets entries; kiosks attach when actual install happens. Region resolved per-item from the LocationValue's trailing country token (e.g. 'UK', 'Germany') since 'Ready to Launch' as a group title doesn't resolve.",
+      "phase": "07-05"
     },
     {
-      "decision": "Hardcoded LOCATION_FIELD_RESOLUTION_ALLOWLIST in applyLocationMerge",
-      "rationale": "Legacy mergeLocations was caller-trusted; the new primitive is reachable from a server action and shouldn't accept arbitrary Record<string, unknown> field overrides (would let a malicious client mutate primary_region_id, archived_at, etc.)",
-      "phase": "07-03 follow-up (commit 659bcd2)"
+      "decision": "Path B (full restructure) — drop locations.outlet_code entirely; customer_code is the canonical hotel-account identifier",
+      "rationale": "Domain model correction: outlet_code is per-kiosk (used in bookings); customer_code is per-hotel (RPS account number, mirrored from Assets). 364 of 380 locations have customer_code populated on UAT after Plan 07-06; placeholder rows correctly carry NULL. 4 same-name + customer_code conflicts deferred to operator merge UI (similarity-check workflow).",
+      "phase": "07-06"
     },
     {
-      "decision": "Single hand-authored migration 0039 capturing all 3 Phase 7 schema deltas",
-      "rationale": "drizzle-kit generate prompts interactively for column-rename guesses because snapshots 0018-0021 + 0024-0038 are missing from migrations/meta/. Hand-authored migration is IF NOT EXISTS-idempotent across all 3 statements",
-      "phase": "07-04"
+      "decision": "locations.monday_item_id added as universal importer idempotency key",
+      "rationale": "Replaces the (region, outlet_code) ON CONFLICT target. Every Monday item has a stable id; works for hotels with customer_code AND placeholders without. Partial unique index (WHERE monday_item_id IS NOT NULL) allows historical legacy rows to coexist.",
+      "phase": "07-06"
     },
     {
-      "decision": "Sentinel normalised_name fixed from literal 'LOCATION_NEEDED' to normaliseName(LOCATION_NEEDED_NAME)='locationneeded'",
-      "rationale": "Detection helper excludes 'locationneeded'; the runbook was producing the literal-name form which would have surfaced the sentinel as a same-name candidate",
-      "phase": "07-04"
+      "decision": "Sentinel re-keyed from outlet_code='__LOCATION_NEEDED__' to (name='LOCATION_NEEDED', region=GLOBAL)",
+      "rationale": "outlet_code dropped from locations table; sentinel must use a still-existing key. The GLOBAL region is unambiguous (only one sentinel row per DB).",
+      "phase": "07-06"
     }
   ],
   "uncommitted_files": [
-    "tasks/handoff-2026-04-27-pr-28-open.md (UNRELATED, pre-existing untracked file from before Phase 7 work; not part of Phase 7)"
+    "scripts/diagnose-customer-codes.ts (operator-driven diagnostic; out of plan scope)",
+    "scripts/diagnose-heathrow-board.ts (operator-driven diagnostic)",
+    "scripts/diagnose-heathrow-vs-assets.ts (operator-driven diagnostic)",
+    "scripts/diagnose-mirror9-source.ts (operator-driven diagnostic)",
+    "scripts/diagnose-monday-boards.ts (operator-driven diagnostic)",
+    "scripts/diagnose-monday-columns.ts (operator-driven diagnostic)",
+    "scripts/diagnose-monday-ssm-counts.ts (operator-driven diagnostic)",
+    "scripts/diagnose-new-board.ts (operator-driven diagnostic)",
+    "scripts/diagnose-rtl-region.ts (operator-driven diagnostic)",
+    "scripts/diagnose-ssm-gap.ts (operator-driven diagnostic; produced /tmp/ssm-gap.log)",
+    "scripts/diagnose-ssm-groups-board.ts (operator-driven diagnostic)",
+    "tasks/handoff-2026-04-27-pr-28-open.md (UNRELATED, pre-existing untracked file from before Phase 7 work)"
   ],
-  "next_action": "Spawn an executor subagent for Plan 07-05 (Plan E) per the user's preference for subagent-driven work. Plan 07-05 covers verification suite + UAT runbook + prod cutover. The agent provisions a Vercel preview deploy from the branch (which closes Task 4 of 07-03 + 07-04 by enabling live Playwright runs), applies migration 0039 to prod via drizzle-kit migrate, then runs scripts/v2-wipe-and-reseed.ts --apply against prod under operator gate.",
-  "context_notes": "Working tree is clean except for an unrelated tasks/handoff-2026-04-27-pr-28-open.md file that's been pending in the worktree since before Phase 7 work started. UAT branch (Neon: phase-07-uat) has the structural reseed + Feb 2026 sales committed; --apply --max-csv 1 was the validation. Migration 0039 is committed and verified live by 6/6 testcontainers integration tests applying it cleanly. Per CLAUDE.md the prod admin password rotation procedure may be needed before the prod cutover; the prod admin account is vedant.kalbag@weknowgroup.com per auto-memory. Active git branch: gsd/phase-07-data-foundation-rebuild. 6 commits on this branch beyond the docs base, all green (tsc, vitest 575/575, integration 6/6, playwright list 8/8)."
+  "next_action": "Drive Plan 07-05 Task 3 (UAT loop). Step 4 (Vercel preview Playwright) is the next concrete action: provision the preview deploy with BETTER_AUTH_URL pinned to the git-branch alias, then run tests/locations/{merge,same-name-banner,sentinel}.spec.ts. The specs may need updates for the customer_code refactor — they were written before Plan 07-06 dropped locations.outlet_code. After Playwright is green and 4 same-name conflicts resolved via the merge UI, present the synthesised summary to the operator for prod-cutover authorisation.",
+  "context_notes": "Branch gsd/phase-07-data-foundation-rebuild has 21 commits beyond the docs base. tsc clean, vitest 710/710 pass. UAT Neon branch has migrations 0039 + 0040 applied, all 364 customer_codes populated, sales corpus byte-perfect (95103 / £1,783,083.58). Phase 7 effectively shipped 5 plans across 6 plan-files (07-01 through 07-06; 07-05 deferred behind the customer_code refactor). The plan to execute is 07-05 Task 3 — provision the Vercel preview, run live Playwright, then operator gate before any prod write."
 }
