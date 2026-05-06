@@ -146,6 +146,20 @@ function mapGroupTitleToRegionCode(title: string): string | null {
 // prefixes map 1:1 to the corresponding region code. The middle source
 // segment is mixed-case ("NetS") so we accept any letters there — only the
 // region prefix and the month-name shape are strict.
+// Canonical NetSuite fee fallbacks. The historical prod sales corpus ships
+// rows with empty `Code` for `Booking Fee` and `Cash Handling Fee` (the
+// upstream NetSuite export elides the SKU on WKG-collected fee rows). The
+// dimension resolver requires Code unless the parser finds a fallback in
+// `product_code_fallbacks`. These two mappings are the source-of-truth for
+// the WKG fee codes (see `src/lib/csv/sales-csv.ts` line 180-183 + the 9991
+// / 9992 references across `commission/processor.ts`, `analytics/pivot-engine.ts`).
+// Without seeding these into product_code_fallbacks the v2 reseed rejects
+// ~50% of the prod-canonical Jan2026 corpus (47k of 95k rows) at staging.
+const CANONICAL_FEE_FALLBACKS: Array<{ productName: string; netsuiteCode: string }> = [
+  { productName: "Booking Fee", netsuiteCode: "9991" },
+  { productName: "Cash Handling Fee", netsuiteCode: "9992" },
+];
+
 const SEED_FILENAME_RE =
   /^([A-Z]{2})_[A-Za-z_]+_([A-Z][a-z]{2})(\d{4})\.csv$/;
 const MONTH_NAME_TO_NUM: Record<string, number> = {
@@ -199,7 +213,12 @@ async function main(): Promise<void> {
   console.log(`Lock key: ${LOCK_KEY}`);
 
   const pool = new Pool({ connectionString: url });
-  const client: PoolClient = await pool.connect();
+  // `let` not `const`: Phase 2 swaps to a fresh PoolClient post-Phase-1-COMMIT
+  // because Neon kills the long-held connection mid-95k-row INSERT (Phase 1's
+  // Monday GraphQL fan-out can hold this client for 5-10 min, and Phase 2's
+  // chunked sales commit doubles that — net effect is "Connection terminated
+  // unexpectedly" partway through the transaction. Swap point: line ~424.
+  let client: PoolClient = await pool.connect();
 
   // Disable Postgres' idle-in-transaction killer for this session — Monday
   // GraphQL roundtrips inside the transaction can exceed the default 5-min
@@ -216,8 +235,9 @@ async function main(): Promise<void> {
   // Cast through `unknown` because the prod app type uses `postgres-js` and
   // the runbook uses `node-postgres`; the call surface they exercise is
   // structurally compatible (same Drizzle query API).
+  // `let` not `const`: rebound to the fresh Phase 2 client after the swap.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const drizzleDb = drizzle(client) as unknown as any;
+  let drizzleDb = drizzle(client) as unknown as any;
 
   let lockAcquired = false;
   let phase1Committed = false;
@@ -386,6 +406,24 @@ async function main(): Promise<void> {
         `(took ${tierResult.durationMs.toFixed(0)}ms)`,
     );
 
+    // ── STEP 5b: Canonical fee fallbacks ───────────────────────────────────
+    // Insert known WKG fee mappings into product_code_fallbacks BEFORE Phase
+    // 2's sales staging consults them. ON CONFLICT keeps re-runs idempotent.
+    // Inside Phase 1's tx so it lands atomically with the structural reseed.
+    console.log(`\n--- STEP 5b: Canonical fee fallbacks ---`);
+    for (const f of CANONICAL_FEE_FALLBACKS) {
+      await client.query(
+        `INSERT INTO product_code_fallbacks (product_name, netsuite_code)
+         VALUES ($1, $2)
+         ON CONFLICT (product_name) DO UPDATE SET netsuite_code = EXCLUDED.netsuite_code, updated_at = NOW()`,
+        [f.productName, f.netsuiteCode],
+      );
+    }
+    console.log(
+      `  Seeded ${CANONICAL_FEE_FALLBACKS.length} canonical fee fallback(s): ` +
+        CANONICAL_FEE_FALLBACKS.map((f) => `${f.productName}→${f.netsuiteCode}`).join(", "),
+    );
+
     // ── STEP 6: Audit-log reseed entry (Phase 1) ────────────────────────────
     console.log(`\n--- STEP 6: Audit log (phase 1) ---`);
     await client.query(
@@ -419,6 +457,35 @@ async function main(): Promise<void> {
       await client.query("COMMIT");
       phase1Committed = true;
       console.log("\nPHASE 1 COMMIT — structural reseed applied.");
+
+      // ── Phase 1 → Phase 2 connection swap ─────────────────────────────────
+      // The Phase 1 client has been alive ~5-10 min during Monday GraphQL
+      // fan-out + commission-tier import. Neon's serverless layer kills
+      // long-held connections mid-Phase-2 commit (95k-row chunked INSERT).
+      // Swap to a fresh client and re-acquire the advisory lock on it.
+      // Lock continuity: pg_advisory_lock is session-scoped; releasing on
+      // the old session and acquiring on the new is atomic-enough for our
+      // single-operator runbook (no contention expected during the swap).
+      console.log("\n--- Phase 2 setup: swapping to fresh DB connection ---");
+      try {
+        await client.query(`SELECT pg_advisory_unlock($1)`, [LOCK_KEY]);
+      } catch { /* connection may already be torn down */ }
+      client.release();
+
+      client = await pool.connect();
+      await client.query(`SET idle_in_transaction_session_timeout = 0`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      drizzleDb = drizzle(client) as unknown as any;
+      const reLock = await client.query<{ acquired: boolean }>(
+        `SELECT pg_try_advisory_lock($1)::boolean AS acquired`,
+        [LOCK_KEY],
+      );
+      if (reLock.rows[0]?.acquired !== true) {
+        throw new Error(
+          "Could not re-acquire advisory lock for Phase 2 — another runbook ran in the swap window?",
+        );
+      }
+      console.log("  Fresh client checked out; advisory lock re-acquired.");
     } else {
       await client.query("ROLLBACK");
       console.log("\nPHASE 1 ROLLBACK — dry-run, structural reseed not committed.");
@@ -446,6 +513,21 @@ async function main(): Promise<void> {
   let salesFilesCommitted = 0;
   if (APPLY) {
     console.log(`\n=== PHASE 2: sales ETL (per-CSV transactions) ===`);
+
+    // Build the fee-code fallback Map from the freshly-committed
+    // product_code_fallbacks table (STEP 5b seeded the canonical entries
+    // inside Phase 1's atomic tx). This mirrors the prod operator workflow
+    // — fallbacks must be set BEFORE staging or rows with empty `Code` for
+    // known fee names get rejected wholesale.
+    const fallbackRows = await client.query<{ product_name: string; netsuite_code: string }>(
+      `SELECT product_name, netsuite_code FROM product_code_fallbacks`,
+    );
+    const feeCodeFallbacks = new Map<string, string>(
+      fallbackRows.rows.map((r) => [r.product_name, r.netsuite_code]),
+    );
+    console.log(
+      `  Loaded ${feeCodeFallbacks.size} fee-code fallback(s) for staging.`,
+    );
 
     const seedDir = path.resolve(process.cwd(), "seed_data");
     const allSeedFiles = (await readdir(seedDir))
@@ -478,7 +560,7 @@ async function main(): Promise<void> {
       const source = new LocalFileSource({ path: path.join(seedDir, filename) });
       const stage = await _stageImportForActor(source, RUNBOOK_ACTOR, drizzleDb, {
         regionId,
-        feeCodeFallbacks: new Map(), // wipe drops product_code_fallbacks; rebuild empty
+        feeCodeFallbacks,
         sentinelLocationId: sentinelId,
       });
       console.log(
