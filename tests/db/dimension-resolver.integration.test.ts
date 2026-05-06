@@ -82,9 +82,15 @@ describe("resolveDimensions (integration)", () => {
         customerCode: opts.customerCode ?? null,
       })
       .returning({ id: locations.id });
+    // kioskId must be globally unique. Compose from name + outletCode so
+    // tests can seed the same outletCode under multiple regions without
+    // colliding on the kiosks_kiosk_id_unique constraint.
     const [kiosk] = await ctx.db
       .insert(kiosks)
-      .values({ kioskId: `KSK-${opts.outletCode}`, outletCode: opts.outletCode })
+      .values({
+        kioskId: `KSK-${opts.name.replace(/\s+/g, "_")}-${opts.outletCode}`,
+        outletCode: opts.outletCode,
+      })
       .returning({ id: kiosks.id });
     await ctx.db.insert(kioskAssignments).values({
       kioskId: kiosk.id,

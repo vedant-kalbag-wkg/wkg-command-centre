@@ -486,6 +486,9 @@ export async function runMondayImport(
       })
       .onConflictDoNothing({
         target: locations.mondayItemId,
+        // Phase 07-06 — partial unique on (monday_item_id) requires the
+        // ON CONFLICT predicate to match for arbiter inference.
+        where: sql`monday_item_id IS NOT NULL`,
       })
       .returning({ id: locations.id });
 

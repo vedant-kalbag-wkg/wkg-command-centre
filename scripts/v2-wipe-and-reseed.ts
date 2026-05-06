@@ -53,7 +53,7 @@ import { normaliseName } from "@/lib/normalise";
 import {
   LOCATION_NEEDED_ADDRESS,
   LOCATION_NEEDED_NAME,
-  LOCATION_NEEDED_OUTLET_CODE,
+  SENTINEL_REGION_CODE,
 } from "@/lib/sentinel";
 
 const APPLY = process.argv.includes("--apply");
@@ -303,33 +303,51 @@ async function main(): Promise<void> {
 
     // ── STEP 3: Ensure LOCATION_NEEDED sentinel ────────────────────────────
     console.log(`\n--- STEP 3: Ensure LOCATION_NEEDED sentinel ---`);
-    // Plan 07-04 fix: sentinel's `normalised_name` MUST be the result of
-    // normaliseName(LOCATION_NEEDED_NAME) — i.e. "locationneeded" — so the
-    // same-name detection helper can exclude it via the canonical
-    // SENTINEL_NORMALISED constant. The previous form passed `$1` (the
-    // literal "LOCATION_NEEDED" with underscore) which broke the contract:
-    // the helper would never see the sentinel, but any row inserted with
-    // `normaliseName(name)` and the same shape would have a different
-    // value and slip past the exclusion.
-    await client.query(
-      `INSERT INTO locations (name, outlet_code, address, primary_region_id, normalised_name)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (primary_region_id, outlet_code) DO NOTHING`,
-      [
-        LOCATION_NEEDED_NAME,
-        LOCATION_NEEDED_OUTLET_CODE,
-        LOCATION_NEEDED_ADDRESS,
-        globalRegionId,
-        normaliseName(LOCATION_NEEDED_NAME),
-      ],
+    // Phase 07-06 — sentinel keying changed. The locations.outlet_code
+    // column is gone (migration 0040); the sentinel is now identified by
+    // (name='LOCATION_NEEDED', primary_region_id=GLOBAL). The active-row
+    // partial unique on (region, customer_code) WHERE NOT NULL doesn't
+    // touch this row (customer_code is NULL on the sentinel), and the
+    // (normalised_name) partial unique excludes the sentinel by virtue of
+    // the same-name detection helper's explicit "locationneeded" exclusion.
+    //
+    // We still set normalised_name = normaliseName(LOCATION_NEEDED_NAME) =
+    // "locationneeded" so the helper's exclusion clause keeps working;
+    // the sentinel is the only row that uses this exact string.
+    //
+    // INSERT idempotency: there's no DB-level unique that protects this
+    // shape (the GLOBAL region's normalised_name='locationneeded' would
+    // collide on the active partial unique if a non-sentinel row sneaked
+    // in with the same normalised name, but that never happens — same-name
+    // detection blocks it). So we use a SELECT-then-INSERT-if-missing
+    // pattern instead of ON CONFLICT.
+    const existingSentinel = await client.query<{ id: string }>(
+      `SELECT id FROM locations
+       WHERE name = $1 AND primary_region_id = $2 LIMIT 1`,
+      [LOCATION_NEEDED_NAME, globalRegionId],
     );
+    if (existingSentinel.rows.length === 0) {
+      await client.query(
+        `INSERT INTO locations (name, address, primary_region_id, normalised_name)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          LOCATION_NEEDED_NAME,
+          LOCATION_NEEDED_ADDRESS,
+          globalRegionId,
+          normaliseName(LOCATION_NEEDED_NAME),
+        ],
+      );
+    }
     const sentinelRow = await client.query<{ id: string }>(
-      `SELECT id FROM locations WHERE outlet_code = $1 AND name = $2 LIMIT 1`,
-      [LOCATION_NEEDED_OUTLET_CODE, LOCATION_NEEDED_NAME],
+      `SELECT id FROM locations
+       WHERE name = $1 AND primary_region_id = $2 LIMIT 1`,
+      [LOCATION_NEEDED_NAME, globalRegionId],
     );
     sentinelId = sentinelRow.rows[0]?.id;
     if (!sentinelId) throw new Error("Sentinel ensure failed — no row found");
-    console.log(`  Sentinel location id = ${sentinelId}`);
+    console.log(
+      `  Sentinel location id = ${sentinelId} (name=${LOCATION_NEEDED_NAME}, region=${SENTINEL_REGION_CODE})`,
+    );
 
     // ── STEP 4: Hotel-location import (Monday → locations) ─────────────────
     // Resolver hoisted so STEP 4c (Heathrow import) can reuse it. Same map,
@@ -354,9 +372,9 @@ async function main(): Promise<void> {
     console.log(
       `  Hotels: inserted=${hotelResult.locationsInserted} ` +
         `skipped-existing=${hotelResult.locationsSkippedExisting} ` +
-        `skipped-no-outlet=${hotelResult.hotelsSkippedNoOutletCode} ` +
         `skipped-no-region=${hotelResult.hotelsSkippedNoRegion} ` +
         `placeholder=${hotelResult.placeholderLocationsCreated} ` +
+        `customer-codes-populated=${hotelResult.customerCodesPopulated} ` +
         `hotelIdMap=${hotelResult.hotelMondayIdToLocationId.size} ` +
         `(took ${hotelResult.durationMs}ms)`,
     );
@@ -420,6 +438,7 @@ async function main(): Promise<void> {
         `placeholder-locations=${heathrowResult.placeholderLocationsCreated} ` +
         `kiosks-inserted=${heathrowResult.kiosksInserted} ` +
         `assignments=${heathrowResult.assignmentsInserted} ` +
+        `customer-codes-populated=${heathrowResult.customerCodesPopulated} ` +
         `skipped-no-outlet=${heathrowResult.itemsSkippedNoOutlet} ` +
         `skipped-no-region=${heathrowResult.itemsSkippedNoRegion} ` +
         `(took ${heathrowResult.durationMs}ms)`,

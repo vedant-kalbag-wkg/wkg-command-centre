@@ -28,7 +28,7 @@
 // Mirrors the structural shape of `src/lib/monday/import-location-products.ts`
 // (deps injection, logger, retry-aware cursor pagination via the shared client).
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import type { db as defaultDb } from "@/db";
 import { locations } from "@/db/schema";
@@ -250,6 +250,12 @@ export async function runHotelLocationImport(
           })
           .onConflictDoNothing({
             target: locations.mondayItemId,
+            // Phase 07-06 — `monday_item_id` has a PARTIAL unique index
+            // (WHERE monday_item_id IS NOT NULL). Postgres requires the
+            // ON CONFLICT predicate to match the partial index expression
+            // for the planner to infer the right arbiter index. Drizzle's
+            // `onConflictDoNothing.where` corresponds to this index_predicate.
+            where: sql`monday_item_id IS NOT NULL`,
           })
           .returning({ id: locations.id });
 

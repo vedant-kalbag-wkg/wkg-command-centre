@@ -102,12 +102,11 @@ describe("runMondayImport dry-run same-name warning (Plan 07-04 Task 1)", () => 
     // Seed an active location so the importer's same-name detector has
     // something to collide against. `normalised_name` lowercase + spaces only.
     await ctx.pool.query(
-      `INSERT INTO locations (name, normalised_name, outlet_code, primary_region_id)
-       VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO locations (name, normalised_name, primary_region_id)
+       VALUES ($1, $2, $3)`,
       [
         "Existing Same-Name Hotel",
         "existing samename hotel",
-        "DRY-RUN-EXIST",
         ukRegionId,
       ],
     );

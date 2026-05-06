@@ -23,7 +23,7 @@
 // Region resolution: per-item via the LocationValue's trailing country token,
 // same fallback used by runHotelLocationImport for the "Ready to Launch" group.
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type { db as defaultDb } from "@/db";
 import { kioskAssignments, kiosks, locations } from "@/db/schema";
@@ -197,6 +197,9 @@ export async function runHeathrowImport(
         })
         .onConflictDoNothing({
           target: locations.mondayItemId,
+          // Phase 07-06 — partial unique on (monday_item_id) requires the
+          // ON CONFLICT predicate to match for arbiter inference.
+          where: sql`monday_item_id IS NOT NULL`,
         })
         .returning({ id: locations.id });
 

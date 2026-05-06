@@ -40,21 +40,20 @@ describe("locations same-name partial unique index (Plan 07-04 Task 1)", () => {
   it("rejects a second active row with the same normalised_name (unique violation 23505)", async () => {
     // Seed one active row.
     await ctx.pool.query(
-      `INSERT INTO locations (name, normalised_name, outlet_code, primary_region_id)
-       VALUES ($1, $2, $3, $4)`,
-      ["Residence Inn Kensington", "residence inn kensington", "RIK-1", ukRegionId],
+      `INSERT INTO locations (name, normalised_name, primary_region_id)
+       VALUES ($1, $2, $3)`,
+      ["Residence Inn Kensington", "residence inn kensington", ukRegionId],
     );
 
     // The second insert MUST raise unique_violation (Postgres SQLSTATE 23505).
     let caught: { code?: string; message?: string } | undefined;
     try {
       await ctx.pool.query(
-        `INSERT INTO locations (name, normalised_name, outlet_code, primary_region_id)
-         VALUES ($1, $2, $3, $4)`,
+        `INSERT INTO locations (name, normalised_name, primary_region_id)
+         VALUES ($1, $2, $3)`,
         [
           "Residence Inn — Kensington",
           "residence inn kensington",
-          "RIK-2",
           ukRegionId,
         ],
       );
@@ -72,28 +71,27 @@ describe("locations same-name partial unique index (Plan 07-04 Task 1)", () => {
   it("allows an archived row to share normalised_name with an active one (partial predicate)", async () => {
     // Active row.
     await ctx.pool.query(
-      `INSERT INTO locations (name, normalised_name, outlet_code, primary_region_id)
-       VALUES ($1, $2, $3, $4)`,
-      ["Hilton Newcastle", "hilton newcastle", "HNC-1", ukRegionId],
+      `INSERT INTO locations (name, normalised_name, primary_region_id)
+       VALUES ($1, $2, $3)`,
+      ["Hilton Newcastle", "hilton newcastle", ukRegionId],
     );
     // Same normalised name but archived — should succeed.
     const archived = await ctx.pool.query<{ id: string }>(
-      `INSERT INTO locations (name, normalised_name, outlet_code, primary_region_id, archived_at)
-       VALUES ($1, $2, $3, $4, NOW())
+      `INSERT INTO locations (name, normalised_name, primary_region_id, archived_at)
+       VALUES ($1, $2, $3, NOW())
        RETURNING id`,
-      ["Hilton Newcastle (legacy)", "hilton newcastle", "HNC-2", ukRegionId],
+      ["Hilton Newcastle (legacy)", "hilton newcastle", ukRegionId],
     );
     expect(archived.rows[0]?.id).toBeDefined();
 
     // And: a brand new active row with a fresh normalised name — also succeeds.
     const fresh = await ctx.pool.query<{ id: string }>(
-      `INSERT INTO locations (name, normalised_name, outlet_code, primary_region_id)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO locations (name, normalised_name, primary_region_id)
+       VALUES ($1, $2, $3)
        RETURNING id`,
       [
         "Hilton Newcastle Quayside",
         "hilton newcastle quayside",
-        "HNC-3",
         ukRegionId,
       ],
     );

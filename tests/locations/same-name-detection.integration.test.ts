@@ -55,14 +55,14 @@ describe("detectSameNameGroups (Plan 07-04 Task 2)", () => {
     );
     try {
       await ctx.pool.query(
-        `INSERT INTO locations (name, normalised_name, outlet_code, primary_region_id, archived_at)
+        `INSERT INTO locations (name, normalised_name, primary_region_id, archived_at)
          VALUES
-           ('Hilton Newcastle', 'hilton newcastle', 'HN-A', $1, NULL),
-           ('Hilton — Newcastle', 'hilton newcastle', 'HN-B', $1, NULL),
-           ('HILTON NEWCASTLE', 'hilton newcastle', 'HN-C', $1, NULL),
-           ('LOCATION_NEEDED', 'locationneeded', '__LOCATION_NEEDED__', $1, NULL),
-           ('Singleton Hotel', 'singleton hotel', 'SH-A', $1, NULL),
-           ('Archived Twin', 'hilton newcastle', 'HN-OLD', $1, NOW())`,
+           ('Hilton Newcastle', 'hilton newcastle', $1, NULL),
+           ('Hilton — Newcastle', 'hilton newcastle', $1, NULL),
+           ('HILTON NEWCASTLE', 'hilton newcastle', $1, NULL),
+           ('LOCATION_NEEDED', 'locationneeded', $1, NULL),
+           ('Singleton Hotel', 'singleton hotel', $1, NULL),
+           ('Archived Twin', 'hilton newcastle', $1, NOW())`,
         [ukRegionId],
       );
 
@@ -90,11 +90,11 @@ describe("detectSameNameGroups (Plan 07-04 Task 2)", () => {
   it("returns [] on a table with only the sentinel + singletons (no real dupes)", async () => {
     await ctx.pool.query(`DELETE FROM locations`);
     await ctx.pool.query(
-      `INSERT INTO locations (name, normalised_name, outlet_code, primary_region_id)
+      `INSERT INTO locations (name, normalised_name, primary_region_id)
        VALUES
-         ('LOCATION_NEEDED', 'locationneeded', '__LOCATION_NEEDED__', $1),
-         ('Some Hotel', 'some hotel', 'SH-1', $1),
-         ('Other Hotel', 'other hotel', 'OH-1', $1)`,
+         ('LOCATION_NEEDED', 'locationneeded', $1),
+         ('Some Hotel', 'some hotel', $1),
+         ('Other Hotel', 'other hotel', $1)`,
       [ukRegionId],
     );
 
