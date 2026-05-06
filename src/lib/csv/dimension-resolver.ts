@@ -1,5 +1,11 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { locations, products, providers as providersTable } from "@/db/schema";
+import {
+  kioskAssignments,
+  kiosks,
+  locations,
+  products,
+  providers as providersTable,
+} from "@/db/schema";
 import type { RowValidationError } from "./sales-csv";
 
 // Drizzle DB shape — kept loose so both the prod postgres-js-backed singleton
@@ -22,7 +28,17 @@ export type DimensionInput = {
   providerName: string | null;
 };
 
-export type ResolveOptions = { regionId: string };
+export type ResolveOptions = {
+  regionId: string;
+  /**
+   * Phase 7 (D-06 / DATA-04): when set, unknown outlet codes resolve to this
+   * sentinel `locations.id` instead of producing a validation error. The
+   * caller is responsible for ensuring the sentinel exists and for tracking
+   * which outlet codes hit the fallback (so they can be surfaced via the
+   * Plan C merge UI). Omitted/undefined keeps the existing strict behaviour.
+   */
+  sentinelLocationId?: string;
+};
 
 export type ResolvedRow =
   | {
@@ -82,6 +98,37 @@ export async function resolveDimensions(
   const locByCode = new Map<string, string>();
   for (const r of locRows as Array<{ id: string; outletCode: string }>) {
     locByCode.set(r.outletCode, r.id);
+  }
+
+  // Fallback path: per the v2 data-model rule "outlet_code is per-kiosk", a
+  // sales row's outlet code may match a kiosk rather than a location. Resolve
+  // those via kiosks.outlet_code → kiosk_assignments.location_id (currently
+  // active assignment, scoped to the active region).
+  const stillMissing = outletCodes.filter((c) => !locByCode.has(c));
+  if (stillMissing.length > 0) {
+    const kioskRows = await db
+      .select({
+        outletCode: kiosks.outletCode,
+        locationId: kioskAssignments.locationId,
+      })
+      .from(kiosks)
+      .innerJoin(kioskAssignments, eq(kioskAssignments.kioskId, kiosks.id))
+      .innerJoin(locations, eq(locations.id, kioskAssignments.locationId))
+      .where(
+        and(
+          inArray(kiosks.outletCode, stillMissing),
+          isNull(kioskAssignments.unassignedAt),
+          eq(locations.primaryRegionId, regionId),
+        ),
+      );
+    for (const r of kioskRows as Array<{
+      outletCode: string | null;
+      locationId: string;
+    }>) {
+      if (r.outletCode && !locByCode.has(r.outletCode)) {
+        locByCode.set(r.outletCode, r.locationId);
+      }
+    }
   }
 
   // ---- Product resolution ----------------------------------------------------
@@ -208,12 +255,18 @@ export async function resolveDimensions(
   return rows.map<ResolvedRow>((r) => {
     const errors: RowValidationError[] = [];
 
-    const locationId = locByCode.get(r.outletCode);
+    let locationId = locByCode.get(r.outletCode);
     if (!locationId) {
-      errors.push({
-        field: "outletCode",
-        message: `Unknown outletCode '${r.outletCode}' for region ${regionId}`,
-      });
+      if (opts.sentinelLocationId) {
+        // Phase 7 fallback — unmatched outlet code is routed to the
+        // LOCATION_NEEDED sentinel for operator triage via Plan C.
+        locationId = opts.sentinelLocationId;
+      } else {
+        errors.push({
+          field: "outletCode",
+          message: `Unknown outletCode '${r.outletCode}' for region ${regionId}`,
+        });
+      }
     }
 
     const productId = prodByCode.get(r.netsuiteCode) ?? prodByName.get(r.productName);

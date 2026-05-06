@@ -148,6 +148,12 @@ export const locations = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
+    // Phase 7 (Plan B) — canonical normalised form of `name` used to detect
+    // same-name location collisions across regions. Populated at write-time
+    // by the Monday hotel importer (Plan B Task 2). Backfilled and given a
+    // partial unique index by Plan D (Plan 07-04). Nullable until the
+    // backfill runs.
+    normalisedName: text("normalised_name"),
     address: text("address"),
     latitude: doublePrecision("latitude"),
     longitude: doublePrecision("longitude"),
