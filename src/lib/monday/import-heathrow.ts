@@ -28,9 +28,6 @@ import { and, eq } from "drizzle-orm";
 import type { db as defaultDb } from "@/db";
 import { kioskAssignments, kiosks, locations } from "@/db/schema";
 import { iterateBoardItems, type MondayItem } from "@/lib/monday/client";
-import {
-  PLACEHOLDER_OUTLET_PREFIX,
-} from "@/lib/monday/import-hotel-locations";
 import { normaliseName } from "@/lib/normalise";
 
 const HEATHROW_BOARD_ID = 1356657751;
@@ -39,15 +36,19 @@ const HEATHROW_BOARD_ID = 1356657751;
 const LIVE_GROUP_RE = /^\s*live\b/i;
 const PENDING_GROUP_RE = /^\s*in progress\s*$/i;
 
+// Phase 07-06 — Heathrow board uses `text4` as "Cust_cd (RPS)". Mostly empty
+// per the data probe (1 of 12 items populated — Hilton London Metropole).
+// Pulled alongside outlet_code1 (per-kiosk codes) and the location text. The
+// `number_of_ssms` field is no longer requested — it was only used to skip
+// pre-deployment items, which the In-Progress group handling already covers.
 const HEATHROW_ITEM_FRAGMENT = `
   id
   name
   group { id title }
-  column_values(ids: ["outlet_code1", "number_of_ssms", "location"]) {
+  column_values(ids: ["outlet_code1", "text4", "location"]) {
     id
     type
     text
-    ... on NumbersValue { number }
   }
 `;
 
@@ -63,6 +64,11 @@ export type HeathrowImportResult = {
   kiosksInserted: number;
   kiosksSkippedExisting: number;
   assignmentsInserted: number;
+  /** Phase 07-06 — count of Heathrow locations imported with a populated
+   * customer_code (from `text4`). Most Heathrow items have this empty per
+   * the operator data; the count is for visibility into which Heathrow
+   * venues actually have an RPS account on Monday. */
+  customerCodesPopulated: number;
   unmappedGroupTitles: string[];
   durationMs: number;
 };
@@ -91,6 +97,17 @@ function extractOutletCodes(item: MondayItem): string[] {
     .filter((s) => s.length > 0);
 }
 
+/**
+ * Phase 07-06 — read `text4` as the customer_code on the Heathrow board.
+ * Most Heathrow items have this empty (1/12 populated per the probe); we
+ * only return non-empty trimmed values, otherwise null.
+ */
+function extractCustomerCode(item: MondayItem): string | null {
+  const cv = item.column_values.find((c) => c.id === "text4");
+  const text = cv?.text?.trim();
+  return text && text.length > 0 ? text : null;
+}
+
 function extractCountryFromLocation(item: MondayItem): string | null {
   const cv = item.column_values.find((c) => c.id === "location");
   const text = cv?.text?.trim();
@@ -116,6 +133,7 @@ export async function runHeathrowImport(
   let kiosksInserted = 0;
   let kiosksSkippedExisting = 0;
   let assignmentsInserted = 0;
+  let customerCodesPopulated = 0;
   const unmappedTitles = new Set<string>();
 
   try {
@@ -159,23 +177,26 @@ export async function runHeathrowImport(
         continue;
       }
 
-      // One location per item. Primary outlet code = first parsed code, OR
-      // a TODO-<itemId> placeholder for pending-no-code items.
+      // One location per item. customer_code is populated from text4 when
+      // present; placeholder ("In Progress" with no codes) keeps it NULL.
+      // ON CONFLICT target → mondayItemId (universal idempotency key, set
+      // for every Heathrow row). Phase 07-06 — outlet_code is gone from
+      // locations entirely; per-kiosk codes still live on the kiosks table
+      // and are populated below.
       const isPlaceholder = isPending && outletCodes.length === 0;
-      const primaryOutletCode = isPlaceholder
-        ? `${PLACEHOLDER_OUTLET_PREFIX}${item.id}`
-        : outletCodes[0];
+      const customerCode = extractCustomerCode(item);
 
       const inserted = await db
         .insert(locations)
         .values({
           name: item.name,
           normalisedName: normaliseName(item.name),
-          outletCode: primaryOutletCode,
+          customerCode,
+          mondayItemId: item.id,
           primaryRegionId,
         })
         .onConflictDoNothing({
-          target: [locations.primaryRegionId, locations.outletCode],
+          target: locations.mondayItemId,
         })
         .returning({ id: locations.id });
 
@@ -183,18 +204,14 @@ export async function runHeathrowImport(
       if (inserted.length > 0) {
         if (isPlaceholder) placeholderLocationsCreated++;
         else liveLocationsInserted++;
+        if (customerCode !== null) customerCodesPopulated++;
         locationId = inserted[0].id;
       } else {
         liveLocationsSkippedExisting++;
         const existing = await db
           .select({ id: locations.id })
           .from(locations)
-          .where(
-            and(
-              eq(locations.primaryRegionId, primaryRegionId),
-              eq(locations.outletCode, primaryOutletCode),
-            ),
-          )
+          .where(eq(locations.mondayItemId, item.id))
           .limit(1);
         if (existing.length === 0) continue;
         locationId = existing[0].id;
@@ -268,6 +285,7 @@ export async function runHeathrowImport(
     kiosksInserted,
     kiosksSkippedExisting,
     assignmentsInserted,
+    customerCodesPopulated,
     unmappedGroupTitles: [...unmappedTitles].sort(),
     durationMs: Date.now() - t0,
   };
