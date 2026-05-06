@@ -163,14 +163,19 @@ export const locations = pgTable(
     keyContacts: jsonb("key_contacts").$type<
       Array<{ name: string; role: string; email: string; phone: string }>
     >(),
+    // Phase 7 Plan 07-06 — customer_code is the canonical hotel-level
+    // identifier (the RPS account code mirrored from Monday's `mirror3__1`).
+    // Nullable: placeholders (RTL "Ready to Launch", Heathrow pre-deployment)
+    // and the LOCATION_NEEDED sentinel legitimately have no code. A partial
+    // unique index over (primary_region_id, customer_code) WHERE NOT NULL
+    // (migration 0040) enforces "one location per RPS account per region"
+    // without blocking placeholders.
     customerCode: text("customer_code"),
-    // Phase 1 M4 — outlet code is the stable identifier for a hotel in the
-    // sales CSV. Data-dashboard's hotel_metadata_cache used it as the PK; we
-    // mirror that on locations so CSV rows can FK-resolve to locations.id.
-    // No longer globally unique — collisions are legitimate across regions
-    // (e.g. outlet "Q5" in GB ≠ "Q5" in DE). Uniqueness enforced as
-    // (primaryRegionId, outletCode) below.
-    outletCode: text("outlet_code").notNull(),
+    // Phase 7 Plan 07-06 — universal idempotency key for the Monday hotel /
+    // Heathrow / Assets importers. Every Monday item has a stable id; this
+    // is the ON CONFLICT target replacing the old (region, outlet_code)
+    // compound. Partial-unique index in migration 0040.
+    mondayItemId: text("monday_item_id"),
     // NetSuite ETL region scope (2026-04-24): each location belongs to exactly
     // one canonical region. Populated from kiosk assignments / memberships
     // during the 0022 migration; new rows must set this explicitly.
@@ -235,10 +240,6 @@ export const locations = pgTable(
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => ({
-    outletRegionUniq: unique("locations_region_outlet_unique").on(
-      t.primaryRegionId,
-      t.outletCode,
-    ),
     // Phase 7 Plan 07-04 (DATA-03) — partial unique index over the canonical
     // normalised name, scoped to active rows. Two active rows with the same
     // normalised name fail at INSERT/UPDATE; archived rows (and the sentinel,
@@ -251,6 +252,22 @@ export const locations = pgTable(
     )
       .on(t.normalisedName)
       .where(sql`archived_at IS NULL`),
+    // Phase 7 Plan 07-06 — partial unique on (region, customer_code) WHERE
+    // NOT NULL. Replaces the dropped (region, outlet_code) compound; allows
+    // multiple-NULL rows (placeholders) per region.
+    customerCodePerRegionUniq: uniqueIndex(
+      "locations_region_customer_code_partial_uniq",
+    )
+      .on(t.primaryRegionId, t.customerCode)
+      .where(sql`customer_code IS NOT NULL`),
+    // Phase 7 Plan 07-06 — partial unique on monday_item_id (the importer's
+    // ON CONFLICT target). Partial so legacy rows inserted before the column
+    // existed (NULL monday_item_id) don't conflict.
+    mondayItemIdPartialUniq: uniqueIndex(
+      "locations_monday_item_id_partial_uniq",
+    )
+      .on(t.mondayItemId)
+      .where(sql`monday_item_id IS NOT NULL`),
   }),
 );
 
