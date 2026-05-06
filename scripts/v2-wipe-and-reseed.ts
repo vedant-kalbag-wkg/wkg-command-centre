@@ -375,6 +375,8 @@ async function main(): Promise<void> {
         `skipped-no-region=${hotelResult.hotelsSkippedNoRegion} ` +
         `placeholder=${hotelResult.placeholderLocationsCreated} ` +
         `customer-codes-populated=${hotelResult.customerCodesPopulated} ` +
+        `customer-code-conflicts-retried=${hotelResult.customerCodeConflictsRetried} ` +
+        `same-name-skipped=${hotelResult.sameNameSkipped} ` +
         `hotelIdMap=${hotelResult.hotelMondayIdToLocationId.size} ` +
         `(took ${hotelResult.durationMs}ms)`,
     );

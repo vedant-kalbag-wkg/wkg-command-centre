@@ -28,7 +28,7 @@
 // Mirrors the structural shape of `src/lib/monday/import-location-products.ts`
 // (deps injection, logger, retry-aware cursor pagination via the shared client).
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type { db as defaultDb } from "@/db";
 import { locations } from "@/db/schema";
@@ -114,6 +114,22 @@ export type HotelLocationImportResult = {
    * display_value). Visibility into Live Estate's ~87.7% coverage and the
    * sparser placeholder-board coverage. */
   customerCodesPopulated: number;
+  /** Phase 07-06 — count of hotels where the importer wanted to set a
+   * customer_code but a row already existed in the same region with that
+   * code. The second hotel is imported with NULL customer_code instead and
+   * a `notes` line records the conflict for operator triage via the merge
+   * UI. Two distinct Monday hotels SHOULD NOT share an RPS account; when
+   * they do, it's either a Monday data error or the two items are actually
+   * the same physical hotel and need merging. */
+  customerCodeConflictsRetried: number;
+  /** Phase 07-06 — count of hotels skipped because their normalised name
+   * already exists on an active row in the DB (typically same hotel
+   * appearing on multiple Monday boards: e.g. Live Estate + Australia DCM
+   * both have "Holiday Inn Express Sydney Airport"). The Plan 07-04
+   * partial unique on normalised_name (WHERE archived_at IS NULL) blocks
+   * the second insert. We skip + log the Monday item id in `notes` for
+   * operator triage (the merge UI). */
+  sameNameSkipped: number;
   /** Group titles encountered that the resolver couldn't map. */
   unmappedGroupTitles: string[];
   /** Monday hotel item id → `locations.id`. Populated for every hotel that
@@ -188,6 +204,8 @@ export async function runHotelLocationImport(
   let hotelsSkippedNoRegion = 0;
   let placeholderLocationsCreated = 0;
   let customerCodesPopulated = 0;
+  let customerCodeConflictsRetried = 0;
+  let sameNameSkipped = 0;
   const unmappedTitles = new Set<string>();
   const hotelMondayIdToLocationId = new Map<string, string>();
 
@@ -239,34 +257,139 @@ export async function runHotelLocationImport(
         // populated when present on mirror3__1; placeholders keep it NULL.
         // ON CONFLICT target → monday_item_id (the universal idempotency
         // key, populated for every imported row).
-        const inserted = await db
-          .insert(locations)
-          .values({
-            name: item.name,
-            normalisedName: normaliseName(item.name),
-            customerCode,
-            mondayItemId: item.id,
-            primaryRegionId,
-          })
-          .onConflictDoNothing({
-            target: locations.mondayItemId,
-            // Phase 07-06 — `monday_item_id` has a PARTIAL unique index
-            // (WHERE monday_item_id IS NOT NULL). Postgres requires the
-            // ON CONFLICT predicate to match the partial index expression
-            // for the planner to infer the right arbiter index. Drizzle's
-            // `onConflictDoNothing.where` corresponds to this index_predicate.
-            where: sql`monday_item_id IS NOT NULL`,
-          })
-          .returning({ id: locations.id });
+        //
+        // Phase 07-06 conflict-recovery contract: a SECOND distinct Monday
+        // hotel arriving with a customer_code that's already taken in the
+        // same region (operator data error — two items mapped to the same
+        // RPS account) violates the (region, customer_code) partial unique.
+        // We retry the insert with NULL customer_code so the row still
+        // lands, log the conflict in `notes` for operator triage, and
+        // increment `customerCodeConflictsRetried`. The merge UI is the
+        // operator's surface for resolving the conflict.
+        const tryInsert = async (
+          codeForInsert: string | null,
+          extraNotes?: string,
+        ) =>
+          db
+            .insert(locations)
+            .values({
+              name: item.name,
+              normalisedName: normaliseName(item.name),
+              customerCode: codeForInsert,
+              mondayItemId: item.id,
+              primaryRegionId,
+              notes: extraNotes ?? null,
+            })
+            .onConflictDoNothing({
+              target: locations.mondayItemId,
+              // `monday_item_id` is a PARTIAL unique index. Drizzle's
+              // `onConflictDoNothing.where` matches the index predicate.
+              where: sql`monday_item_id IS NOT NULL`,
+            })
+            .returning({ id: locations.id });
+
+        let inserted: Array<{ id: string }>;
+        let landedCustomerCode = customerCode; // what actually got written
+        let sameNameSkippedThisRow = false;
+        // Wrap each insert in a SAVEPOINT so a 23505 doesn't abort the
+        // surrounding Phase 1 transaction. The runbook calls this importer
+        // inside a BEGIN; without the savepoint the connection becomes "in
+        // failed transaction" and every subsequent query fails until ROLLBACK.
+        const savepointName = `sp_hotel_${item.id.replace(/[^A-Za-z0-9_]/g, "_")}`;
+        await db.execute(sql.raw(`SAVEPOINT ${savepointName}`));
+        try {
+          inserted = await tryInsert(customerCode);
+          await db.execute(sql.raw(`RELEASE SAVEPOINT ${savepointName}`));
+        } catch (err) {
+          await db.execute(sql.raw(`ROLLBACK TO SAVEPOINT ${savepointName}`));
+          const e = err as {
+            cause?: { code?: string; constraint?: string };
+            code?: string;
+            constraint?: string;
+          };
+          const code = e.cause?.code ?? e.code;
+          const constraint = e.cause?.constraint ?? e.constraint;
+
+          if (
+            code === "23505" &&
+            constraint === "locations_region_customer_code_partial_uniq" &&
+            customerCode !== null
+          ) {
+            // (region, customer_code) collision — retry with NULL code.
+            customerCodeConflictsRetried++;
+            const conflictNote =
+              `[Phase 07-06] customer_code '${customerCode}' already taken ` +
+              `in this region by another Monday hotel. Imported with NULL ` +
+              `customer_code; operator must reconcile via the merge UI.`;
+            await db.execute(sql.raw(`SAVEPOINT ${savepointName}`));
+            inserted = await tryInsert(null, conflictNote);
+            await db.execute(sql.raw(`RELEASE SAVEPOINT ${savepointName}`));
+            landedCustomerCode = null;
+          } else if (
+            code === "23505" &&
+            constraint === "locations_normalised_name_unique_active"
+          ) {
+            // Same-name conflict (Plan 07-04 partial unique on
+            // normalised_name WHERE archived_at IS NULL). Typically a hotel
+            // appearing on multiple Monday boards (e.g. Live Estate +
+            // Australia DCM). Skip the second item, log the conflict on
+            // the existing row, and surface the duplicate via the merge UI.
+            sameNameSkipped++;
+            sameNameSkippedThisRow = true;
+            // Look up the existing active row by normalised_name so we
+            // can still wire the Monday item id into the hotelIdMap (the
+            // Assets importer needs SOME location to attach kiosks to).
+            const existingByName = await db
+              .select({ id: locations.id, notes: locations.notes })
+              .from(locations)
+              .where(
+                and(
+                  eq(locations.normalisedName, normaliseName(item.name)),
+                  // Active rows only — the partial unique excludes archived.
+                  // (drizzle: isNull on archivedAt would be cleaner, but
+                  //  this matches Plan 07-04's invariant exactly.)
+                  sql`archived_at IS NULL`,
+                ),
+              )
+              .limit(1);
+            if (existingByName.length === 0) {
+              // Shouldn't happen given the partial unique fired, but be
+              // defensive — let the runbook continue.
+              continue;
+            }
+            const existingId = existingByName[0].id;
+            const conflictLine =
+              `[Phase 07-06] Monday item ${item.id} ('${item.name}') ` +
+              `imported on board ${BOARD_NAMES[boardId]} skipped — same ` +
+              `normalised name already on row ${existingId}. Operator ` +
+              `must reconcile via merge UI.`;
+            await db
+              .update(locations)
+              .set({
+                notes: existingByName[0].notes
+                  ? `${existingByName[0].notes}\n\n${conflictLine}`
+                  : conflictLine,
+              })
+              .where(eq(locations.id, existingId));
+            // Use the existing id for the Monday id map so Assets import
+            // attaches its kiosks to the canonical hotel.
+            inserted = [{ id: existingId }];
+          } else {
+            throw err;
+          }
+        }
 
         let locationId: string;
-        if (inserted.length > 0) {
+        if (sameNameSkippedThisRow) {
+          // Skip the per-board counters (we didn't actually insert).
+          locationId = inserted[0].id;
+        } else if (inserted.length > 0) {
           if (isPlaceholder) {
             placeholderLocationsCreated++;
           } else {
             locationsInserted++;
           }
-          if (customerCode !== null) customerCodesPopulated++;
+          if (landedCustomerCode !== null) customerCodesPopulated++;
           locationId = inserted[0].id;
         } else {
           locationsSkippedExisting++;
@@ -303,6 +426,8 @@ export async function runHotelLocationImport(
     hotelsSkippedNoRegion,
     placeholderLocationsCreated,
     customerCodesPopulated,
+    customerCodeConflictsRetried,
+    sameNameSkipped,
     unmappedGroupTitles: [...unmappedTitles].sort(),
     hotelMondayIdToLocationId,
     boardsProcessed: HOTEL_BOARD_IDS.length,
