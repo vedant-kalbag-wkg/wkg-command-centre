@@ -42,6 +42,7 @@ import {
   auditLogs,
 } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
+import { LOCATION_FIELD_RESOLUTION_ALLOWLIST } from "@/lib/location-merge";
 
 type FkChange = {
   table: string;
@@ -50,9 +51,21 @@ type FkChange = {
   previous_value: string;
 };
 
+/**
+ * Plan 07-03 follow-up — when the forward-merge applied per-field resolutions
+ * to the canonical row (MergeDialog "use defunct's address" UX), the snapshot
+ * captures the canonical's pre-write field values here so undoMerge can
+ * restore them byte-for-byte. Absent on snapshots written before this lift.
+ */
+type CanonicalFieldChanges = {
+  canonical_id: string;
+  fields: Record<string, unknown>;
+};
+
 type SnapshotPayload = {
   archived_ids: string[];
   fk_changes: FkChange[];
+  canonical_field_changes?: CanonicalFieldChanges;
 };
 
 /**
@@ -191,6 +204,34 @@ export async function undoMerge(
         }
       }
 
+      // (d.0) Restore canonical pre-write field values from
+      // canonical_field_changes (Plan 07-03 follow-up). Runs BEFORE the
+      // archived_at restore so the canonical row's user-facing data is back
+      // first; the archive flip is the final visible step. Allowlist-checked
+      // against the same set the forward-merge enforced — guards against a
+      // tampered snapshot row trying to overwrite primary_region_id /
+      // archived_at via undo.
+      const canonicalFieldChanges = payload.canonical_field_changes;
+      let canonicalFieldsRestored = 0;
+      if (canonicalFieldChanges) {
+        const safeFields: Record<string, unknown> = {};
+        for (const key of Object.keys(canonicalFieldChanges.fields)) {
+          if (
+            Object.hasOwn(canonicalFieldChanges.fields, key) &&
+            LOCATION_FIELD_RESOLUTION_ALLOWLIST.has(key)
+          ) {
+            safeFields[key] = canonicalFieldChanges.fields[key];
+          }
+        }
+        if (Object.keys(safeFields).length > 0) {
+          await tx
+            .update(locations)
+            .set(safeFields)
+            .where(eq(locations.id, canonicalFieldChanges.canonical_id));
+          canonicalFieldsRestored = Object.keys(safeFields).length;
+        }
+      }
+
       // (d) Restore archived_at = NULL on archived rows.
       if (archivedIds.length > 0) {
         await tx
@@ -217,6 +258,7 @@ export async function undoMerge(
           undidAuditLogId: snapRow.audit_log_id,
           restoredLocationIds: archivedIds,
           fkChangesReversed: fkChanges.length,
+          canonicalFieldsRestored,
         },
       });
 

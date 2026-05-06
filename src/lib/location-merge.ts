@@ -53,6 +53,40 @@ import {
 
 export type MergeActor = { id: string; name: string };
 
+/**
+ * Whitelist of `locations` columns the MergeDialog is allowed to overwrite on
+ * the canonical row. Mirrors `locationMergeFields` in
+ * src/components/locations/location-table.tsx and the subset
+ * `MERGE_FIELDS` in src/app/(app)/settings/duplicates/duplicates-client.tsx.
+ *
+ * Keys here are the Drizzle TS field names (camelCase) — they get passed
+ * straight to `tx.update(locations).set({...})`, which Drizzle maps to the
+ * underlying snake_case columns. Adding a key here without also adding it to
+ * the dialog's `fields` prop is harmless; adding it to the dialog without
+ * adding it here means the resolution is silently dropped (correct
+ * behaviour — server-side allowlist is the source of truth).
+ *
+ * Legacy `mergeLocations` (src/lib/merge.ts:33-44) had NO server-side
+ * allowlist — it passed the entire `fieldResolutions` object straight into
+ * `db.update(locations).set(...)`. The lift here adds the allowlist as a
+ * defence-in-depth measure (a malicious client otherwise could overwrite
+ * primary_region_id, archived_at, internal_poc_id, etc. by crafting a
+ * fieldResolutions key not in the dialog).
+ */
+export const LOCATION_FIELD_RESOLUTION_ALLOWLIST: ReadonlySet<string> =
+  new Set([
+    "name",
+    "address",
+    "hotelGroup",
+    "starRating",
+    "roomCount",
+    "sourcedBy",
+    "status",
+    "maintenanceFee",
+    "customerCode",
+    "locationGroup",
+  ]);
+
 export type LocationMergeResult = {
   canonicalId: string;
   defunctIds: string[];
@@ -73,6 +107,12 @@ export type LocationMergeResult = {
   auditLogsWritten: number;
   snapshotId: string | null;
   fkChangeCount: number;
+  /**
+   * Number of canonical-row fields written via fieldResolutions. 0 when the
+   * caller passed no resolutions (or every key was filtered by the
+   * allowlist). One per-field audit row is written per increment.
+   */
+  canonicalFieldChangeCount: number;
 };
 
 export const LOCATION_MERGE_SCRIPT_TAG = "src/lib/location-merge.ts";
@@ -87,6 +127,35 @@ type FkChange = {
   row_id: string;
   fk_column: string;
   previous_value: string;
+};
+
+/**
+ * Pre-write canonical field values captured into the snapshot for undo.
+ *
+ * Shape:
+ *   - `canonical_id` — the canonical row whose fields were overwritten.
+ *   - `fields` — { columnTsName: previousValue, ... } for every applied
+ *     resolution. Values are stored as-read from the row (Drizzle's TS-typed
+ *     return), which means numeric columns appear as numbers, jsonb as
+ *     objects, etc. The undo path just passes them straight back into
+ *     `tx.update(locations).set(...)` — Drizzle handles the round-trip.
+ *
+ * Absent from the snapshot payload when `fieldResolutions` was empty (or
+ * fully stripped by the allowlist). undoMerge tolerates the optional shape.
+ */
+type CanonicalFieldChanges = {
+  canonical_id: string;
+  fields: Record<string, unknown>;
+};
+
+/**
+ * The full snapshot payload shape v2 — adds `canonical_field_changes` to v1.
+ * Exported so undoMerge + tests can share the type without redefining it.
+ */
+export type LocationMergeSnapshotPayload = {
+  archived_ids: string[];
+  fk_changes: FkChange[];
+  canonical_field_changes?: CanonicalFieldChanges;
 };
 
 /**
@@ -105,6 +174,7 @@ export async function applyLocationMerge(
   defunctIds: string[],
   actor: MergeActor,
   db: LocationMergeDb,
+  fieldResolutions: Record<string, unknown> = {},
 ): Promise<LocationMergeResult> {
   const totals: LocationMergeResult = {
     canonicalId,
@@ -126,12 +196,30 @@ export async function applyLocationMerge(
     auditLogsWritten: 0,
     snapshotId: null,
     fkChangeCount: 0,
+    canonicalFieldChangeCount: 0,
   };
 
   if (defunctIds.length === 0) return totals;
   if (defunctIds.includes(canonicalId)) {
     throw new Error("canonicalId cannot appear in defunctIds");
   }
+
+  // Filter the caller-supplied resolutions through the server-side allowlist.
+  // Any key not in `LOCATION_FIELD_RESOLUTION_ALLOWLIST` is silently dropped
+  // (defence-in-depth — see allowlist docstring above for the threat model).
+  // Use Object.entries → Object.keys safe iteration; reject prototype keys
+  // explicitly via Object.hasOwn so a `{ __proto__: { admin: true } }`
+  // payload can't sneak past the allowlist via the prototype chain.
+  const filteredResolutions: Record<string, unknown> = {};
+  for (const key of Object.keys(fieldResolutions)) {
+    if (
+      Object.hasOwn(fieldResolutions, key) &&
+      LOCATION_FIELD_RESOLUTION_ALLOWLIST.has(key)
+    ) {
+      filteredResolutions[key] = fieldResolutions[key];
+    }
+  }
+  const hasFieldResolutions = Object.keys(filteredResolutions).length > 0;
 
   // Sentinel guard (T-07.03-02). Resolve the sentinel id once outside the
   // transaction; the rejection happens BEFORE any writes so a sentinel-passed
@@ -196,6 +284,37 @@ export async function applyLocationMerge(
       .returning({ id: auditLogs.id });
     const mergeAuditId: string = mergeAuditInsert[0].id;
     totals.auditLogsWritten++;
+
+    // ----------------------------------------------------------------------
+    // Step A.5 — read canonical pre-write values for any resolved fields, so
+    // the snapshot can capture them for undo. Skipped entirely when no
+    // resolutions came in (saves one round-trip on the common case where the
+    // dialog had no conflicts to resolve). Lifted from the legacy
+    // `mergeLocations` (src/lib/merge.ts:33-44) which wrote resolutions
+    // straight onto the canonical without snapshotting the prior values.
+    // The new lift adds the snapshot read so undoMerge can reverse the write.
+    // ----------------------------------------------------------------------
+    let canonicalFieldChanges: CanonicalFieldChanges | undefined;
+    if (hasFieldResolutions) {
+      const preRows = await tx
+        .select()
+        .from(locations)
+        .where(eq(locations.id, canonicalId))
+        .limit(1);
+      const preRow: Record<string, unknown> | undefined = preRows[0];
+      if (!preRow) {
+        throw new Error(
+          `applyLocationMerge: canonical row ${canonicalId} not found for fieldResolutions snapshot`,
+        );
+      }
+      const fields: Record<string, unknown> = {};
+      for (const key of Object.keys(filteredResolutions)) {
+        // Capture even null/undefined — undoMerge restores back to the
+        // pre-write value byte-for-byte, including NULLs.
+        fields[key] = preRow[key] ?? null;
+      }
+      canonicalFieldChanges = { canonical_id: canonicalId, fields };
+    }
 
     // ----------------------------------------------------------------------
     // Step B — capture pre-merge FK state for every table the merge rewrites.
@@ -358,18 +477,62 @@ export async function applyLocationMerge(
     // produce no snapshot — undoMerge would have nothing to do anyway.
     // ----------------------------------------------------------------------
     if (fkChanges.length > 0 || defunctIds.length > 0) {
+      const payload: LocationMergeSnapshotPayload = {
+        archived_ids: defunctIds,
+        fk_changes: fkChanges,
+        ...(canonicalFieldChanges
+          ? { canonical_field_changes: canonicalFieldChanges }
+          : {}),
+      };
       const snapInsert = await tx
         .insert(locationMergeSnapshots)
         .values({
           auditLogId: mergeAuditId,
-          payload: {
-            archived_ids: defunctIds,
-            fk_changes: fkChanges,
-          },
+          payload,
         })
         .returning({ id: locationMergeSnapshots.id });
       totals.snapshotId = snapInsert[0].id;
       totals.fkChangeCount = fkChanges.length;
+    }
+
+    // ----------------------------------------------------------------------
+    // Step C.5 — apply field resolutions to the canonical row + write a
+    // per-field action='update' audit entry (one row per resolved field).
+    // Runs AFTER the snapshot capture so undoMerge has the pre-write values
+    // to restore, BEFORE the FK rewrites so the canonical's new field values
+    // are visible to any downstream read inside the same transaction.
+    // ----------------------------------------------------------------------
+    if (hasFieldResolutions && canonicalFieldChanges) {
+      await tx
+        .update(locations)
+        .set(filteredResolutions)
+        .where(eq(locations.id, canonicalId));
+
+      for (const key of Object.keys(filteredResolutions)) {
+        const oldValue = canonicalFieldChanges.fields[key];
+        const newValue = filteredResolutions[key];
+        await writeAuditLog(
+          {
+            actorId: actor.id,
+            actorName: actor.name,
+            entityType: "location",
+            entityId: canonicalId,
+            entityName: canonicalName,
+            action: "update",
+            field: key,
+            oldValue: oldValue == null ? undefined : String(oldValue),
+            newValue: newValue == null ? undefined : String(newValue),
+            metadata: {
+              script: LOCATION_MERGE_SCRIPT_TAG,
+              source: "merge_field_resolution",
+              mergeAuditId,
+            },
+          },
+          tx,
+        );
+        totals.auditLogsWritten++;
+        totals.canonicalFieldChangeCount++;
+      }
     }
 
     // ----------------------------------------------------------------------

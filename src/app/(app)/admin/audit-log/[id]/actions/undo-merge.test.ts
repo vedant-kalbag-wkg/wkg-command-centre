@@ -121,6 +121,54 @@ describe("undoMerge — already-undone path", () => {
   });
 });
 
+describe("undoMerge — canonical_field_changes restore (Plan 07-03 follow-up)", () => {
+  it("restores pre-write canonical field values when snapshot includes canonical_field_changes", async () => {
+    vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);
+
+    const SNAP_ID = "00000000-0000-0000-0000-00000000aaaa";
+    const ARCHIVED_1 = "00000000-0000-0000-0000-00000000bbbb";
+    const CANONICAL = "00000000-0000-0000-0000-00000000eeee";
+
+    const { tx, calls } = makeTx([
+      {
+        id: SNAP_ID,
+        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+        payload: {
+          archived_ids: [ARCHIVED_1],
+          fk_changes: [],
+          canonical_field_changes: {
+            canonical_id: CANONICAL,
+            fields: {
+              address: "1 Old Address Rd",
+              hotelGroup: "Old Group",
+            },
+          },
+        },
+        created_at: "2026-05-06T00:00:00Z",
+      },
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
+      cb(tx)) as never);
+
+    const result = await undoMerge(SNAP_ID);
+    expect(result).toEqual({ success: true });
+
+    // 2 update calls expected:
+    //   1. the canonical-field-restore (set address+hotelGroup back)
+    //   2. the archived_at = NULL restore on the archived rows
+    expect(calls.updates).toBe(2);
+
+    // The paired audit row's metadata should record the restored field count.
+    expect(calls.inserts).toHaveLength(1);
+    const meta = calls.inserts[0].values.metadata as Record<string, unknown>;
+    expect(meta).toMatchObject({
+      snapshotId: SNAP_ID,
+      canonicalFieldsRestored: 2,
+    });
+  });
+});
+
 describe("undoMerge — happy path", () => {
   it("reverses fk_changes, restores archived rows, writes paired audit row, and deletes snapshot", async () => {
     vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);

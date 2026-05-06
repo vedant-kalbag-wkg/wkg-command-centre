@@ -20,11 +20,14 @@ import { describe, it, expect, vi } from "vitest";
 
 import { applyLocationMerge } from "./location-merge";
 
-// Mock the audit log helper — we don't care what it writes inside the
-// transaction here, only that the merge primitive doesn't crash on it.
+// Mock the audit log helper. Tests that care about per-field `update` audit
+// rows (Plan 07-03 follow-up: fieldResolutions lift) assert against the
+// mock's call list directly. The other tests don't care what gets written.
 vi.mock("@/lib/audit", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
+
+import { writeAuditLog } from "@/lib/audit";
 
 type FkChange = {
   table: string;
@@ -44,6 +47,12 @@ type MockOptions = {
   srPrimary?: Array<{ id: string; locationId: string }>;
   /** Pre-merge sales_records.processed_at_location_id rows. */
   srProcessed?: Array<{ id: string; processedAtLocationId: string }>;
+  /**
+   * Pre-write canonical row used by the field-resolutions preselect (the
+   * primitive reads the canonical's CURRENT values BEFORE writing the
+   * resolutions, so the snapshot can capture them for undo).
+   */
+  canonicalPreWrite?: Record<string, unknown>;
 };
 
 /**
@@ -69,7 +78,15 @@ function buildMockDb(opts: MockOptions = {}) {
     opts.canonicalName !== undefined ? [{ name: opts.canonicalName }] : [{ name: "" }],
   ];
 
-  const innerSelectQueue: unknown[][] = [
+  // Canonical pre-write read is the FIRST inner select when fieldResolutions
+  // is non-empty — the primitive needs the canonical's current field values to
+  // capture them in the snapshot for undo. Tests that don't pass resolutions
+  // leave this slot empty and the queue starts at kaRows.
+  const innerSelectQueue: unknown[][] = [];
+  if (opts.canonicalPreWrite !== undefined) {
+    innerSelectQueue.push([opts.canonicalPreWrite]);
+  }
+  innerSelectQueue.push(
     opts.kaRows ?? [],
     opts.srPrimary ?? [],
     opts.srProcessed ?? [],
@@ -79,16 +96,19 @@ function buildMockDb(opts: MockOptions = {}) {
     [], // location_hotel_group_memberships
     [], // location_flags
     [], // action_items
-  ];
+  );
 
   type Captured = {
     auditInsertValues: Record<string, unknown> | null;
     snapshotInsertValues: Record<string, unknown> | null;
+    /** Whatever `tx.update(locations).set(...)` got called with. */
+    canonicalFieldUpdate: Record<string, unknown> | null;
     executeCalls: number;
   };
   const captured: Captured = {
     auditInsertValues: null,
     snapshotInsertValues: null,
+    canonicalFieldUpdate: null,
     executeCalls: 0,
   };
 
@@ -101,12 +121,28 @@ function buildMockDb(opts: MockOptions = {}) {
     }),
   });
 
-  // Inner tx select — used by per-FK preselects.
-  const makeInnerSelect = () => ({
-    from: () => ({
-      where: () => Promise.resolve(innerSelectQueue.shift() ?? []),
-    }),
-  });
+  // Inner tx select — used by per-FK preselects + canonical pre-write read.
+  // The canonical pre-write read uses .limit(1); the per-FK preselects don't.
+  // We shape both via a chain that tolerates an optional `.limit()`.
+  const makeInnerSelect = () => {
+    const drainQueue = () => Promise.resolve(innerSelectQueue.shift() ?? []);
+    return {
+      from: () => ({
+        where: () => {
+          const wherePromise: Promise<unknown[]> & { limit?: () => Promise<unknown[]> } =
+            drainQueue() as never;
+          // `.limit()` is awaitable on its own — used by the canonical pre-write read.
+          (wherePromise as { limit: () => Promise<unknown[]> }).limit = () =>
+            // Already drained inside drainQueue() above — but the primitive's
+            // canonical pre-write select chains .where().limit(1) without
+            // awaiting the .where() in between, so the inner shift was the
+            // correct row. Just re-resolve the same promise.
+            wherePromise;
+          return wherePromise;
+        },
+      }),
+    };
+  };
 
   const tx = {
     select: () => makeInnerSelect(),
@@ -115,13 +151,20 @@ function buildMockDb(opts: MockOptions = {}) {
         returning: () => {
           // The merge primitive calls `.returning({id: ...})` on TWO inserts:
           // (1) the merge audit row, then (2) the snapshot row.
-          // Distinguish by which has been seen first.
           if (captured.auditInsertValues === null) {
             captured.auditInsertValues = vals;
             return Promise.resolve([{ id: "merge-audit-id-fixture" }]);
           }
           captured.snapshotInsertValues = vals;
           return Promise.resolve([{ id: "snapshot-id-fixture" }]);
+        },
+      }),
+    }),
+    update: (_table: unknown) => ({
+      set: (vals: Record<string, unknown>) => ({
+        where: () => {
+          captured.canonicalFieldUpdate = vals;
+          return Promise.resolve();
         },
       }),
     }),
@@ -234,6 +277,197 @@ describe("applyLocationMerge — snapshot capture", () => {
 
     expect(captured.snapshotInsertValues).not.toBeNull();
     expect(captured.snapshotInsertValues!.auditLogId).toBe("merge-audit-id-fixture");
+  });
+});
+
+describe("applyLocationMerge — fieldResolutions lift (Plan 07-03 follow-up)", () => {
+  const CANONICAL = "00000000-0000-0000-0000-000000000001";
+  const DEF = "00000000-0000-0000-0000-00000000000d";
+
+  it("writes resolved field values to the canonical row inside the tx, before FK rewrites", async () => {
+    const { db, captured } = buildMockDb({
+      canonicalName: "Residence Inn — Canonical",
+      canonicalPreWrite: {
+        name: "Residence Inn — Canonical",
+        address: "1 Old Address Rd",
+        hotelGroup: "Old Group",
+        starRating: 3,
+        roomCount: 100,
+        sourcedBy: "manual",
+        status: "active",
+        maintenanceFee: "100.00",
+        customerCode: "CUST-1",
+        locationGroup: "Group-A",
+      },
+    });
+
+    await applyLocationMerge(
+      CANONICAL,
+      [DEF],
+      ACTOR,
+      db,
+      { address: "2 New Address Ln", hotelGroup: "Marriott" },
+    );
+
+    expect(captured.canonicalFieldUpdate).not.toBeNull();
+    // Only the resolved fields should be written — NOT every column the
+    // dialog could have offered.
+    expect(captured.canonicalFieldUpdate).toEqual({
+      address: "2 New Address Ln",
+      hotelGroup: "Marriott",
+    });
+  });
+
+  it("captures pre-write canonical field values into snapshot.payload.canonical_field_changes", async () => {
+    const { db, captured } = buildMockDb({
+      canonicalName: "Residence Inn — Canonical",
+      canonicalPreWrite: {
+        name: "Residence Inn — Canonical",
+        address: "1 Old Address Rd",
+        hotelGroup: "Old Group",
+        starRating: 3,
+        roomCount: 100,
+        sourcedBy: "manual",
+        status: "active",
+        maintenanceFee: "100.00",
+        customerCode: "CUST-1",
+        locationGroup: "Group-A",
+      },
+    });
+
+    await applyLocationMerge(
+      CANONICAL,
+      [DEF],
+      ACTOR,
+      db,
+      { address: "2 New Address Ln", hotelGroup: "Marriott" },
+    );
+
+    const payload = captured.snapshotInsertValues!.payload as {
+      archived_ids: string[];
+      fk_changes: unknown[];
+      canonical_field_changes?: {
+        canonical_id: string;
+        fields: Record<string, unknown>;
+      };
+    };
+    expect(payload.canonical_field_changes).toBeDefined();
+    expect(payload.canonical_field_changes!.canonical_id).toBe(CANONICAL);
+    expect(payload.canonical_field_changes!.fields).toEqual({
+      address: "1 Old Address Rd",
+      hotelGroup: "Old Group",
+    });
+  });
+
+  it("writes one action='update' audit row per resolved field with old/new values", async () => {
+    vi.mocked(writeAuditLog).mockClear();
+    const { db } = buildMockDb({
+      canonicalName: "Residence Inn — Canonical",
+      canonicalPreWrite: {
+        name: "Residence Inn — Canonical",
+        address: "1 Old Address Rd",
+        hotelGroup: "Old Group",
+        starRating: 3,
+        roomCount: 100,
+        sourcedBy: "manual",
+        status: "active",
+        maintenanceFee: "100.00",
+        customerCode: "CUST-1",
+        locationGroup: "Group-A",
+      },
+    });
+
+    await applyLocationMerge(
+      CANONICAL,
+      [DEF],
+      ACTOR,
+      db,
+      { address: "2 New Address Ln", hotelGroup: "Marriott" },
+    );
+
+    const fieldUpdateCalls = vi
+      .mocked(writeAuditLog)
+      .mock.calls.filter(
+        (c) =>
+          (c[0] as { action: string }).action === "update" &&
+          (c[0] as { entityType: string }).entityType === "location" &&
+          (c[0] as { entityId: string }).entityId === CANONICAL,
+      );
+    expect(fieldUpdateCalls).toHaveLength(2);
+
+    const byField: Record<string, (typeof fieldUpdateCalls)[number][0]> = {};
+    for (const c of fieldUpdateCalls) {
+      const e = c[0] as { field: string };
+      byField[e.field] = c[0];
+    }
+    expect(byField.address).toMatchObject({
+      action: "update",
+      entityType: "location",
+      entityId: CANONICAL,
+      field: "address",
+      oldValue: "1 Old Address Rd",
+      newValue: "2 New Address Ln",
+    });
+    expect(byField.hotelGroup).toMatchObject({
+      action: "update",
+      entityType: "location",
+      entityId: CANONICAL,
+      field: "hotelGroup",
+      oldValue: "Old Group",
+      newValue: "Marriott",
+    });
+  });
+
+  it("rejects field keys outside the locations whitelist (no canonical write, no audit row)", async () => {
+    vi.mocked(writeAuditLog).mockClear();
+    const { db, captured } = buildMockDb({
+      canonicalName: "Residence Inn — Canonical",
+      canonicalPreWrite: {
+        name: "Residence Inn — Canonical",
+        address: "1 Old Address Rd",
+      },
+    });
+
+    // `passwordHash` and `__proto__` are not on the merge-dialog's field list.
+    await applyLocationMerge(
+      CANONICAL,
+      [DEF],
+      ACTOR,
+      db,
+      {
+        address: "2 New Address Ln",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        passwordHash: "evil" as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        __proto__: { admin: true } as any,
+      },
+    );
+
+    // Only the whitelisted key flowed through.
+    expect(captured.canonicalFieldUpdate).toEqual({
+      address: "2 New Address Ln",
+    });
+    const fieldUpdateCalls = vi
+      .mocked(writeAuditLog)
+      .mock.calls.filter(
+        (c) => (c[0] as { action: string }).action === "update",
+      );
+    expect(fieldUpdateCalls).toHaveLength(1);
+    expect((fieldUpdateCalls[0][0] as { field: string }).field).toBe("address");
+  });
+
+  it("does not write canonical_field_changes when fieldResolutions is empty/undefined", async () => {
+    const { db, captured } = buildMockDb({
+      canonicalName: "Residence Inn — Canonical",
+    });
+
+    await applyLocationMerge(CANONICAL, [DEF], ACTOR, db);
+
+    expect(captured.canonicalFieldUpdate).toBeNull();
+    const payload = captured.snapshotInsertValues!.payload as {
+      canonical_field_changes?: unknown;
+    };
+    expect(payload.canonical_field_changes).toBeUndefined();
   });
 });
 

@@ -17,11 +17,12 @@
  * existing `MergeDialog.onMerge` wiring at:
  *   - src/components/locations/location-table.tsx
  *   - src/app/(app)/settings/duplicates/duplicates-client.tsx
- * `fieldResolutions` is currently ignored — the dialog's resolution UI is
- * preserved for future use, but the new merge primitive does not write
- * canonical-side field overrides. If we need that, lift the
- * `db.update(locations).set(fieldResolutions)` line from src/lib/merge.ts:33
- * back into this action AHEAD of the applyLocationMerge call.
+ *
+ * `fieldResolutions` is forwarded as the 5th positional arg of
+ * `applyLocationMerge`. The merge primitive (src/lib/location-merge.ts)
+ * filters keys through its server-side allowlist, captures the canonical's
+ * pre-write values in the snapshot for undo, and writes one
+ * `action='update'` audit row per applied resolution.
  */
 import { sql } from "drizzle-orm";
 import { revalidateTag } from "next/cache";
@@ -44,8 +45,7 @@ export type MergeLocationsResult =
 export async function mergeLocationsAction(
   targetId: string,
   sourceIds: string[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _fieldResolutions: Record<string, unknown> = {},
+  fieldResolutions: Record<string, unknown> = {},
 ): Promise<MergeLocationsResult> {
   let session;
   try {
@@ -73,7 +73,13 @@ export async function mergeLocationsAction(
       id: session.user.id,
       name: session.user.name ?? session.user.email,
     };
-    const _result = await applyLocationMerge(targetId, sourceIds, actor, db);
+    const _result = await applyLocationMerge(
+      targetId,
+      sourceIds,
+      actor,
+      db,
+      fieldResolutions,
+    );
     revalidateTag("locations", "max");
     return { success: true, merged: sourceIds.length };
   } catch (err) {

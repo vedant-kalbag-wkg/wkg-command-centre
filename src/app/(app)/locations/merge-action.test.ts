@@ -73,6 +73,49 @@ describe("mergeLocationsAction — advisory lock", () => {
     expect(applyLocationMerge).not.toHaveBeenCalled();
   });
 
+  it("forwards fieldResolutions to applyLocationMerge (Plan 07-03 follow-up)", async () => {
+    vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);
+    vi.mocked(db.execute).mockResolvedValueOnce({
+      rows: [{ lock: true }],
+    } as never);
+    vi.mocked(applyLocationMerge).mockResolvedValueOnce({
+      canonicalId: "canonical-1",
+      defunctIds: ["defunct-1"],
+      pairsMerged: 1,
+      salesRecordsRewritten: 0,
+      kioskAssignmentsRewritten: 0,
+      locationProductsRewritten: 0,
+      locationProductsDeleted: 0,
+      hotelGroupMembershipsRewritten: 0,
+      hotelGroupMembershipsDeleted: 0,
+      regionMembershipsRewritten: 0,
+      regionMembershipsDeleted: 0,
+      groupMembershipsRewritten: 0,
+      groupMembershipsDeleted: 0,
+      locationFlagsRewritten: 0,
+      actionItemsRewritten: 0,
+      locationsArchived: 1,
+      auditLogsWritten: 1,
+      snapshotId: "snap-1",
+      fkChangeCount: 0,
+    } as never);
+    vi.mocked(db.execute).mockResolvedValueOnce({} as never);
+
+    const RESOLUTIONS = { address: "2 New Address Ln", hotelGroup: "Marriott" };
+    const result = await mergeLocationsAction(
+      "canonical-1",
+      ["defunct-1"],
+      RESOLUTIONS,
+    );
+    expect(result).toEqual({ success: true, merged: 1 });
+    expect(applyLocationMerge).toHaveBeenCalledOnce();
+    // 5th arg is the fieldResolutions; must equal what came in from the dialog.
+    const callArgs = vi.mocked(applyLocationMerge).mock.calls[0];
+    expect(callArgs[0]).toBe("canonical-1");
+    expect(callArgs[1]).toEqual(["defunct-1"]);
+    expect(callArgs[4]).toEqual(RESOLUTIONS);
+  });
+
   it("returns success envelope on the happy path", async () => {
     vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);
     // First execute: acquire lock → true.
