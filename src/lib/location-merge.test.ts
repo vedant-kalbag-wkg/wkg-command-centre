@@ -53,6 +53,21 @@ type MockOptions = {
    * resolutions, so the snapshot can capture them for undo).
    */
   canonicalPreWrite?: Record<string, unknown>;
+  /**
+   * Defunct ids that the pre-archive Step B.5 select should report as
+   * `archived_at IS NULL` (i.e. they will be stamped by Step D's archive
+   * UPDATE and therefore belong in `payload.archived_ids`). Defaults to
+   * empty — tests that exercise the snapshot must opt-in explicitly so the
+   * archived_ids subset is verifiable.
+   */
+  preArchiveIds?: string[];
+  /**
+   * Whether the transaction-scoped `pg_try_advisory_xact_lock` should
+   * report acquired (true) or in-contention (false). Defaults to true so
+   * existing tests pass through the lock unchanged. The contention test
+   * sets this to false.
+   */
+  lockAcquired?: boolean;
 };
 
 /**
@@ -97,6 +112,11 @@ function buildMockDb(opts: MockOptions = {}) {
     [], // location_hotel_group_memberships
     [], // location_flags
     [], // action_items
+    // Step B.5 — pre-archive check: rows where archived_at IS NULL among
+    // the input defunctIds. The primitive uses this to scope archived_ids
+    // in the snapshot payload to ONLY the rows that will actually be
+    // stamped by Step D's archive UPDATE (fix from PR #34 review).
+    (opts.preArchiveIds ?? []).map((id) => ({ id })),
   );
 
   type Captured = {
@@ -181,7 +201,12 @@ function buildMockDb(opts: MockOptions = {}) {
     execute: () => {
       captured.executeCalls++;
       // node-postgres-shaped result with rowCount=0 → no rewrites in tests.
-      return Promise.resolve({ rowCount: 0 });
+      // Also carries `rows: [{ lock }]` so the FIRST execute (Step 0's
+      // pg_try_advisory_xact_lock parse) reads acquired vs contention from
+      // the same shape. Subsequent execute calls (the per-table UPDATE
+      // statements in Step D) read rowCount and ignore the rows field.
+      const lockAcquired = opts.lockAcquired ?? true;
+      return Promise.resolve({ rowCount: 0, rows: [{ lock: lockAcquired }] });
     },
   };
 
@@ -242,6 +267,9 @@ describe("applyLocationMerge — snapshot capture", () => {
       ],
       srPrimary: [{ id: "sr-1", locationId: DEF1 }],
       srProcessed: [{ id: "sr-2", processedAtLocationId: DEF2 }],
+      // Both defuncts currently `archived_at IS NULL` — Step D will stamp
+      // both, so the snapshot's archived_ids must list both for undo.
+      preArchiveIds: [DEF1, DEF2],
     });
 
     const result = await applyLocationMerge(CANONICAL, [DEF1, DEF2], ACTOR, db);
@@ -276,6 +304,7 @@ describe("applyLocationMerge — snapshot capture", () => {
     const DEF = "00000000-0000-0000-0000-00000000000d";
     const { db, captured } = buildMockDb({
       kaRows: [{ id: "ka-1", locationId: DEF }],
+      preArchiveIds: [DEF],
     });
 
     await applyLocationMerge(CANONICAL, [DEF], ACTOR, db);
@@ -343,6 +372,7 @@ describe("applyLocationMerge — fieldResolutions lift (Plan 07-03 follow-up)", 
         customerCode: "CUST-1",
         locationGroup: "Group-A",
       },
+      preArchiveIds: [DEF],
     });
 
     await applyLocationMerge(
@@ -469,6 +499,7 @@ describe("applyLocationMerge — fieldResolutions lift (Plan 07-03 follow-up)", 
   it("does not write canonical_field_changes when fieldResolutions is empty/undefined", async () => {
     const { db, captured } = buildMockDb({
       canonicalName: "Residence Inn — Canonical",
+      preArchiveIds: [DEF],
     });
 
     await applyLocationMerge(CANONICAL, [DEF], ACTOR, db);
@@ -482,23 +513,98 @@ describe("applyLocationMerge — fieldResolutions lift (Plan 07-03 follow-up)", 
 });
 
 describe("applyLocationMerge — no-op shape", () => {
-  it("completes without error when no FK rows match (everything already archived)", async () => {
+  it("writes no snapshot when no FK rows match AND every defunct is already archived", async () => {
     const CANONICAL = "00000000-0000-0000-0000-000000000001";
     const DEF = "00000000-0000-0000-0000-00000000000d";
     // No FK rows in any preselect; every UPDATE returns rowCount=0.
-    const { db } = buildMockDb();
+    // preArchiveIds defaults to [] → Step B.5 reports zero rows to archive.
+    const { db, captured } = buildMockDb();
 
     const result = await applyLocationMerge(CANONICAL, [DEF], ACTOR, db);
 
     expect(result.kioskAssignmentsRewritten).toBe(0);
     expect(result.salesRecordsRewritten).toBe(0);
     expect(result.locationsArchived).toBe(0);
-    // The merge audit + snapshot rows still get written (snapshot's
-    // archived_ids = defunctIds even when fk_changes is empty); this matches
-    // the production shape where a defunct row already archived in a prior
-    // run still flows through cleanly. Re-running undoMerge against this
-    // snapshot would restore archived_at=NULL on rows already NULL → no-op.
-    expect(result.snapshotId).toBe("snapshot-id-fixture");
+    // Post-fix (PR #34 review): when both `fk_changes` and `idsToArchive`
+    // are empty, the snapshot guard short-circuits and no snapshot row is
+    // written. undoMerge would have nothing to do anyway, so skipping the
+    // snapshot keeps the storage clean.
+    expect(result.snapshotId).toBeNull();
+    expect(captured.snapshotInsertValues).toBeNull();
     expect(result.fkChangeCount).toBe(0);
+  });
+});
+
+describe("applyLocationMerge — pre-archive filter (PR #34 review fix)", () => {
+  it("excludes pre-archived defuncts from snapshot.archived_ids so undo cannot un-archive them", async () => {
+    const CANONICAL = "00000000-0000-0000-0000-000000000001";
+    const DEF_LIVE = "00000000-0000-0000-0000-00000000000d";
+    const DEF_PREARCHIVED = "00000000-0000-0000-0000-00000000000e";
+
+    // Both defuncts have FK rows pointing at them (the merge will rewrite
+    // the FKs regardless), but only DEF_LIVE is `archived_at IS NULL`.
+    // DEF_PREARCHIVED was archived BEFORE this merge began — Step D's
+    // archive UPDATE will skip it, and the snapshot's archived_ids must
+    // also exclude it so undo's `archived_at = NULL` restore doesn't
+    // resurrect a row that should have stayed archived.
+    const { db, captured } = buildMockDb({
+      canonicalName: "Residence Inn — Canonical",
+      kaRows: [
+        { id: "ka-1", locationId: DEF_LIVE },
+        { id: "ka-2", locationId: DEF_PREARCHIVED },
+      ],
+      preArchiveIds: [DEF_LIVE], // ONLY the unarchived one
+    });
+
+    const result = await applyLocationMerge(
+      CANONICAL,
+      [DEF_LIVE, DEF_PREARCHIVED],
+      ACTOR,
+      db,
+    );
+
+    const payload = captured.snapshotInsertValues!.payload as {
+      archived_ids: string[];
+      fk_changes: FkChange[];
+    };
+    // Critical assertion: pre-archived defunct is NOT in archived_ids,
+    // even though it was passed in defunctIds and had FK rows rewritten.
+    expect(payload.archived_ids).toEqual([DEF_LIVE]);
+    expect(payload.archived_ids).not.toContain(DEF_PREARCHIVED);
+
+    // FK changes still capture both rows — Step D rewrites FKs for both
+    // regardless of archive state, and undo restores both FKs.
+    expect(payload.fk_changes).toHaveLength(2);
+    expect(result.snapshotId).toBe("snapshot-id-fixture");
+  });
+
+  it("writes no snapshot when every defunct is pre-archived and no FK rows exist", async () => {
+    const CANONICAL = "00000000-0000-0000-0000-000000000001";
+    const DEF = "00000000-0000-0000-0000-00000000000d";
+    // No FK rows; defunct already archived → preArchiveIds defaults to [].
+    const { db, captured } = buildMockDb();
+
+    const result = await applyLocationMerge(CANONICAL, [DEF], ACTOR, db);
+
+    expect(result.snapshotId).toBeNull();
+    expect(captured.snapshotInsertValues).toBeNull();
+  });
+});
+
+describe("applyLocationMerge — advisory lock (PR #34 review fix)", () => {
+  it("throws LOCATION_MERGE_LOCK_CONTENTION when pg_try_advisory_xact_lock returns false", async () => {
+    const CANONICAL = "00000000-0000-0000-0000-000000000001";
+    const DEF = "00000000-0000-0000-0000-00000000000d";
+    // The merge primitive's first execute call inside the tx is
+    // pg_try_advisory_xact_lock; the mock returns lock=false to simulate
+    // a concurrent merge / undo holding the lock.
+    const { db } = buildMockDb({
+      canonicalName: "Residence Inn — Canonical",
+      lockAcquired: false,
+    });
+
+    await expect(
+      applyLocationMerge(CANONICAL, [DEF], ACTOR, db),
+    ).rejects.toThrow("location_merge_lock_contention");
   });
 });

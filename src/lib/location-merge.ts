@@ -31,7 +31,7 @@
  *   - On successful undo, the snapshot row is DELETEd — its existence is the
  *     single source of truth for "undo still available".
  */
-import { sql, and, eq, inArray } from "drizzle-orm";
+import { sql, and, eq, inArray, isNull } from "drizzle-orm";
 import { writeAuditLog } from "@/lib/audit";
 import { getSentinelLocationId } from "@/lib/sentinel";
 import {
@@ -113,6 +113,32 @@ export type LocationMergeResult = {
 };
 
 export const LOCATION_MERGE_SCRIPT_TAG = "src/lib/location-merge.ts";
+
+/**
+ * Advisory lock key for the location-merge primitive — shared by both the
+ * forward merge (here) and `undoMerge` (sibling action). Using the same
+ * numeric key on both sides means an in-flight forward merge blocks any
+ * concurrent undo and vice versa.
+ *
+ * Distinct from the Azure ETL (105), Monday import (106), and wipe-runbook
+ * (107) keys (see PATTERNS.md § Lock key registry).
+ *
+ * Acquired with `pg_try_advisory_xact_lock` INSIDE applyLocationMerge's
+ * transaction so the lock and the work it guards run on the same connection
+ * (a session-level `pg_try_advisory_lock` from the action layer would land
+ * on a different pool connection than the transaction body and provide no
+ * concurrency guarantee — fixed during PR #34 review).
+ */
+export const LOCATION_MERGE_LOCK_KEY = 738294108;
+
+/**
+ * Thrown by applyLocationMerge when `pg_try_advisory_xact_lock` returns
+ * false — i.e. another forward merge or undo is in flight. Callers (the
+ * merge server action) catch by `error.message` and surface a typed
+ * `{ status: "lock_contention" }` envelope to the UI so the operator
+ * sees a fast-fail rather than a hanging request.
+ */
+export const LOCATION_MERGE_LOCK_CONTENTION = "location_merge_lock_contention";
 
 // Loose DB type — both prod's postgres-js client AND test fixtures expose the
 // `transaction()` + `execute()` Drizzle surface this primitive uses.
@@ -256,6 +282,29 @@ export async function applyLocationMerge(
   const canonicalName: string = canonicalRow[0]?.name ?? "";
 
   await db.transaction(async (tx: LocationMergeDb) => {
+    // ----------------------------------------------------------------------
+    // Step 0 — transaction-scoped advisory lock. Replaces the legacy
+    // session-scoped `pg_try_advisory_lock` that the action layer used to
+    // hold across `db.execute` calls; that pattern landed the lock on a
+    // different pool connection than this transaction and provided no
+    // serialisation against a concurrent forward merge or undo (fixed during
+    // PR #34 review). `pg_try_advisory_xact_lock` is non-blocking so a
+    // second merge fails fast — caller catches the typed error and surfaces
+    // `{ status: "lock_contention" }` to the UI.
+    //
+    // Auto-released at COMMIT/ROLLBACK; no manual unlock path needed.
+    // ----------------------------------------------------------------------
+    const lockResult = await tx.execute(
+      sql`SELECT pg_try_advisory_xact_lock(${LOCATION_MERGE_LOCK_KEY})::boolean AS lock`,
+    );
+    const lockRows: Array<{ lock: boolean }> =
+      lockResult && typeof lockResult === "object" && "rows" in lockResult
+        ? (lockResult as unknown as { rows: Array<{ lock: boolean }> }).rows
+        : (lockResult as unknown as Array<{ lock: boolean }>);
+    if (lockRows[0]?.lock !== true) {
+      throw new Error(LOCATION_MERGE_LOCK_CONTENTION);
+    }
+
     // ----------------------------------------------------------------------
     // Step A — write the merge audit row FIRST so the snapshot can reference
     // its id. We inline the INSERT...RETURNING because writeAuditLog returns
@@ -470,13 +519,34 @@ export async function applyLocationMerge(
     }
 
     // ----------------------------------------------------------------------
+    // Step B.5 — capture which defunctIds are NOT yet archived. Step D's
+    // archive UPDATE is guarded with `AND archived_at IS NULL`, so only this
+    // subset is actually stamped by this merge. The snapshot's
+    // `archived_ids` MUST match that subset — undo unconditionally sets
+    // `archived_at = NULL` on every id in the list, and a defunct row that
+    // was already archived BEFORE the merge began must NOT be unarchived
+    // by undo. Bug fix from PR #34 review: previous code wrote
+    // `archived_ids: defunctIds` (the full input list).
+    // ----------------------------------------------------------------------
+    const preArchiveCheck: Array<{ id: string }> = await tx
+      .select({ id: locations.id })
+      .from(locations)
+      .where(
+        and(
+          inArray(locations.id, defunctIds),
+          isNull(locations.archivedAt),
+        ),
+      );
+    const idsToArchive: string[] = preArchiveCheck.map((r) => r.id);
+
+    // ----------------------------------------------------------------------
     // Step C — write the snapshot row (only if there's anything to capture).
     // No-op merges (every defunct already archived, no FK rows to rewrite)
     // produce no snapshot — undoMerge would have nothing to do anyway.
     // ----------------------------------------------------------------------
-    if (fkChanges.length > 0 || defunctIds.length > 0) {
+    if (fkChanges.length > 0 || idsToArchive.length > 0) {
       const payload: LocationMergeSnapshotPayload = {
-        archived_ids: defunctIds,
+        archived_ids: idsToArchive,
         fk_changes: fkChanges,
         ...(canonicalFieldChanges
           ? { canonical_field_changes: canonicalFieldChanges }

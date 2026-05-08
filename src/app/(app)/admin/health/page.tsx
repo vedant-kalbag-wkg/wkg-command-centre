@@ -19,7 +19,6 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { PageHeader } from "@/components/layout/page-header";
 import { db } from "@/db";
 import { kioskAssignments, kiosks } from "@/db/schema";
-import { executeRowsFromResult } from "@/db/execute-rows";
 import { detectSameNameGroups } from "@/lib/locations/same-name-detection";
 import { requireRole } from "@/lib/rbac";
 import { getSentinelLocationId } from "@/lib/sentinel";
@@ -64,7 +63,6 @@ export default async function AdminHealthPage() {
         ),
       );
     orphanCount = orphanResult[0]?.c ?? 0;
-    void executeRowsFromResult; // silence unused-import warning in this branch
   }
 
   return (
