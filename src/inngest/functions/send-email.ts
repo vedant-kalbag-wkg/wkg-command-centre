@@ -1,4 +1,5 @@
 import { render } from "@react-email/render";
+import { sql } from "drizzle-orm";
 import { Resend } from "resend";
 
 import { db } from "@/db";
@@ -29,6 +30,83 @@ const TEMPLATES = {
 
 type TemplateKey = keyof typeof TEMPLATES;
 
+// Minimal step interface — both Inngest's real step tools and the test
+// shim satisfy this. Production calls receive Inngest's full StepTools.
+type StepShim = {
+  run: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+};
+
+// Extracted handler so integration tests can call it directly with a
+// step-shim (Inngest doesn't expose its internal handler on the
+// InngestFunction instance). Underscore prefix signals "internal /
+// test-only" access; production goes through `sendEmailFn` below.
+export async function _handleSendEmail({
+  event,
+  step,
+  runId,
+}: {
+  event: {
+    data: {
+      kind: string;
+      to: string;
+      subject: string;
+      template: string;
+      templateProps: Record<string, unknown>;
+      payloadHash?: string;
+    };
+  };
+  step: StepShim;
+  runId: string;
+}): Promise<void> {
+  const { kind, to, subject, template, templateProps, payloadHash } =
+    event.data;
+
+  const html = await step.run("render-html", async () => {
+    const Component = TEMPLATES[template as TemplateKey];
+    if (!Component) {
+      throw new Error(`Unknown email template: ${template}`);
+    }
+    // render() is async in @react-email/render v2+. `await` is harmless
+    // even if the resolved value is a string in older versions.
+    return await render(
+      Component(templateProps as Parameters<typeof Component>[0]),
+    );
+  });
+
+  const sendResult = await step.run("resend-send", async () => {
+    return await resend.emails.send({ from: FROM, to, subject, html });
+  });
+
+  await step.run("log", async () => {
+    await db
+      .insert(emailLog)
+      .values({
+        kind,
+        recipient: to,
+        resendMessageId: sendResult.data?.id ?? null,
+        inngestRunId: runId,
+        status: sendResult.error ? "failed" : "sent",
+        lastError: sendResult.error
+          ? String(sendResult.error.message ?? sendResult.error)
+          : null,
+        payloadHash: payloadHash ?? null,
+      })
+      .onConflictDoNothing({
+        target: [emailLog.kind, emailLog.payloadHash],
+        // Partial-index predicate must be re-stated in ON CONFLICT for
+        // Postgres to match the partial unique idx (migration 0041
+        // Delta 2). Auth-flow sends with payloadHash=null don't match
+        // this predicate, so they bypass the upsert path entirely.
+        where: sql`payload_hash IS NOT NULL`,
+      });
+  });
+
+  if (sendResult.error) {
+    // Throwing → Inngest retries with exponential backoff up to retries: 5.
+    throw new Error(String(sendResult.error.message ?? sendResult.error));
+  }
+}
+
 export const sendEmailFn = inngest.createFunction(
   {
     id: "send-email",
@@ -37,56 +115,13 @@ export const sendEmailFn = inngest.createFunction(
     triggers: [{ event: "email/send.requested" }],
   },
   async ({ event, step, runId }) => {
-    const { kind, to, subject, template, templateProps, payloadHash } =
-      event.data as {
-        kind: string;
-        to: string;
-        subject: string;
-        template: string;
-        templateProps: Record<string, unknown>;
-        payloadHash?: string;
-      };
-
-    const html = await step.run("render-html", async () => {
-      const Component = TEMPLATES[template as TemplateKey];
-      if (!Component) {
-        throw new Error(`Unknown email template: ${template}`);
-      }
-      // render() is async in @react-email/render v2+. `await` is harmless
-      // even if the resolved value is a string in older versions.
-      return await render(
-        Component(templateProps as Parameters<typeof Component>[0]),
-      );
+    // Inngest's production step has a richer Jsonify-wrapped return type,
+    // but at runtime is StepShim-compatible — the cast to unknown is a
+    // deliberate narrowing for the shared-handler split.
+    await _handleSendEmail({
+      event: event as unknown as Parameters<typeof _handleSendEmail>[0]["event"],
+      step: step as unknown as StepShim,
+      runId,
     });
-
-    const sendResult = await step.run("resend-send", async () => {
-      return await resend.emails.send({ from: FROM, to, subject, html });
-    });
-
-    await step.run("log", async () => {
-      await db
-        .insert(emailLog)
-        .values({
-          kind,
-          recipient: to,
-          resendMessageId: sendResult.data?.id ?? null,
-          inngestRunId: runId,
-          status: sendResult.error ? "failed" : "sent",
-          lastError: sendResult.error
-            ? String(sendResult.error.message ?? sendResult.error)
-            : null,
-          payloadHash: payloadHash ?? null,
-        })
-        .onConflictDoNothing({
-          target: [emailLog.kind, emailLog.payloadHash],
-        });
-    });
-
-    if (sendResult.error) {
-      // Throwing → Inngest retries with exponential backoff up to retries: 5.
-      throw new Error(
-        String(sendResult.error.message ?? sendResult.error),
-      );
-    }
   },
 );
