@@ -37,12 +37,47 @@ const ADMIN_SESSION = {
 
 type TxCalls = {
   executes: string[];
+  /** Captured `queryChunks` per execute call. Used by the composite-PK
+   * regression test to inspect the WHERE clause of the membership UPDATE
+   * (PR #36 review fix — the bug was "WHERE location_id <> previous_value"
+   * matching every other location in the same region; the fix scopes by
+   * "WHERE location_id = canonicalId"). */
+  executeChunks: unknown[][];
   inserts: Array<{ values: Record<string, unknown> }>;
   updates: number;
   /** Number of `tx.select(...)` chain calls — used by the entityId-fallback
    * test to assert the merge audit row was looked up. */
   selects: number;
 };
+
+/**
+ * Recursively walk a Drizzle `sql\`...\`` fragment's `queryChunks` array
+ * and return every primitive value (strings, numbers, bound params) found.
+ * Used to assert that a specific UUID appears in the WHERE clause of a
+ * composite-PK UPDATE without coupling the test to drizzle's internal
+ * fragment object shape.
+ */
+function collectChunkValues(chunks: unknown): unknown[] {
+  if (chunks == null) return [];
+  if (typeof chunks !== "object") return [chunks];
+  if (Array.isArray(chunks)) {
+    return chunks.flatMap(collectChunkValues);
+  }
+  const out: unknown[] = [];
+  // Plain values from drizzle Param wrappers: `{ value }` or `{ encoder, value }`.
+  if ("value" in chunks) {
+    out.push((chunks as { value: unknown }).value);
+  }
+  // Identifier names: `{ name: "table" }`.
+  if ("name" in chunks) {
+    out.push((chunks as { name: unknown }).name);
+  }
+  // Nested SQL fragments expose `queryChunks`.
+  if ("queryChunks" in chunks) {
+    out.push(...collectChunkValues((chunks as { queryChunks: unknown }).queryChunks));
+  }
+  return out;
+}
 
 /**
  * Build a tx mock that replies to each `tx.execute(sql)` based on the SQL
@@ -64,10 +99,16 @@ function makeTx(
   tx: unknown;
   calls: TxCalls;
 } {
-  const calls: TxCalls = { executes: [], inserts: [], updates: 0, selects: 0 };
+  const calls: TxCalls = {
+    executes: [],
+    executeChunks: [],
+    inserts: [],
+    updates: 0,
+    selects: 0,
+  };
   let executeCount = 0;
   const tx = {
-    execute: (_frag: { queryChunks?: unknown[]; toString?: () => string }) => {
+    execute: (frag: { queryChunks?: unknown[]; toString?: () => string }) => {
       executeCount++;
       // Stash a stringified marker per call so the test can assert ordering.
       const marker =
@@ -77,6 +118,7 @@ function makeTx(
             ? "select-snapshot"
             : "other";
       calls.executes.push(marker);
+      calls.executeChunks.push(frag.queryChunks ?? []);
       if (executeCount === 2) {
         return Promise.resolve({ rows: snapshotRows });
       }
@@ -292,5 +334,68 @@ describe("undoMerge — happy path", () => {
     const result = await undoMerge(SNAP_ID);
     expect(result).toEqual({ success: true });
     expect(calls.inserts[0].values.entityId).toBe(ARCHIVED_1);
+  });
+});
+
+describe("undoMerge — composite-PK WHERE clause (PR #36 review fix)", () => {
+  it("scopes the membership UPDATE by canonicalId, not by 'location_id <> previous_value'", async () => {
+    // Bug: the previous WHERE clause matched every non-defunct row sharing
+    // the join-side id (e.g. every other location in UK region), then the
+    // SET tried to make them all share a single (location_id, region_id)
+    // tuple → UNIQUE/PK violation. Fix scopes by the canonical id (the
+    // value the merge wrote) so the UPDATE matches exactly the row(s)
+    // THIS merge changed. This test asserts the new WHERE shape contains
+    // the canonical id as a parameter — independent of any specific SQL
+    // string format drizzle picks.
+    vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);
+
+    const SNAP_ID = "00000000-0000-0000-0000-00000000aaaa";
+    const DEFUNCT = "00000000-0000-0000-0000-00000000bbbb";
+    const CANONICAL = "00000000-0000-0000-0000-00000000eeee";
+    const REGION = "00000000-0000-0000-0000-00000000ffff";
+
+    const FK_CHANGE = {
+      table: "location_region_memberships",
+      row_id: `${DEFUNCT}|${REGION}`, // composite-PK: "<locationId>|<otherId>"
+      fk_column: "location_id",
+      previous_value: DEFUNCT,
+    };
+
+    const { tx, calls } = makeTx(
+      [
+        {
+          id: SNAP_ID,
+          audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+          payload: {
+            archived_ids: [DEFUNCT],
+            fk_changes: [FK_CHANGE],
+          },
+          created_at: "2026-05-06T00:00:00Z",
+        },
+      ],
+      CANONICAL,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
+      cb(tx)) as never);
+
+    const result = await undoMerge(SNAP_ID);
+    expect(result).toEqual({ success: true });
+
+    // The composite-PK UPDATE is the third execute call (after lock +
+    // select-snapshot). Inspect its queryChunks — the canonical id MUST
+    // appear as a bound parameter (the WHERE clause now scopes by it).
+    const compositeUpdateChunks = calls.executeChunks[2];
+    const values = collectChunkValues(compositeUpdateChunks);
+
+    // Canonical id is in the WHERE: location_id = ${canonicalId}::uuid.
+    expect(values).toContain(CANONICAL);
+    // Region id is the join-side scope: region_id = ${encOtherId}::uuid.
+    expect(values).toContain(REGION);
+    // Defunct id is the SET target: location_id = ${previous_value}::uuid.
+    expect(values).toContain(DEFUNCT);
+    // Identifier names tell us which table we hit.
+    expect(values).toContain("location_region_memberships");
+    expect(values).toContain("region_id");
   });
 });

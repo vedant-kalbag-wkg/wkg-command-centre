@@ -62,6 +62,12 @@ type MockOptions = {
    */
   preArchiveIds?: string[];
   /**
+   * Optional per-defunct-id name returned alongside `preArchiveIds` from
+   * Step B.5. Used by the archive audit row's entityName (PR #36 review
+   * fix). Defaults to "" — tests that assert on entityName populate this.
+   */
+  preArchiveNames?: Record<string, string>;
+  /**
    * Whether the transaction-scoped `pg_try_advisory_xact_lock` should
    * report acquired (true) or in-contention (false). Defaults to true so
    * existing tests pass through the lock unchanged. The contention test
@@ -115,8 +121,16 @@ function buildMockDb(opts: MockOptions = {}) {
     // Step B.5 — pre-archive check: rows where archived_at IS NULL among
     // the input defunctIds. The primitive uses this to scope archived_ids
     // in the snapshot payload to ONLY the rows that will actually be
-    // stamped by Step D's archive UPDATE (fix from PR #34 review).
-    (opts.preArchiveIds ?? []).map((id) => ({ id })),
+    // stamped by Step D's archive UPDATE (fix from PR #34 review). Also
+    // returns the defunct's `name` so Step D's archive audit row can
+    // populate `entityName` instead of writing an empty string (fix from
+    // PR #36 review). Tests can override the per-id name via
+    // `preArchiveNames`; default is "" which is harmless for assertions
+    // that don't care about entityName.
+    (opts.preArchiveIds ?? []).map((id) => ({
+      id,
+      name: opts.preArchiveNames?.[id] ?? "",
+    })),
   );
 
   type Captured = {
@@ -359,11 +373,19 @@ describe("applyLocationMerge — fieldResolutions lift (Plan 07-03 follow-up)", 
 
     expect(captured.canonicalFieldUpdate).not.toBeNull();
     // Only the resolved fields should be written — NOT every column the
-    // dialog could have offered.
-    expect(captured.canonicalFieldUpdate).toEqual({
+    // dialog could have offered. `updatedAt` is added by the primitive
+    // (PR #36 review fix — bumped alongside the resolved-field write so
+    // audit-trail timestamps reflect the merge).
+    expect(captured.canonicalFieldUpdate).toMatchObject({
       address: "2 New Address Ln",
       hotelGroup: "Marriott",
     });
+    expect(captured.canonicalFieldUpdate!.updatedAt).toBeInstanceOf(Date);
+    expect(Object.keys(captured.canonicalFieldUpdate!).sort()).toEqual([
+      "address",
+      "hotelGroup",
+      "updatedAt",
+    ]);
   });
 
   it("captures pre-write canonical field values into snapshot.payload.canonical_field_changes", async () => {
@@ -492,10 +514,18 @@ describe("applyLocationMerge — fieldResolutions lift (Plan 07-03 follow-up)", 
       },
     );
 
-    // Only the whitelisted key flowed through.
-    expect(captured.canonicalFieldUpdate).toEqual({
+    // Only the whitelisted key flowed through. `updatedAt` is added by
+    // the primitive (PR #36 review fix).
+    expect(captured.canonicalFieldUpdate).toMatchObject({
       address: "2 New Address Ln",
     });
+    expect(captured.canonicalFieldUpdate!.updatedAt).toBeInstanceOf(Date);
+    // `passwordHash` and `__proto__` MUST NOT have flowed through.
+    expect(captured.canonicalFieldUpdate).not.toHaveProperty("passwordHash");
+    expect(Object.keys(captured.canonicalFieldUpdate!).sort()).toEqual([
+      "address",
+      "updatedAt",
+    ]);
     const fieldUpdateCalls = vi
       .mocked(writeAuditLog)
       .mock.calls.filter(

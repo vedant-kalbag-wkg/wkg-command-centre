@@ -555,17 +555,21 @@ export async function applyLocationMerge(
     }
 
     // ----------------------------------------------------------------------
-    // Step B.5 — capture which defunctIds are NOT yet archived. Step D's
-    // archive UPDATE is guarded with `AND archived_at IS NULL`, so only this
-    // subset is actually stamped by this merge. The snapshot's
-    // `archived_ids` MUST match that subset — undo unconditionally sets
-    // `archived_at = NULL` on every id in the list, and a defunct row that
-    // was already archived BEFORE the merge began must NOT be unarchived
-    // by undo. Bug fix from PR #34 review: previous code wrote
-    // `archived_ids: defunctIds` (the full input list).
+    // Step B.5 — capture which defunctIds are NOT yet archived (PR #34
+    // review fix: bug where snapshot.archived_ids over-captured the full
+    // input list and undo would un-archive rows that were already archived
+    // pre-merge) AND grab their names for use in Step D's archive audit
+    // row entityName (PR #36 review fix: previously `""`).
+    //
+    // Step D's archive UPDATE is guarded with `AND archived_at IS NULL`,
+    // so only this subset is actually stamped by this merge. The
+    // snapshot's `archived_ids` MUST match that subset — undo
+    // unconditionally sets `archived_at = NULL` on every id in the list,
+    // and a defunct row that was already archived BEFORE the merge began
+    // must NOT be unarchived by undo.
     // ----------------------------------------------------------------------
-    const preArchiveCheck: Array<{ id: string }> = await tx
-      .select({ id: locations.id })
+    const preArchiveCheck: Array<{ id: string; name: string }> = await tx
+      .select({ id: locations.id, name: locations.name })
       .from(locations)
       .where(
         and(
@@ -574,6 +578,9 @@ export async function applyLocationMerge(
         ),
       );
     const idsToArchive: string[] = preArchiveCheck.map((r) => r.id);
+    const defunctNamesById = new Map<string, string>(
+      preArchiveCheck.map((r) => [r.id, r.name ?? ""]),
+    );
 
     // ----------------------------------------------------------------------
     // Step C — write the snapshot row (only if there's anything to capture).
@@ -605,11 +612,16 @@ export async function applyLocationMerge(
     // Runs AFTER the snapshot capture so undoMerge has the pre-write values
     // to restore, BEFORE the FK rewrites so the canonical's new field values
     // are visible to any downstream read inside the same transaction.
+    //
+    // PR #36 review fix — bump `updated_at` alongside the resolved field
+    // writes. The legacy `mergeLocations` (src/lib/merge.ts:33-44) also
+    // omitted this; the lift here picks it up so audit-log timestamps and
+    // any downstream "what changed when" UI reflect the merge's edit.
     // ----------------------------------------------------------------------
     if (hasFieldResolutions && canonicalFieldChanges) {
       await tx
         .update(locations)
-        .set(filteredResolutions)
+        .set({ ...filteredResolutions, updatedAt: new Date() })
         .where(eq(locations.id, canonicalId));
 
       for (const key of Object.keys(filteredResolutions)) {
@@ -865,7 +877,13 @@ export async function applyLocationMerge(
             actorName: actor.name,
             entityType: "location",
             entityId: defunctId,
-            entityName: "",
+            // PR #36 review fix — populate entityName from the defunct's
+            // pre-merge name (captured in Step B.5) so audit-log readers
+            // see "merged into <canonical>" without having to JOIN against
+            // locations. Empty string preserved as fallback for the
+            // (unreachable in practice) case where the row vanished
+            // between Step B.5 and Step D.
+            entityName: defunctNamesById.get(defunctId) ?? "",
             action: "archive",
             field: "archived_at",
             newValue: "NOW()",

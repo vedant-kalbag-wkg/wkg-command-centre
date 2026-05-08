@@ -28,45 +28,19 @@ import { sql, eq, inArray } from "drizzle-orm";
 import { revalidateTag } from "next/cache";
 
 import { db } from "@/db";
-import {
-  locationMergeSnapshots,
-  locations,
-  kioskAssignments,
-  salesRecords,
-  locationProducts,
-  locationRegionMemberships,
-  locationGroupMemberships,
-  locationHotelGroupMemberships,
-  locationFlags,
-  actionItems,
-  auditLogs,
-} from "@/db/schema";
+import { locations, auditLogs } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
-import { LOCATION_FIELD_RESOLUTION_ALLOWLIST } from "@/lib/location-merge";
+import {
+  LOCATION_FIELD_RESOLUTION_ALLOWLIST,
+  type LocationMergeSnapshotPayload,
+} from "@/lib/location-merge";
 
-type FkChange = {
-  table: string;
-  row_id: string;
-  fk_column: string;
-  previous_value: string;
-};
-
-/**
- * Plan 07-03 follow-up — when the forward-merge applied per-field resolutions
- * to the canonical row (MergeDialog "use defunct's address" UX), the snapshot
- * captures the canonical's pre-write field values here so undoMerge can
- * restore them byte-for-byte. Absent on snapshots written before this lift.
- */
-type CanonicalFieldChanges = {
-  canonical_id: string;
-  fields: Record<string, unknown>;
-};
-
-type SnapshotPayload = {
-  archived_ids: string[];
-  fk_changes: FkChange[];
-  canonical_field_changes?: CanonicalFieldChanges;
-};
+// PR #36 review fix — drop local FkChange / CanonicalFieldChanges /
+// SnapshotPayload type aliases and re-use the exported
+// LocationMergeSnapshotPayload from `@/lib/location-merge`. Single source
+// of truth for the snapshot shape; if the merge primitive evolves the
+// payload, undo gets a TS error here instead of silently drifting.
+type SnapshotPayload = LocationMergeSnapshotPayload;
 
 /**
  * Per-table dispatch — every `table` value the forward-merge writes into
@@ -142,6 +116,26 @@ export async function undoMerge(
       const fkChanges = payload.fk_changes ?? [];
       const archivedIds = payload.archived_ids ?? [];
 
+      // (b.5) Recover the canonical location_id from the original merge
+      // audit row. PR #36 review found a bug in the composite-PK undo
+      // path: the previous WHERE clause `<join_col> = encOtherId AND
+      // location_id <> previous_value` matched EVERY non-defunct row in
+      // that region/group/hotel-group (UK has hundreds of locations
+      // sharing region_id), then tried to set ALL of them to the same
+      // defunct UUID — violating the UNIQUE constraint on location_id.
+      //
+      // Fix: scope by the canonical id (the FK value the merge wrote)
+      // so the UPDATE matches exactly the row(s) THIS merge changed. The
+      // canonical id is the same for every fk_change in this snapshot —
+      // it's the merge audit row's entity_id.
+      const mergeAuditRow = await tx
+        .select({ entityId: auditLogs.entityId })
+        .from(auditLogs)
+        .where(eq(auditLogs.id, snapRow.audit_log_id))
+        .limit(1);
+      const canonicalId =
+        mergeAuditRow[0]?.entityId ?? archivedIds[0] ?? snapshotId;
+
       // (c) Reverse every FK migration recorded in the snapshot.
       // Validate every table name BEFORE issuing any UPDATE so a payload
       // with a bogus table name fails atomically (whole undo rolls back).
@@ -164,31 +158,27 @@ export async function undoMerge(
              WHERE id = ${change.row_id}::uuid
           `);
         } else {
-          // Composite-PK row_id encoded as `${locationId}|${otherId}`. The
-          // current FK value (post-merge) is the canonical id; we restore
-          // location_id back to `previous_value`. WHERE matches BOTH the
-          // current canonical location_id AND the join-side id captured at
-          // merge-time — guarantees we only flip the rows the snapshot saw.
+          // Composite-PK row_id encoded as `${locationId}|${otherId}`.
+          // Restore location_id from canonical → previous_value, scoped
+          // by BOTH the join-side id (region_id / location_group_id /
+          // hotel_group_id) AND the canonical location_id (recovered
+          // above from the merge audit row). The canonical-scoped clause
+          // is the PR #36 review fix — without it, the UPDATE would
+          // match every other location in that region/group too, then
+          // fail with a UNIQUE/PK violation when SET tried to make them
+          // all share a single (location_id, join_id) tuple.
+          //
+          // If the canonical no longer points at the join-side id (the
+          // canonical's row was deleted between merge and undo, e.g. an
+          // out-of-band ops cleanup), the UPDATE is a no-op — acceptable
+          // per D-05's "snapshot is byte-for-byte deterministic from
+          // contents only" guarantee.
           const [encLocId, encOtherId] = change.row_id.split("|");
           if (!encLocId || !encOtherId) {
             throw new Error(
               `undoMerge: malformed composite row_id for ${change.table}: ${change.row_id}`,
             );
           }
-          // We need the canonical location_id to scope the WHERE. The
-          // canonical id is the value of ${change.fk_column} on the row
-          // POST-merge — which we don't store directly. Instead, the row was
-          // re-pointed FROM previous_value TO some canonical_id in the same
-          // transaction; recover canonical from the audit row's metadata via
-          // the snapshot's audit_log_id.
-          //
-          // Simpler: scope by the join-side id only — there can be at most
-          // one row with (location_id=*, joinId=encOtherId) under the
-          // composite PK constraint. Restore previous_value if such row
-          // exists; if it doesn't (collision-pre-deleted during forward
-          // merge), no-op — the prior row is permanently lost (acceptable
-          // per D-05's "snapshot is byte-for-byte deterministic from
-          // contents only" guarantee).
           const otherCol =
             change.table === "location_region_memberships"
               ? "region_id"
@@ -199,7 +189,7 @@ export async function undoMerge(
             UPDATE ${sql.identifier(change.table)}
                SET ${sql.identifier(change.fk_column)} = ${change.previous_value}::uuid
              WHERE ${sql.identifier(otherCol)} = ${encOtherId}::uuid
-               AND ${sql.identifier(change.fk_column)} <> ${change.previous_value}::uuid
+               AND ${sql.identifier(change.fk_column)} = ${canonicalId}::uuid
           `);
         }
       }
@@ -243,24 +233,10 @@ export async function undoMerge(
       // (e) Paired audit row: action='location_merge_undone'. Inlined INSERT
       // because writeAuditLog rejects unknown action enums (its TS union
       // doesn't include 'location_merge_undone' yet); this matches the
-      // audit_logs.action column being plain text in the DB.
-      //
-      // entityId resolution (PR #34 review fix) — the merge's audit row had
-      // `entityId = canonicalId` (the row the merge mutated). The undo's
-      // paired audit row should point at the same canonical so audit-log
-      // lookups by entityId surface both the merge and its undo. Recover
-      // canonicalId from the original merge audit row's entity_id rather
-      // than picking `archivedIds[0]` (one of the defuncts) or
-      // `snapshotId` (a snapshot UUID landing in a column expected to hold
-      // a location UUID — the previous fallback shape).
-      const mergeAuditRow = await tx
-        .select({ entityId: auditLogs.entityId })
-        .from(auditLogs)
-        .where(eq(auditLogs.id, snapRow.audit_log_id))
-        .limit(1);
-      const canonicalId =
-        mergeAuditRow[0]?.entityId ?? archivedIds[0] ?? snapshotId;
-
+      // audit_logs.action column being plain text in the DB. `canonicalId`
+      // (recovered in step b.5) anchors entityId to the same location the
+      // original merge audit row pointed at — matched merge↔undo pair on
+      // audit-log lookups by entityId.
       await tx.insert(auditLogs).values({
         actorId: actor.id,
         actorName: actor.name,

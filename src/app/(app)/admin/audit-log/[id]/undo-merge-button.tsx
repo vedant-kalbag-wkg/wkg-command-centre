@@ -25,6 +25,19 @@ interface UndoMergeButtonProps {
   snapshotId: string;
 }
 
+/**
+ * Locked-state messages keyed by the `error` strings undoMerge can return
+ * for "permanent, no action available" cases. Adding a new permanent-error
+ * vocabulary entry here automatically widens the locked-state UI surface
+ * without code changes elsewhere; non-permanent errors fall through to a
+ * toast (PR #36 review fix — replaces the previous hardcoded
+ * `setLocked("snapshot deleted")` string that wouldn't update if the
+ * undo-error vocabulary expanded).
+ */
+const LOCKED_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  snapshot_already_undone: "snapshot deleted",
+};
+
 export function UndoMergeButton({ snapshotId }: UndoMergeButtonProps) {
   const [confirming, setConfirming] = React.useState(false);
   const [pending, setPending] = React.useState(false);
@@ -65,8 +78,9 @@ export function UndoMergeButton({ snapshotId }: UndoMergeButtonProps) {
     try {
       const result = await undoMerge(snapshotId);
       if ("error" in result) {
-        if (result.error === "snapshot_already_undone") {
-          setLocked("snapshot deleted");
+        const lockedMessage = LOCKED_ERROR_MESSAGES[result.error];
+        if (lockedMessage !== undefined) {
+          setLocked(lockedMessage);
         } else {
           toast.error(result.error);
         }
