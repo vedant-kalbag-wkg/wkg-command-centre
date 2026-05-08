@@ -116,25 +116,35 @@ export async function undoMerge(
       const fkChanges = payload.fk_changes ?? [];
       const archivedIds = payload.archived_ids ?? [];
 
-      // (b.5) Recover the canonical location_id from the original merge
-      // audit row. PR #36 review found a bug in the composite-PK undo
-      // path: the previous WHERE clause `<join_col> = encOtherId AND
-      // location_id <> previous_value` matched EVERY non-defunct row in
-      // that region/group/hotel-group (UK has hundreds of locations
-      // sharing region_id), then tried to set ALL of them to the same
-      // defunct UUID — violating the UNIQUE constraint on location_id.
+      // (b.5) Recover the canonical location_id. Prefer the snapshot's
+      // own `canonical_id` (v3 payload onwards — PR #36 review fix); fall
+      // back to the original merge audit row's entity_id for snapshots
+      // written by pre-v3 code paths. If neither is available the undo
+      // genuinely can't proceed — throw with a precise message instead
+      // of degrading to a misleading fallback (`archivedIds[0]` is a
+      // defunct UUID, not a canonical UUID; the previous fallback would
+      // have silently no-op'd the composite-PK UPDATE while writing a
+      // defunct id into the paired audit row's entityId).
       //
-      // Fix: scope by the canonical id (the FK value the merge wrote)
-      // so the UPDATE matches exactly the row(s) THIS merge changed. The
-      // canonical id is the same for every fk_change in this snapshot —
-      // it's the merge audit row's entity_id.
-      const mergeAuditRow = await tx
-        .select({ entityId: auditLogs.entityId })
-        .from(auditLogs)
-        .where(eq(auditLogs.id, snapRow.audit_log_id))
-        .limit(1);
-      const canonicalId =
-        mergeAuditRow[0]?.entityId ?? archivedIds[0] ?? snapshotId;
+      // The composite-PK UPDATE (loop below) needs canonicalId to scope
+      // its WHERE — without it, the WHERE would either match every row
+      // in the region/group (the original PR #36 bug) or be too narrow
+      // and skip the row that needs un-flipping.
+      let canonicalId = payload.canonical_id;
+      if (!canonicalId) {
+        const mergeAuditRow = await tx
+          .select({ entityId: auditLogs.entityId })
+          .from(auditLogs)
+          .where(eq(auditLogs.id, snapRow.audit_log_id))
+          .limit(1);
+        canonicalId = mergeAuditRow[0]?.entityId;
+      }
+      if (!canonicalId) {
+        throw new Error(
+          `undoMerge: cannot recover canonical_id for snapshot ${snapshotId} ` +
+            `(payload.canonical_id missing AND audit_logs row ${snapRow.audit_log_id} not found)`,
+        );
+      }
 
       // (c) Reverse every FK migration recorded in the snapshot.
       // Validate every table name BEFORE issuing any UPDATE so a payload

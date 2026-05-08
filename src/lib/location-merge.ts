@@ -201,12 +201,27 @@ type CanonicalFieldChanges = {
 };
 
 /**
- * The full snapshot payload shape v2 — adds `canonical_field_changes` to v1.
- * Exported so undoMerge + tests can share the type without redefining it.
+ * The full snapshot payload shape — exported so undoMerge + tests can
+ * share the type without redefining it.
+ *
+ * Versioning history:
+ *   - v1: archived_ids + fk_changes
+ *   - v2: + canonical_field_changes (Plan 07-03 follow-up)
+ *   - v3: + canonical_id (PR #36 review fix — the canonical location's
+ *     UUID is now stored in the snapshot itself so undoMerge doesn't have
+ *     to derive it from a `mergeAuditRow.entityId ?? archivedIds[0] ??
+ *     snapshotId` fallback chain whose middle term was a defunct id, not
+ *     a canonical id. Self-contained snapshots also tolerate out-of-band
+ *     deletes of the audit_logs row.)
+ *
+ * `canonical_id` is optional for backward compat: snapshots written by
+ * pre-v3 code paths won't have it, and undoMerge falls back to a
+ * mergeAuditRow lookup. New snapshots always populate it.
  */
 export type LocationMergeSnapshotPayload = {
   archived_ids: string[];
   fk_changes: FkChange[];
+  canonical_id?: string;
   canonical_field_changes?: CanonicalFieldChanges;
 };
 
@@ -591,6 +606,12 @@ export async function applyLocationMerge(
       const payload: LocationMergeSnapshotPayload = {
         archived_ids: idsToArchive,
         fk_changes: fkChanges,
+        // PR #36 review fix — embed canonical_id directly in the snapshot
+        // so undoMerge doesn't have to derive it from a fallback chain
+        // whose middle term (`archivedIds[0]`) is semantically a defunct
+        // id, not a canonical id. Snapshot is now self-contained for
+        // identity recovery.
+        canonical_id: canonicalId,
         ...(canonicalFieldChanges
           ? { canonical_field_changes: canonicalFieldChanges }
           : {}),

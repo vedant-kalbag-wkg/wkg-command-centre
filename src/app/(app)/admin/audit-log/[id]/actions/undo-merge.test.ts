@@ -197,27 +197,27 @@ describe("undoMerge — canonical_field_changes restore (Plan 07-03 follow-up)",
     const ARCHIVED_1 = "00000000-0000-0000-0000-00000000bbbb";
     const CANONICAL = "00000000-0000-0000-0000-00000000eeee";
 
-    const { tx, calls } = makeTx(
-      [
-        {
-          id: SNAP_ID,
-          audit_log_id: "00000000-0000-0000-0000-00000000dddd",
-          payload: {
-            archived_ids: [ARCHIVED_1],
-            fk_changes: [],
-            canonical_field_changes: {
-              canonical_id: CANONICAL,
-              fields: {
-                address: "1 Old Address Rd",
-                hotelGroup: "Old Group",
-              },
+    // v3 snapshot: payload.canonical_id is set directly. No merge-audit
+    // lookup needed (PR #36 review residual fix).
+    const { tx, calls } = makeTx([
+      {
+        id: SNAP_ID,
+        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+        payload: {
+          archived_ids: [ARCHIVED_1],
+          fk_changes: [],
+          canonical_id: CANONICAL,
+          canonical_field_changes: {
+            canonical_id: CANONICAL,
+            fields: {
+              address: "1 Old Address Rd",
+              hotelGroup: "Old Group",
             },
           },
-          created_at: "2026-05-06T00:00:00Z",
         },
-      ],
-      CANONICAL,
-    );
+        created_at: "2026-05-06T00:00:00Z",
+      },
+    ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
       cb(tx)) as never);
@@ -237,10 +237,11 @@ describe("undoMerge — canonical_field_changes restore (Plan 07-03 follow-up)",
       snapshotId: SNAP_ID,
       canonicalFieldsRestored: 2,
     });
-    // The paired audit row's entityId must be the canonical id recovered
-    // from the merge audit row — NOT a defunct id, NOT the snapshot UUID
-    // (PR #34 review fix).
+    // entityId comes from payload.canonical_id (no audit-log lookup) so
+    // the paired audit row points at the canonical, not a defunct.
     expect(calls.inserts[0].values.entityId).toBe(CANONICAL);
+    // No tx.select on auditLogs — payload.canonical_id was authoritative.
+    expect(calls.selects).toBe(0);
   });
 });
 
@@ -258,20 +259,20 @@ describe("undoMerge — happy path", () => {
       previous_value: ARCHIVED_1,
     };
 
-    const { tx, calls } = makeTx(
-      [
-        {
-          id: SNAP_ID,
-          audit_log_id: "00000000-0000-0000-0000-00000000dddd",
-          payload: {
-            archived_ids: [ARCHIVED_1],
-            fk_changes: [FK_CHANGE],
-          },
-          created_at: "2026-05-06T00:00:00Z",
+    // v3 snapshot: payload.canonical_id is set directly. mergeAuditEntityId
+    // is NOT passed to the mock — undo should not even need the lookup.
+    const { tx, calls } = makeTx([
+      {
+        id: SNAP_ID,
+        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+        payload: {
+          archived_ids: [ARCHIVED_1],
+          fk_changes: [FK_CHANGE],
+          canonical_id: CANONICAL,
         },
-      ],
-      CANONICAL,
-    );
+        created_at: "2026-05-06T00:00:00Z",
+      },
+    ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
       cb(tx)) as never);
@@ -287,8 +288,10 @@ describe("undoMerge — happy path", () => {
     // Restoration of archived rows happens via the drizzle update builder.
     expect(calls.updates).toBe(1);
 
-    // The merge-audit-row lookup (post-PR #34 review) is one tx.select call.
-    expect(calls.selects).toBe(1);
+    // No tx.select on auditLogs — payload.canonical_id is the primary
+    // source post-PR #36 residual fix. The audit-log lookup is now
+    // exercised only by the legacy-snapshot test below.
+    expect(calls.selects).toBe(0);
 
     // Paired audit row written with action='location_merge_undone' and
     // entityId pointing at the canonical (the row the merge mutated), NOT
@@ -306,34 +309,76 @@ describe("undoMerge — happy path", () => {
     });
   });
 
-  it("falls back to archivedIds[0] when the merge audit row is unexpectedly missing", async () => {
+  it("falls back to merge audit row lookup when payload.canonical_id is missing (legacy v2 snapshot)", async () => {
+    // Backward-compat path: a snapshot written by pre-v3 code (payload
+    // has archived_ids + fk_changes but no canonical_id). undoMerge
+    // recovers canonicalId via tx.select on audit_logs. This path was
+    // the primary in the previous review pass and is now the fallback.
     vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);
 
     const SNAP_ID = "00000000-0000-0000-0000-00000000aaaa";
     const ARCHIVED_1 = "00000000-0000-0000-0000-00000000bbbb";
+    const CANONICAL = "00000000-0000-0000-0000-00000000eeee";
 
-    // mergeAuditEntityId omitted → tx.select returns []. Defensive fallback
-    // path: entityId becomes archivedIds[0]. This preserves backward-compat
-    // shape for snapshots whose audit_logs row was deleted by an
-    // out-of-band cleanup.
-    const { tx, calls } = makeTx([
-      {
-        id: SNAP_ID,
-        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
-        payload: {
-          archived_ids: [ARCHIVED_1],
-          fk_changes: [],
+    const { tx, calls } = makeTx(
+      [
+        {
+          id: SNAP_ID,
+          audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+          payload: {
+            archived_ids: [ARCHIVED_1],
+            fk_changes: [],
+            // canonical_id intentionally omitted — legacy v2 snapshot.
+          },
+          created_at: "2026-05-06T00:00:00Z",
         },
-        created_at: "2026-05-06T00:00:00Z",
-      },
-    ]);
+      ],
+      CANONICAL, // mergeAuditEntityId returns this from tx.select
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
       cb(tx)) as never);
 
     const result = await undoMerge(SNAP_ID);
     expect(result).toEqual({ success: true });
-    expect(calls.inserts[0].values.entityId).toBe(ARCHIVED_1);
+    expect(calls.selects).toBe(1); // audit-log lookup ran
+    expect(calls.inserts[0].values.entityId).toBe(CANONICAL);
+  });
+
+  it("throws when payload.canonical_id is missing AND merge audit row is missing", async () => {
+    // Both identity sources unavailable: pre-v3 snapshot whose
+    // audit_logs row was deleted out-of-band. The previous fallback
+    // chain would have silently used archivedIds[0] (a defunct UUID,
+    // semantically wrong) as canonicalId — the composite-PK UPDATE
+    // would have no-op'd and the audit row would have a defunct id as
+    // its entityId. Post-fix: throw a precise error so the operator
+    // knows to investigate the audit log instead of believing undo
+    // succeeded.
+    vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);
+
+    const SNAP_ID = "00000000-0000-0000-0000-00000000aaaa";
+    const ARCHIVED_1 = "00000000-0000-0000-0000-00000000bbbb";
+
+    const { tx } = makeTx([
+      {
+        id: SNAP_ID,
+        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+        payload: {
+          archived_ids: [ARCHIVED_1],
+          fk_changes: [],
+          // canonical_id missing
+        },
+        created_at: "2026-05-06T00:00:00Z",
+      },
+    ]); // mergeAuditEntityId omitted → tx.select returns []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
+      cb(tx)) as never);
+
+    const result = await undoMerge(SNAP_ID);
+    expect(result).toMatchObject({
+      error: expect.stringContaining("cannot recover canonical_id"),
+    });
   });
 });
 
@@ -361,20 +406,19 @@ describe("undoMerge — composite-PK WHERE clause (PR #36 review fix)", () => {
       previous_value: DEFUNCT,
     };
 
-    const { tx, calls } = makeTx(
-      [
-        {
-          id: SNAP_ID,
-          audit_log_id: "00000000-0000-0000-0000-00000000dddd",
-          payload: {
-            archived_ids: [DEFUNCT],
-            fk_changes: [FK_CHANGE],
-          },
-          created_at: "2026-05-06T00:00:00Z",
+    // v3 snapshot — payload.canonical_id is the primary identity source.
+    const { tx, calls } = makeTx([
+      {
+        id: SNAP_ID,
+        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+        payload: {
+          archived_ids: [DEFUNCT],
+          fk_changes: [FK_CHANGE],
+          canonical_id: CANONICAL,
         },
-      ],
-      CANONICAL,
-    );
+        created_at: "2026-05-06T00:00:00Z",
+      },
+    ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
       cb(tx)) as never);

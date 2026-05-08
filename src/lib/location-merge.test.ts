@@ -303,8 +303,13 @@ describe("applyLocationMerge — snapshot capture", () => {
     const payload = captured.snapshotInsertValues!.payload as {
       archived_ids: string[];
       fk_changes: FkChange[];
+      canonical_id?: string;
     };
     expect(payload.archived_ids).toEqual([DEF1, DEF2]);
+    // PR #36 review residual fix — canonical_id is embedded directly so
+    // undoMerge doesn't have to derive it from a fallback chain whose
+    // middle term was a defunct id.
+    expect(payload.canonical_id).toBe(CANONICAL);
 
     // 4 rows captured: 2× kiosk_assignments + 1× sales_records.location_id +
     // 1× sales_records.processed_at_location_id.
