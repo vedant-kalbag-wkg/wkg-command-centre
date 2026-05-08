@@ -74,6 +74,13 @@ export type CommitResult = { committedRows: number };
 export type StageOptions = {
   regionId: string;
   feeCodeFallbacks: Map<string, string>;
+  /**
+   * Phase 7 (D-06 / DATA-04): when set, unknown outlet codes resolve to this
+   * sentinel location id instead of producing a validation error so the
+   * import can commit. Used by `scripts/v2-wipe-and-reseed.ts`; production
+   * Azure ETL leaves it undefined to preserve strict outlet validation.
+   */
+  sentinelLocationId?: string;
 };
 
 type StoredStagedRow = {
@@ -117,6 +124,10 @@ export async function _stageImportForActor(
   const dimensionInputs: DimensionInput[] = parsedRows.map((r) => ({
     rowNumber: r.rowNumber,
     outletCode: r.parsed.outletCode,
+    // Phase 07-06 — plumb customer_code through to the resolver. The CSV
+    // parser already extracts `Cust_cd` into `parsed.customerCode`; the
+    // resolver uses it as the Pass 0 lookup key against `locations.customer_code`.
+    customerCode: r.parsed.customerCode,
     productName: r.parsed.productName,
     netsuiteCode: r.parsed.netsuiteCode,
     categoryCode: r.parsed.categoryCode,
@@ -126,6 +137,7 @@ export async function _stageImportForActor(
   }));
   const resolutions = await resolveDimensions(db, dimensionInputs, {
     regionId: opts.regionId,
+    sentinelLocationId: opts.sentinelLocationId,
   });
   const resolutionByRow = new Map<number, (typeof resolutions)[number]>();
   for (const r of resolutions) resolutionByRow.set(r.rowNumber, r);
@@ -334,11 +346,24 @@ export async function _commitImportForActor(
   for (const m of inBatch.matches) matchByRefundId.set(m.refundId, m);
   for (const m of crossBatchMatches) matchByRefundId.set(m.refundId, m);
 
+  // FK ordering: `sales_records.original_record_id` self-references the
+  // table, and the constraint is IMMEDIATE (not DEFERRABLE). Reversals (negative
+  // amounts) reference originals (positive amounts) within the same import,
+  // and chunked inserts mean a reversal in batch N can reference an original
+  // in batch N+1 — which fires a FK violation when batch N is committed and
+  // batch N+1 hasn't been inserted yet. Splitting the sort so originals
+  // (non-reversals) flush before reversals lets the IMMEDIATE check pass on
+  // every chunk. Within each group the relative order is preserved.
+  const orderedPrepared: typeof prepared = [
+    ...prepared.filter((p) => !p.parsed.isReversal),
+    ...prepared.filter((p) => p.parsed.isReversal),
+  ];
+
   try {
     await db.transaction(async (tx: AnyDb) => {
       const CHUNK = 1000;
-      for (let i = 0; i < prepared.length; i += CHUNK) {
-        const batch = prepared.slice(i, i + CHUNK);
+      for (let i = 0; i < orderedPrepared.length; i += CHUNK) {
+        const batch = orderedPrepared.slice(i, i + CHUNK);
         const inserts = batch.map((p) => {
           const match = matchByRefundId.get(p.id);
           // For matched refunds: rewrite location_id to the original's; keep

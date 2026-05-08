@@ -150,7 +150,11 @@ const fetchAllFlagsCached = unstable_cache(
         resolvedAt: locationFlags.resolvedAt,
         resolutionNote: locationFlags.resolutionNote,
         locationName: locations.name,
-        outletCode: locations.outletCode,
+        // Phase 07-06 — `outletCode` field on the result keeps its name (the
+        // /analytics/flags page column header is "Outlet Code") but the
+        // source column is now `customer_code`, the canonical hotel-level
+        // identifier. The actual per-kiosk outlet code lives on kiosks.
+        outletCode: locations.customerCode,
         // Correlated subquery: count of action items linked back to this
         // flag. Done in-query so the Flag Review page renders in a single
         // roundtrip rather than firing N separate `fetchActionItemsForFlag`

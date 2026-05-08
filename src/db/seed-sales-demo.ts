@@ -4,12 +4,18 @@ import { eq } from "drizzle-orm";
 
 const DEMO_REGION = { name: "Demo", code: "DEMO" };
 
+// Phase 07-06 — `outletCode` is gone from locations. Demo seed now stamps
+// `customerCode` (the canonical hotel-level identifier) instead. The legacy
+// shorthand "GRAND-001" / "CITY-002" was historically used as both a
+// location identifier AND a kiosk identifier; here we keep the same string
+// as the customer_code so existing dev workflows that look up by that value
+// continue to work, but the column it lands in changed.
 const DEMO_LOCATIONS = [
-  { name: "The Grand Hotel", outletCode: "GRAND-001" },
-  { name: "City Centre Inn", outletCode: "CITY-002" },
-  { name: "Riverside Lodge", outletCode: "RIVER-003" },
-  { name: "Airport Express Hotel", outletCode: "AIR-004" },
-  { name: "Harbour View Suites", outletCode: "HARB-005" },
+  { name: "The Grand Hotel", customerCode: "GRAND-001" },
+  { name: "City Centre Inn", customerCode: "CITY-002" },
+  { name: "Riverside Lodge", customerCode: "RIVER-003" },
+  { name: "Airport Express Hotel", customerCode: "AIR-004" },
+  { name: "Harbour View Suites", customerCode: "HARB-005" },
 ];
 
 const DEMO_PRODUCTS = [
@@ -47,7 +53,7 @@ async function seedSalesDemo() {
     const existing = await db
       .select({ id: locations.id })
       .from(locations)
-      .where(eq(locations.outletCode, loc.outletCode))
+      .where(eq(locations.customerCode, loc.customerCode))
       .limit(1);
     if (existing.length === 0) {
       await db.insert(locations).values({ ...loc, primaryRegionId: demoRegion.id });

@@ -34,11 +34,11 @@ export type OutletTypeActor = { id: string; name: string };
 /**
  * Review-reason flag. `missing_type` is the default — a new outlet surfaced by
  * the ETL that still needs human classification. `imported_from_monday` marks
- * the placeholder rows produced by `scripts/import-location-products-from-monday.ts`
- * when a Monday hotel had no mirror9 outlet code (outletCode gets a
- * `MONDAY-<mondayItemId>` placeholder and the region defaults to UK, so the
- * operator needs to both classify AND verify the region before these rows are
- * analytics-safe).
+ * the placeholder rows produced by the Monday tier importer when a hotel had
+ * no customer code (Phase 07-06: previously detected via the `MONDAY-` prefix
+ * on outlet_code; now detected via NULL customer_code combined with the
+ * audit-log `imported_from_monday_placeholder` action — see the SQL below
+ * which surfaces the flag from the audit_logs metadata).
  *
  * `classified` is set only when the caller passes `includeClassified: true` —
  * surfaces rows that already have a `location_type`, so operators can re-edit
@@ -51,7 +51,13 @@ export type ReviewReason =
 
 export type UnclassifiedOutletRow = {
   id: string;
-  outletCode: string;
+  /**
+   * Phase 07-06 — `outletCode` field name kept for back-compat with the
+   * existing /settings/outlet-types React table. Source column is now
+   * `locations.customer_code` (the canonical hotel-level identifier).
+   * Per-kiosk outlet codes live on the kiosks table.
+   */
+  outletCode: string | null;
   name: string;
   last30dRevenue: number;
   last30dTransactions: number;
@@ -116,7 +122,9 @@ export async function _listUnclassifiedOutletsForActor(
   const rows = await db
     .select({
       id: locations.id,
-      outletCode: locations.outletCode,
+      // Phase 07-06 — outlet_code is gone from locations; surface
+      // customer_code under the legacy field name (UI label "Outlet Code").
+      outletCode: locations.customerCode,
       name: locations.name,
       hotelGroup: locations.hotelGroup,
       numRooms: locations.numRooms,
@@ -124,6 +132,7 @@ export async function _listUnclassifiedOutletsForActor(
       notes: locations.notes,
       locationType: locations.locationType,
       primaryRegionId: locations.primaryRegionId,
+      mondayItemId: locations.mondayItemId,
       primaryRegionCode: regions.code,
       revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
       transactions: sql<string>`COALESCE(COUNT(${salesRecords.id}) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
@@ -144,7 +153,7 @@ export async function _listUnclassifiedOutletsForActor(
   return rows.map(
     (r: {
       id: string;
-      outletCode: string;
+      outletCode: string | null;
       name: string;
       hotelGroup: string | null;
       numRooms: number | null;
@@ -152,18 +161,27 @@ export async function _listUnclassifiedOutletsForActor(
       notes: string | null;
       locationType: LocationType | null;
       primaryRegionId: string;
+      mondayItemId: string | null;
       primaryRegionCode: string;
       revenue: string;
       transactions: string;
     }) => {
-      // Review-reason precedence: a classified row reports `classified` even
-      // when its outletCode is a MONDAY-* placeholder — the operator already
-      // resolved that placeholder, so the relevant signal now is "this row
-      // is editable, not new".
+      // Review-reason precedence (Phase 07-06):
+      //   - classified — already has a location_type; operator can re-edit.
+      //   - imported_from_monday — placeholder rows created by the Monday
+      //     tier importer with NO customer_code AND a mondayItemId stamped.
+      //     Pre-07-06 these were detected via the `MONDAY-` prefix on
+      //     outlet_code; both signals identify the same set of rows
+      //     (the importer always sets mondayItemId on placeholder inserts;
+      //     Live Estate / Heathrow rows with non-null customer_code don't
+      //     hit this branch because outletCode here IS customer_code).
+      //   - missing_type — anything else needing classification.
+      const isMondayPlaceholder =
+        r.outletCode === null && r.mondayItemId !== null;
       const reviewReason: ReviewReason =
         r.locationType !== null
           ? "classified"
-          : r.outletCode.startsWith("MONDAY-")
+          : isMondayPlaceholder
             ? "imported_from_monday"
             : "missing_type";
       return {
@@ -302,9 +320,10 @@ async function assertRegionExists(db: AnyDb, regionId: string): Promise<void> {
 
 /**
  * Reassign a single location's primaryRegionId. Validates the region first,
- * then read + update + audit inside one transaction. The composite-unique
- * constraint on (primaryRegionId, outletCode) can fire here; we surface the
- * conflict as a recognisable error message rather than a raw PG code.
+ * then read + update + audit inside one transaction. The partial-unique
+ * constraint on (primaryRegionId, customerCode) WHERE NOT NULL (Phase 07-06)
+ * can fire here; we surface the conflict as a recognisable error message
+ * rather than a raw PG 23505.
  */
 export async function _setPrimaryRegionForActor(
   db: AnyDb,
@@ -318,28 +337,29 @@ export async function _setPrimaryRegionForActor(
       .select({
         primaryRegionId: locations.primaryRegionId,
         name: locations.name,
-        outletCode: locations.outletCode,
+        customerCode: locations.customerCode,
       })
       .from(locations)
       .where(eq(locations.id, locationId));
     if (!before) throw new Error(`Location ${locationId} not found`);
 
-    // Pre-flight composite-unique check: would another location in the target
-    // region already own this outletCode? Cheaper to check than to catch the
-    // PG 23505 and re-classify it.
-    if (before.primaryRegionId !== regionId) {
+    // Pre-flight partial-unique check (Phase 07-06): would another active
+    // location in the target region already own this customer_code?
+    // Customer-code-less locations (placeholders) are unconstrained and
+    // skip this check.
+    if (before.primaryRegionId !== regionId && before.customerCode !== null) {
       const conflicts = await tx
         .select({ id: locations.id })
         .from(locations)
         .where(
           and(
             eq(locations.primaryRegionId, regionId),
-            eq(locations.outletCode, before.outletCode),
+            eq(locations.customerCode, before.customerCode),
           ),
         );
       if (conflicts.length > 0) {
         throw new Error(
-          `Cannot move ${before.outletCode}: another location with that outlet code already exists in the target region`,
+          `Cannot move ${before.name}: another location with customer code '${before.customerCode}' already exists in the target region`,
         );
       }
     }
@@ -394,53 +414,60 @@ export async function _bulkSetPrimaryRegionForActor(
       .select({
         id: locations.id,
         name: locations.name,
-        outletCode: locations.outletCode,
+        customerCode: locations.customerCode,
         primaryRegionId: locations.primaryRegionId,
       })
       .from(locations)
       .where(inArray(locations.id, locationIds))) as Array<{
       id: string;
       name: string;
-      outletCode: string;
+      customerCode: string | null;
       primaryRegionId: string;
     }>;
 
-    // Conflict pre-flight: any other location already in the target region
-    // with one of our outlet codes? Build a set of "taken" outlet codes in
-    // the target region, then filter our candidates against it. We exclude
-    // the candidates themselves from the lookup (a location moving from
-    // region X to region Y can keep its own outlet code).
-    const candidateOutletCodes = rows
-      .filter((r) => r.primaryRegionId !== regionId)
-      .map((r) => r.outletCode);
+    // Conflict pre-flight (Phase 07-06): any other active location already in
+    // the target region with one of our customer codes? Build a set of
+    // "taken" codes in the target region, then filter our candidates. We
+    // exclude the candidates themselves from the lookup (a location moving
+    // from region X to region Y can keep its own customer code) and skip
+    // candidates with NULL customer_code (placeholders are unconstrained
+    // by the partial unique index).
+    const candidateCustomerCodes = rows
+      .filter((r) => r.primaryRegionId !== regionId && r.customerCode !== null)
+      .map((r) => r.customerCode!) as string[];
 
-    const takenOutletCodes = new Set<string>();
-    if (candidateOutletCodes.length > 0) {
+    const takenCustomerCodes = new Set<string>();
+    if (candidateCustomerCodes.length > 0) {
       const candidateIds = rows.map((r) => r.id);
       const taken = (await tx
-        .select({ outletCode: locations.outletCode })
+        .select({ customerCode: locations.customerCode })
         .from(locations)
         .where(
           and(
             eq(locations.primaryRegionId, regionId),
-            inArray(locations.outletCode, candidateOutletCodes),
-            // Exclude the candidates themselves — if loc X is already in the
-            // target region with code Q5, moving it "to itself" is a no-op,
-            // not a conflict.
+            inArray(locations.customerCode, candidateCustomerCodes),
+            // Exclude the candidates themselves — moving "to itself" is a
+            // no-op, not a conflict.
             notInArray(locations.id, candidateIds),
           ),
-        )) as Array<{ outletCode: string }>;
-      for (const t of taken) takenOutletCodes.add(t.outletCode);
+        )) as Array<{ customerCode: string | null }>;
+      for (const t of taken) {
+        if (t.customerCode !== null) takenCustomerCodes.add(t.customerCode);
+      }
     }
 
-    const okRows = rows.filter(
-      (r) =>
-        r.primaryRegionId === regionId || !takenOutletCodes.has(r.outletCode),
-    );
+    const okRows = rows.filter((r) => {
+      if (r.primaryRegionId === regionId) return true;
+      // No customer_code → no partial-unique conflict; safe to move.
+      if (r.customerCode === null) return true;
+      return !takenCustomerCodes.has(r.customerCode);
+    });
     const conflictingIds = rows
       .filter(
         (r) =>
-          r.primaryRegionId !== regionId && takenOutletCodes.has(r.outletCode),
+          r.primaryRegionId !== regionId &&
+          r.customerCode !== null &&
+          takenCustomerCodes.has(r.customerCode),
       )
       .map((r) => r.id);
 

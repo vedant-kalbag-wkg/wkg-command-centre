@@ -16,6 +16,7 @@ import {
   time,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // =============================================================================
 // Better Auth tables
@@ -148,6 +149,12 @@ export const locations = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
+    // Phase 7 (Plan B) — canonical normalised form of `name` used to detect
+    // same-name location collisions across regions. Populated at write-time
+    // by the Monday hotel importer (Plan B Task 2). Backfilled and given a
+    // partial unique index by Plan D (Plan 07-04). Nullable until the
+    // backfill runs.
+    normalisedName: text("normalised_name"),
     address: text("address"),
     latitude: doublePrecision("latitude"),
     longitude: doublePrecision("longitude"),
@@ -156,14 +163,19 @@ export const locations = pgTable(
     keyContacts: jsonb("key_contacts").$type<
       Array<{ name: string; role: string; email: string; phone: string }>
     >(),
+    // Phase 7 Plan 07-06 — customer_code is the canonical hotel-level
+    // identifier (the RPS account code mirrored from Monday's `mirror3__1`).
+    // Nullable: placeholders (RTL "Ready to Launch", Heathrow pre-deployment)
+    // and the LOCATION_NEEDED sentinel legitimately have no code. A partial
+    // unique index over (primary_region_id, customer_code) WHERE NOT NULL
+    // (migration 0040) enforces "one location per RPS account per region"
+    // without blocking placeholders.
     customerCode: text("customer_code"),
-    // Phase 1 M4 — outlet code is the stable identifier for a hotel in the
-    // sales CSV. Data-dashboard's hotel_metadata_cache used it as the PK; we
-    // mirror that on locations so CSV rows can FK-resolve to locations.id.
-    // No longer globally unique — collisions are legitimate across regions
-    // (e.g. outlet "Q5" in GB ≠ "Q5" in DE). Uniqueness enforced as
-    // (primaryRegionId, outletCode) below.
-    outletCode: text("outlet_code").notNull(),
+    // Phase 7 Plan 07-06 — universal idempotency key for the Monday hotel /
+    // Heathrow / Assets importers. Every Monday item has a stable id; this
+    // is the ON CONFLICT target replacing the old (region, outlet_code)
+    // compound. Partial-unique index in migration 0040.
+    mondayItemId: text("monday_item_id"),
     // NetSuite ETL region scope (2026-04-24): each location belongs to exactly
     // one canonical region. Populated from kiosk assignments / memberships
     // during the 0022 migration; new rows must set this explicitly.
@@ -228,10 +240,34 @@ export const locations = pgTable(
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => ({
-    outletRegionUniq: unique("locations_region_outlet_unique").on(
-      t.primaryRegionId,
-      t.outletCode,
-    ),
+    // Phase 7 Plan 07-04 (DATA-03) — partial unique index over the canonical
+    // normalised name, scoped to active rows. Two active rows with the same
+    // normalised name fail at INSERT/UPDATE; archived rows (and the sentinel,
+    // whose normalised name is "locationneeded" — explicitly excluded by the
+    // detection helper, not by the index) can coexist freely. Backfilled in
+    // Task 1 Step 1 before this index lands so the CREATE INDEX never fails
+    // on legacy data.
+    normalisedNameUniqueActive: uniqueIndex(
+      "locations_normalised_name_unique_active",
+    )
+      .on(t.normalisedName)
+      .where(sql`archived_at IS NULL`),
+    // Phase 7 Plan 07-06 — partial unique on (region, customer_code) WHERE
+    // NOT NULL. Replaces the dropped (region, outlet_code) compound; allows
+    // multiple-NULL rows (placeholders) per region.
+    customerCodePerRegionUniq: uniqueIndex(
+      "locations_region_customer_code_partial_uniq",
+    )
+      .on(t.primaryRegionId, t.customerCode)
+      .where(sql`customer_code IS NOT NULL`),
+    // Phase 7 Plan 07-06 — partial unique on monday_item_id (the importer's
+    // ON CONFLICT target). Partial so legacy rows inserted before the column
+    // existed (NULL monday_item_id) don't conflict.
+    mondayItemIdPartialUniq: uniqueIndex(
+      "locations_monday_item_id_partial_uniq",
+    )
+      .on(t.mondayItemId)
+      .where(sql`monday_item_id IS NOT NULL`),
   }),
 );
 
@@ -275,6 +311,24 @@ export const auditLogs = pgTable("audit_logs", {
   newValue: text("new_value"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Phase 7 Plan 07-03 — N→1 location-merge snapshot-before-commit (D-03 / DATA-02).
+// Each row captures the pre-merge FK state for a single forward-merge transaction.
+// Linked 1:1 to the merge audit-log entry via auditLogId. The undo server action
+// (src/app/(app)/admin/audit-log/[id]/actions/undo-merge.ts) replays the payload
+// to reverse FK migrations and restore archived rows; the snapshot row is
+// DELETEd on successful undo (the row's existence is the single source of truth
+// for "undo still available").
+export const locationMergeSnapshots = pgTable("location_merge_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  auditLogId: uuid("audit_log_id")
+    .notNull()
+    .references(() => auditLogs.id),
+  payload: jsonb("payload").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 // User views — saved filter/sort/group configurations

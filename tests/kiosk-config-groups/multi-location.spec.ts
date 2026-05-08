@@ -76,7 +76,6 @@ test.describe("@kiosk-config-groups multi-location regression (PR #29)", () => {
       .insert(locations)
       .values({
         name: LOC1_NAME,
-        outletCode: `_e2e_1_${randomUUID().slice(0, 6)}`,
         primaryRegionId: region.id,
         kioskConfigGroupId: groupId,
       })
@@ -87,7 +86,6 @@ test.describe("@kiosk-config-groups multi-location regression (PR #29)", () => {
       .insert(locations)
       .values({
         name: LOC2_NAME,
-        outletCode: `_e2e_2_${randomUUID().slice(0, 6)}`,
         primaryRegionId: region.id,
         kioskConfigGroupId: groupId,
       })

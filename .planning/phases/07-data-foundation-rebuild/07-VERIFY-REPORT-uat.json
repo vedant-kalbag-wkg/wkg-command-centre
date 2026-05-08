@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-05-08T04:42:55.390Z",
+  "results": [
+    {
+      "name": "locations.active count vs golden",
+      "status": "fail",
+      "expected": 373,
+      "actual": 509
+    },
+    {
+      "name": "kiosks.active count vs golden",
+      "status": "fail",
+      "expected": 442,
+      "actual": 392
+    },
+    {
+      "name": "sales_records count vs golden",
+      "status": "pass",
+      "expected": 95103,
+      "actual": 95103
+    },
+    {
+      "name": "sales_records total revenue (gross GBP) vs golden",
+      "status": "pass",
+      "expected": "1783083.58",
+      "actual": "1783083.58"
+    },
+    {
+      "name": "no orphan kiosk_assignments (FK to live kiosk + live location)",
+      "status": "pass",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "no active same-name groups (excluding sentinel)",
+      "status": "pass",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "LOCATION_NEEDED sentinel exists",
+      "status": "pass",
+      "expected": "1 row (name=LOCATION_NEEDED, region=GLOBAL)",
+      "actual": "1 row"
+    },
+    {
+      "name": "LOCATION_NEEDED orphan kiosk count (informational)",
+      "status": "warn",
+      "actual": 0,
+      "detail": "no orphans — clean"
+    },
+    {
+      "name": "locations.customer_code coverage (Phase 07-06 Pass 0 input)",
+      "status": "pass",
+      "expected": ">= 320",
+      "actual": 364,
+      "detail": "Pass 0 resolution path has expected data shape"
+    },
+    {
+      "name": "kiosk_assignments.assigned_at coverage (NULL count after two-pass backfill)",
+      "status": "pass",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "audit_logs has reseed entry from runbook system actor",
+      "status": "pass",
+      "expected": ">= 1",
+      "actual": 2
+    }
+  ],
+  "summary": {
+    "total": 11,
+    "pass": 8,
+    "fail": 2,
+    "warn": 1
+  }
+}

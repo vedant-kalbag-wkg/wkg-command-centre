@@ -87,7 +87,7 @@ async function main(): Promise<void> {
           ka.id          AS assignment_id,
           ka.kiosk_id,
           ka.location_id,
-          l.outlet_code,
+          l.customer_code AS outlet_code,
           l.name         AS location_name,
           ka.assigned_at AS current_assigned_at,
           CASE

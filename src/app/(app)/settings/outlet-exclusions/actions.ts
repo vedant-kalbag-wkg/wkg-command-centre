@@ -1,10 +1,17 @@
 "use server";
 
 import { db } from "@/db";
-import { outletExclusions, locations, regions, user } from "@/db/schema";
+import {
+  kioskAssignments,
+  kiosks,
+  locations,
+  outletExclusions,
+  regions,
+  user,
+} from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
-import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Outlet exclusion server actions — admin only
@@ -181,18 +188,25 @@ export async function testPattern(
       return { error: "Region is required" };
     }
 
-    // Fetch all outlet codes in this region only.
-    const allCodes = await db
-      .select({ outletCode: locations.outletCode })
-      .from(locations)
+    // Phase 07-06 — outlet codes live on `kiosks` (per-SSM), not on
+    // locations. Scan currently-assigned kiosks via kiosk_assignments to
+    // get the set of outlet codes that would be matched by an exclusion in
+    // this region. Distinct by code so the preview shows each unique code
+    // once even if multiple kiosks share it (shouldn't happen, but safe).
+    const allCodeRows = await db
+      .selectDistinct({ outletCode: kiosks.outletCode })
+      .from(kiosks)
+      .innerJoin(kioskAssignments, eq(kioskAssignments.kioskId, kiosks.id))
+      .innerJoin(locations, eq(locations.id, kioskAssignments.locationId))
       .where(
         and(
-          isNotNull(locations.outletCode),
+          isNotNull(kiosks.outletCode),
+          isNull(kioskAssignments.unassignedAt),
           eq(locations.primaryRegionId, regionId),
         ),
       );
 
-    const codes = allCodes
+    const codes = allCodeRows
       .map((r) => r.outletCode)
       .filter((c): c is string => c !== null);
 

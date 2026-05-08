@@ -140,7 +140,10 @@ export async function fetchCommissionByLocation(
   const rows = await db
     .select({
       locationId: locations.id,
-      locationName: sql<string>`coalesce(${locations.name}, ${locations.outletCode}, 'Unknown')`,
+      // Phase 07-06 — outlet_code is gone; the secondary fallback for a
+      // location's display label is now its RPS customer_code (the canonical
+      // hotel-level identifier).
+      locationName: sql<string>`coalesce(${locations.name}, ${locations.customerCode}, 'Unknown')`,
       commissionable: sql<string>`coalesce(sum(${commissionLedger.commissionableAmount}), 0)`,
       commission: sql<string>`coalesce(sum(${commissionLedger.commissionAmount}), 0)`,
       recordCount: sql<string>`count(*)`,
@@ -149,7 +152,7 @@ export async function fetchCommissionByLocation(
     .innerJoin(salesRecords, eq(commissionLedger.salesRecordId, salesRecords.id))
     .innerJoin(locations, eq(salesRecords.locationId, locations.id))
     .where(and(where, eq(commissionLedger.isReversal, false)))
-    .groupBy(locations.id, locations.name, locations.outletCode)
+    .groupBy(locations.id, locations.name, locations.customerCode)
     .orderBy(sql`sum(${commissionLedger.commissionAmount}) DESC`);
 
   return rows.map((r) => {

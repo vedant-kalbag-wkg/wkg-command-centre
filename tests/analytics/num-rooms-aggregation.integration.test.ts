@@ -109,9 +109,9 @@ describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {
     const insertedLocations = await ctx.db
       .insert(locations)
       .values([
-        { name: "H100a", outletCode: "H100A", primaryRegionId: region.id, numRooms: 100 },
-        { name: "H100b", outletCode: "H100B", primaryRegionId: region.id, numRooms: 100 },
-        { name: "H200", outletCode: "H200", primaryRegionId: region.id, numRooms: 200 },
+        { name: "H100a", primaryRegionId: region.id, numRooms: 100 },
+        { name: "H100b", primaryRegionId: region.id, numRooms: 100 },
+        { name: "H200", primaryRegionId: region.id, numRooms: 200 },
       ])
       .returning({ id: locations.id });
 
@@ -163,10 +163,10 @@ describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {
     const [active, archived] = await ctx.db
       .insert(locations)
       .values([
-        { name: "Active Hotel", outletCode: "ACT", primaryRegionId: region.id, numRooms: 100 },
+        { name: "Active Hotel", primaryRegionId: region.id, numRooms: 100 },
         {
           name: "Archived Hotel",
-          outletCode: "ARC",
+
           primaryRegionId: region.id,
           numRooms: 250,
           archivedAt: new Date(),
@@ -228,8 +228,8 @@ describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {
     const [hotelA, hotelB] = await ctx.db
       .insert(locations)
       .values([
-        { name: "Hotel A", outletCode: "HA", primaryRegionId: region.id, numRooms: 100 },
-        { name: "Hotel B", outletCode: "HB", primaryRegionId: region.id, numRooms: 100 },
+        { name: "Hotel A", primaryRegionId: region.id, numRooms: 100 },
+        { name: "Hotel B", primaryRegionId: region.id, numRooms: 100 },
       ])
       .returning({ id: locations.id });
 
@@ -288,10 +288,10 @@ describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {
     const [active, archived] = await ctx.db
       .insert(locations)
       .values([
-        { name: "Active", outletCode: "ACT", primaryRegionId: region.id, numRooms: 100 },
+        { name: "Active", primaryRegionId: region.id, numRooms: 100 },
         {
           name: "Archived",
-          outletCode: "ARC",
+
           primaryRegionId: region.id,
           numRooms: 999,
           archivedAt: new Date(),
