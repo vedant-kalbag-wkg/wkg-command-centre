@@ -173,10 +173,7 @@ export async function getHeatMapData(
   }>(sql`
     SELECT
       ${salesRecords.locationId} AS location_id,
-      -- Phase 07-06 — outlet_code is gone from locations; the heat-map's
-      -- "Outlet Code" column header now surfaces the RPS customer_code
-      -- (canonical hotel-level identifier) under the same output name.
-      COALESCE(${locations.customerCode}, '') AS outlet_code,
+      COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
       ${locations.numRooms}::text AS num_rooms,
       ${kioskLiveDateSubquery}::text AS live_date,
@@ -188,7 +185,7 @@ export async function getHeatMapData(
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${salesRecords.locationId}, ${locations.id}, ${locations.customerCode}, ${locations.name}, ${locations.numRooms}
+    GROUP BY ${salesRecords.locationId}, ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
   `);
 
   // Kiosk count: scoped to locations from the sales query results

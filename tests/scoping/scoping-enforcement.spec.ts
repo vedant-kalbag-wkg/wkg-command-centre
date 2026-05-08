@@ -158,8 +158,7 @@ test.describe.serial("Scoping enforcement", () => {
       groupBId = existing[0].id;
     }
 
-    // 2. Look up demo locations by customerCode (Phase 07-06: locations.outlet_code
-    // is gone; the dev seed-sales-demo now stamps these strings as customer_code).
+    // 2. Look up demo locations by outletCode
     const outletCodes = [
       "GRAND-001",
       "CITY-002",
@@ -168,13 +167,13 @@ test.describe.serial("Scoping enforcement", () => {
       "HARB-005",
     ];
     const allLocs = await db
-      .select({ id: locations.id, customerCode: locations.customerCode })
+      .select({ id: locations.id, outletCode: locations.outletCode })
       .from(locations);
 
     const locByCode = new Map(
       allLocs
-        .filter((l) => l.customerCode && outletCodes.includes(l.customerCode))
-        .map((l) => [l.customerCode!, l.id]),
+        .filter((l) => l.outletCode && outletCodes.includes(l.outletCode))
+        .map((l) => [l.outletCode!, l.id]),
     );
 
     // 3. Assign locations to groups

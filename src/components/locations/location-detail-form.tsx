@@ -140,7 +140,7 @@ function NewLocationForm() {
   const [isPending, startTransition] = useTransition();
   const [fields, setFields] = useState({
     name: "",
-    customerCode: "",
+    outletCode: "",
     primaryRegionId: "",
     address: "",
     latitude: "",
@@ -170,7 +170,7 @@ function NewLocationForm() {
       setError(null);
       const result = await createLocation({
         name: fields.name,
-        customerCode: fields.customerCode || undefined,
+        outletCode: fields.outletCode,
         primaryRegionId: fields.primaryRegionId,
         address: fields.address || undefined,
         latitude: fields.latitude ? Number(fields.latitude) : undefined,
@@ -215,11 +215,11 @@ function NewLocationForm() {
             className="h-8 text-sm"
           />
         </FieldRow>
-        <FieldRow label="Customer Code">
+        <FieldRow label="Outlet Code *">
           <Input
-            value={fields.customerCode}
-            onChange={(e) => setFields((prev) => ({ ...prev, customerCode: e.target.value }))}
-            placeholder="e.g. RPS-2357 (optional)"
+            value={fields.outletCode}
+            onChange={(e) => setFields((prev) => ({ ...prev, outletCode: e.target.value }))}
+            placeholder="e.g. GRAND-001"
             className="h-8 text-sm"
           />
         </FieldRow>
@@ -301,6 +301,7 @@ function NewLocationForm() {
           disabled={
             isPending ||
             !fields.name.trim() ||
+            !fields.outletCode.trim() ||
             !fields.primaryRegionId
           }
           className="bg-primary text-primary-foreground hover:bg-primary/90"
@@ -567,6 +568,14 @@ function ExistingLocationForm({
             fieldName="name"
             type="text"
             onSave={(v) => saveField("name", v, location.name)}
+          />
+        </FieldRow>
+        <FieldRow label="Outlet Code">
+          <InlineEditField
+            value={location.outletCode}
+            fieldName="outletCode"
+            type="text"
+            onSave={(v) => saveField("outletCode", v, location.outletCode)}
           />
         </FieldRow>
         <FieldRow label="Customer Code">

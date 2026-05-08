@@ -447,10 +447,7 @@ export async function getOutletTiers(
   }>(sql`
     SELECT
       ${locations.id} AS location_id,
-      -- Phase 07-06 — surface customer_code under the legacy outlet_code
-      -- output column name (the UI label stays "Outlet Code"). The
-      -- per-kiosk SSM code lives on kiosks now and is separate.
-      COALESCE(${locations.customerCode}, '') AS outlet_code,
+      COALESCE(${locations.outletCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
       ${kioskLiveDateSubquery}::text AS live_date,
       ${canonicalHotelGroupNameFragment()} AS hotel_group_name,
@@ -461,7 +458,7 @@ export async function getOutletTiers(
       COUNT(*) OVER ()::int AS total_count
     FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-    GROUP BY ${locations.id}, ${locations.customerCode}, ${locations.name}, ${locations.numRooms}
+    GROUP BY ${locations.id}, ${locations.outletCode}, ${locations.name}, ${locations.numRooms}
     ORDER BY revenue DESC
     LIMIT ${OUTLET_TIERS_LIMIT}
   `);

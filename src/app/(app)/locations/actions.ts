@@ -32,12 +32,10 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const createLocationSchema = z.object({
   name: z.string().min(1, "Name is required").max(200, "Name must be 200 characters or fewer"),
-  // Phase 07-06 — locations.outlet_code is gone (migration 0040). The
-  // location-level identifier is now `customer_code` (RPS account code,
-  // optional — placeholders / RTL hotels legitimately have none) and
-  // primary_region_id (NOT NULL since 0022). Per-kiosk outlet codes are
-  // a kiosk attribute now, not a location one.
-  customerCode: z.string().max(64, "Customer code must be 64 characters or fewer").optional(),
+  // outletCode + primaryRegionId became NOT NULL on locations in migration 0022
+  // (NetSuite ETL region scoping). Both are required at create time; uniqueness
+  // is enforced on (primaryRegionId, outletCode).
+  outletCode: z.string().min(1, "Outlet code is required").max(64, "Outlet code must be 64 characters or fewer"),
   primaryRegionId: z.uuid("A region is required"),
   address: z.string().optional(),
   latitude: z.coerce.number().optional().nullable(),
@@ -86,12 +84,11 @@ export type LocationWithRelations = {
   // column (migration 0034) restricts values to LOCATION_TYPES; null means
   // "not yet classified" (the `/settings/outlet-types` flow surfaces these).
   locationType: LocationType | null;
-  // Phase 7.2 — region assignment, NOT NULL since 0022. Surfaced on the
-  // location detail form so admins don't have to detour through
-  // `/settings/outlet-types` for a one-off region change.
-  // Phase 07-06 — outlet_code is gone from locations; customer_code below
-  // is the canonical hotel-level identifier (nullable — placeholders OK).
+  // Phase 7.2 — region assignment + outlet code, both NOT NULL since 0022.
+  // Surfaced on the location detail form so admins don't have to detour
+  // through `/settings/outlet-types` for a one-off region change.
   primaryRegionId: string;
+  outletCode: string;
   // Phase 7.4 — fields previously list-only on `/locations`. Surfacing them
   // on the detail form removes the inconsistency where editing meant
   // crossing pages. `internalPocName` is denormalised from the `user`
@@ -162,7 +159,7 @@ export async function createLocation(data: z.input<typeof createLocationSchema>)
       .insert(locations)
       .values({
         name: validated.name,
-        customerCode: validated.customerCode || null,
+        outletCode: validated.outletCode,
         primaryRegionId: validated.primaryRegionId,
         address: validated.address || null,
         latitude: validated.latitude ?? null,
@@ -295,7 +292,7 @@ const EDITABLE_LOCATION_FIELDS = [
   "starRating",
   "roomCount",
   "customerCode",
-  // Phase 07-06 — outlet_code dropped from locations (now a kiosks attribute)
+  "outletCode",
   "hotelGroup",
   "sourcedBy",
   "contractValue",
@@ -324,10 +321,9 @@ const EDITABLE_LOCATION_FIELDS = [
   // LOCATION_TYPES enum below before reaching the DB so an attacker can't
   // bypass the CHECK constraint with a sentinel string.
   "locationType",
-  // Phase 7.2 — assigning a location to a different region. Validated as
-  // a UUID below; the FK + (region, customer_code) partial uniqueness
-  // (Phase 07-06) are enforced by the DB and surface as a friendly error
-  // if violated.
+  // Phase 7.2 — assigning a location to a different region. Validated as a
+  // UUID below; the FK + (primaryRegionId, outletCode) uniqueness invariant
+  // are enforced by the DB and surface as a friendly error if violated.
   "primaryRegionId",
   // Phase 7.6a / D13 — kiosk config group. Editor-level access (member, not
   // admin-only) per D13. Empty string clears the FK; otherwise UUID guard
@@ -411,11 +407,7 @@ export async function updateLocationField(
     } else if (validField === "primaryRegionId") {
       // primary_region_id is NOT NULL since migration 0022. Reject empty;
       // require canonical UUID shape so a malformed value never reaches the
-      // FK check (which would surface as an opaque 500). Phase 07-06: the
-      // (region, customer_code) partial unique replaces the old (region,
-      // outlet_code) uniqueness on region moves; the DB still surfaces a
-      // 23505 if the move would collide with another location's
-      // customer_code in the target region.
+      // FK check (which would surface as an opaque 500).
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!value || !uuidRe.test(value)) {
         return { error: "A region is required" };
@@ -434,6 +426,18 @@ export async function updateLocationField(
         }
         updateData[validField] = value;
       }
+    } else if (validField === "outletCode") {
+      // NOT NULL since 0022. The (primaryRegionId, outletCode) uniqueness
+      // invariant lives in the DB and surfaces here as a 23505 — caller
+      // sees a generic error and can retry; the DB stays consistent.
+      const trimmed = (value ?? "").trim();
+      if (trimmed.length === 0) {
+        return { error: "Outlet code is required" };
+      }
+      if (trimmed.length > 64) {
+        return { error: "Outlet code must be 64 characters or fewer" };
+      }
+      updateData[validField] = trimmed;
     } else {
       updateData[validField] = value;
     }

@@ -108,7 +108,7 @@ describe("applyBulkMerge integration", () => {
       .insert(locations)
       .values({
         name: "Canonical A",
-
+        outletCode: "CA",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -116,7 +116,7 @@ describe("applyBulkMerge integration", () => {
       .insert(locations)
       .values({
         name: "Defunct A",
-
+        outletCode: "DA",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -124,7 +124,7 @@ describe("applyBulkMerge integration", () => {
       .insert(locations)
       .values({
         name: "Canonical B",
-
+        outletCode: "CB",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -132,7 +132,7 @@ describe("applyBulkMerge integration", () => {
       .insert(locations)
       .values({
         name: "Defunct B",
-
+        outletCode: "DB",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });

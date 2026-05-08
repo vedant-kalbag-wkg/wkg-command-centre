@@ -105,11 +105,6 @@ export async function listConfigGroups(): Promise<ConfigGroupListItem[]> {
 }
 
 // Phase 7.6b — detail view for the member-management page.
-//
-// Phase 07-06 — `outletCode` field name preserved on the DTO (the consumer
-// table label is "Outlet Code") but the source column is now
-// `customer_code`, the canonical hotel-level identifier. Per-kiosk outlet
-// codes live on the kiosks table now.
 export type ConfigGroupDetail = {
   id: string;
   name: string;
@@ -135,9 +130,7 @@ export async function getConfigGroupDetail(
     .select({
       id: locations.id,
       name: locations.name,
-      // Phase 07-06 — surface customer_code under the legacy outletCode
-      // field name (UI label "Outlet Code" stays).
-      outletCode: locations.customerCode,
+      outletCode: locations.outletCode,
       kioskConfigGroupId: locations.kioskConfigGroupId,
     })
     .from(locations)

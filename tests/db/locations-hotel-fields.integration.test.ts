@@ -20,7 +20,7 @@ describe('locations hotel dimension fields', () => {
   it('stores hotel dimension fields and round-trips values', async () => {
     const [loc] = await ctx.db.insert(locations).values({
       name: 'Maldron Brighton',
-
+      outletCode: 'HOTEL-FIELDS-A',
       primaryRegionId: ukRegionId,
       numRooms: 226,
       starRating: 4,
@@ -44,7 +44,7 @@ describe('locations hotel dimension fields', () => {
   it('accepts null for all hotel dimension fields (excluding the new NOT NULL primary_region_id + outlet_code)', async () => {
     const [loc] = await ctx.db.insert(locations).values({
       name: 'Bare Minimum Location',
-
+      outletCode: 'HOTEL-FIELDS-B',
       primaryRegionId: ukRegionId,
     }).returning();
     expect(loc.numRooms).toBeNull();

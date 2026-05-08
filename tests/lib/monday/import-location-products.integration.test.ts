@@ -141,15 +141,10 @@ describe("runMondayImport", () => {
       await ctx.db.select({ id: regions.id }).from(regions).where(eq(regions.code, "UK"))
     )[0].id;
 
-    // A real hotel with mondayItemId "A" (Phase 07-06 lookup key) so the
-    // resolution path is exercised. Pre-07-06 this row was keyed by
-    // `outletCode: "MATCH-1"` and the runMondayImport resolved through the
-    // mirror9 fixture's "MATCH-1" string. With the migration, the resolution
-    // is direct via mondayItemId — the mirror9 string is still on the
-    // fixture but is no longer the resolution key.
+    // A real hotel with outlet code MATCH-1 so resolution path is exercised.
     await ctx.db.insert(locations).values({
       name: "Matched Hotel",
-      mondayItemId: "A",
+      outletCode: "MATCH-1",
       primaryRegionId: ukRegionId,
     });
 

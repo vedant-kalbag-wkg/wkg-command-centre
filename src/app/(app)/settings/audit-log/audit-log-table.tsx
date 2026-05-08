@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ScrollText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -344,51 +343,10 @@ export function AuditLogTable({
                     row.metadata !== null
                       ? JSON.stringify(row.metadata)
                       : null;
-                  const detailHref = `/admin/audit-log/${row.id}`;
-                  // Row-level navigation: any plain click on the row (not
-                  // already handled by an interactive descendant — Link,
-                  // button, details/summary, anchor with explicit href, the
-                  // metadata <details> toggle, or the entity tooltip)
-                  // navigates to the detail page. Cmd/Ctrl/middle-click are
-                  // honoured by the explicit Link in the timestamp cell;
-                  // we don't intercept those modifier-clicks here so the
-                  // browser's default new-tab behaviour wins.
-                  const handleRowClick = (
-                    e: React.MouseEvent<HTMLTableRowElement>,
-                  ) => {
-                    if (
-                      e.defaultPrevented ||
-                      e.metaKey ||
-                      e.ctrlKey ||
-                      e.shiftKey ||
-                      e.altKey ||
-                      e.button !== 0
-                    ) {
-                      return;
-                    }
-                    const target = e.target as HTMLElement;
-                    if (
-                      target.closest(
-                        "a, button, summary, details, [role='button'], [data-no-row-nav='true']",
-                      )
-                    ) {
-                      return;
-                    }
-                    router.push(detailHref);
-                  };
                   return (
-                    <TableRow
-                      key={row.id}
-                      onClick={handleRowClick}
-                      className="cursor-pointer hover:bg-muted/30"
-                    >
+                    <TableRow key={row.id}>
                       <TableCell className="whitespace-nowrap font-mono text-xs">
-                        <Link
-                          href={detailHref}
-                          className="hover:text-foreground hover:underline"
-                        >
-                          {formatWhen(row.createdAt)}
-                        </Link>
+                        {formatWhen(row.createdAt)}
                       </TableCell>
                       <TableCell className="text-sm">{actorDisplay}</TableCell>
                       <TableCell className="text-sm">

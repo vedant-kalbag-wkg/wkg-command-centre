@@ -49,13 +49,6 @@ yarn-error.log*
 # auth credentials
 auth.json
 
-# Phase 7 — sales seed data is large (~30MB per CSV), operator-supplied;
-# never commit. Drop into seed_data/ locally for `scripts/v2-wipe-and-reseed.ts`.
-seed_data/
-
-# Phase 7 — local UAT-branch credentials. Pinned per-branch in .env.uat.
-.env.uat
-
 # vercel
 .vercel
 
