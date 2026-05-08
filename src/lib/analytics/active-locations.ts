@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { sql, inArray, type SQL } from "drizzle-orm";
 import { executeRows } from "@/db/execute-rows";
-import { locations, outletExclusions, salesRecords } from "@/db/schema";
+import { locations, salesRecords } from "@/db/schema";
 
 /**
  * Phase 1 perf #6 — cross-cutting cache of "active" location IDs.
@@ -22,28 +22,33 @@ import { locations, outletExclusions, salesRecords } from "@/db/schema";
  * sits outside `queries/shared.ts` so the caching semantics are obvious at
  * the import site.
  *
- * Semantic note — `sales_records.location_id` has a NOT NULL FK to
- * `locations.id` (see schema.ts:605), so dropping the INNER JOIN cannot
- * produce extra rows; every sales row already has a matching location.
+ * Phase 07-06 — outlet codes are now per-kiosk (not per-location). An
+ * outlet exclusion now reads as: a location is excluded iff at least one
+ * of its CURRENT kiosks has an `outlet_code` matching an exclusion in the
+ * same region. The NOT EXISTS subquery scans active kiosk_assignments →
+ * kiosks; the exact + regex match is unchanged.
  */
 export const getActiveLocationIds = cache(async (): Promise<string[]> => {
-  // Mirror `buildExclusionCondition`'s logic: an outlet is excluded iff there
-  // is at least one matching exclusion rule (exact or regex) IN THE SAME
-  // REGION. Per Task 1.9 (PR-6 Part F), exclusions are region-scoped — outlet
-  // codes are unique per region, not globally, so 'Q5' in UK and 'Q5' in AU
-  // are distinct outlets and an exclusion targeting one must not match the
-  // other.
+  // Region-scoped exclusion — outlet codes are unique per region, so 'TEST'
+  // in UK and 'TEST' in AU are distinct exclusions and don't cross-match.
+  // The location is excluded iff ANY active kiosk currently assigned to it
+  // has an outlet_code matching at least one exclusion in the location's
+  // primary region.
   const rows = await executeRows<{ id: string }>(sql`
-    SELECT ${locations.id} AS id
-    FROM ${locations}
-    WHERE ${locations.archivedAt} IS NULL
+    SELECT l.id AS id
+    FROM locations l
+    WHERE l.archived_at IS NULL
       AND NOT EXISTS (
         SELECT 1
-        FROM ${outletExclusions} oe
-        WHERE oe.region_id = ${locations.primaryRegionId}
+        FROM outlet_exclusions oe
+        INNER JOIN kiosk_assignments ka ON ka.location_id = l.id
+        INNER JOIN kiosks k ON k.id = ka.kiosk_id
+        WHERE oe.region_id = l.primary_region_id
+          AND ka.unassigned_at IS NULL
+          AND k.outlet_code IS NOT NULL
           AND (
-            (oe.pattern_type = 'exact' AND ${locations.outletCode} = oe.outlet_code)
-            OR (oe.pattern_type = 'regex' AND ${locations.outletCode} ~ oe.outlet_code)
+            (oe.pattern_type = 'exact' AND k.outlet_code = oe.outlet_code)
+            OR (oe.pattern_type = 'regex' AND k.outlet_code ~ oe.outlet_code)
           )
       )
   `);

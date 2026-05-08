@@ -113,7 +113,7 @@ describe("geocoding pipeline", () => {
       await ctx.db.insert(locations).values([
         {
           name: "Already Populated",
-          outletCode: "OP-1",
+
           primaryRegionId: regionId,
           address: "1 Already Lane, London",
           latitude: 51.5,
@@ -121,13 +121,13 @@ describe("geocoding pipeline", () => {
         },
         {
           name: "Empty One",
-          outletCode: "EM-1",
+
           primaryRegionId: regionId,
           address: "1 Empty Street, London",
         },
         {
           name: "Empty Two",
-          outletCode: "EM-2",
+
           primaryRegionId: regionId,
           address: "2 Empty Street, London",
         },
@@ -158,7 +158,7 @@ describe("geocoding pipeline", () => {
       await ctx.db.insert(locations).values([
         {
           name: "Already Populated",
-          outletCode: "OP-1",
+
           primaryRegionId: regionId,
           address: "1 Already Lane, London",
           latitude: 51.5,
@@ -166,13 +166,13 @@ describe("geocoding pipeline", () => {
         },
         {
           name: "Empty One",
-          outletCode: "EM-1",
+
           primaryRegionId: regionId,
           address: "1 Empty Street, London",
         },
         {
           name: "Empty Two",
-          outletCode: "EM-2",
+
           primaryRegionId: regionId,
           address: "2 Empty Street, London",
         },
@@ -197,13 +197,13 @@ describe("geocoding pipeline", () => {
       await ctx.db.insert(locations).values([
         {
           name: "Will Error",
-          outletCode: "ER-1",
+
           primaryRegionId: regionId,
           address: "Bad Address",
         },
         {
           name: "Will Succeed",
-          outletCode: "OK-1",
+
           primaryRegionId: regionId,
           address: "Good Address",
         },
@@ -258,13 +258,13 @@ describe("geocoding pipeline", () => {
         .values([
           {
             name: "First",
-            outletCode: "F-1",
+
             primaryRegionId: regionId,
             address: "First Address",
           },
           {
             name: "Second",
-            outletCode: "S-1",
+
             primaryRegionId: regionId,
             address: "Second Address",
           },
@@ -332,13 +332,13 @@ describe("geocoding pipeline", () => {
       await ctx.db.insert(locations).values([
         {
           name: "No Results",
-          outletCode: "NR-1",
+
           primaryRegionId: regionId,
           address: "Nowhere",
         },
         {
           name: "Will Succeed",
-          outletCode: "OK-1",
+
           primaryRegionId: regionId,
           address: "Good Address",
         },
@@ -370,7 +370,7 @@ describe("geocoding pipeline", () => {
     async () => {
       await ctx.db.insert(locations).values({
         name: "Untouched",
-        outletCode: "U-1",
+
         primaryRegionId: regionId,
         address: "Some Address",
       });
@@ -405,7 +405,7 @@ describe("geocoding pipeline", () => {
     async () => {
       await ctx.db.insert(locations).values({
         name: "Once",
-        outletCode: "O-1",
+
         primaryRegionId: regionId,
         address: "Once Address",
       });
@@ -453,14 +453,14 @@ describe("geocoding pipeline", () => {
       await ctx.db.insert(locations).values([
         {
           name: "Archived",
-          outletCode: "AR-1",
+
           primaryRegionId: regionId,
           address: "Archived Address",
           archivedAt: new Date(),
         },
         {
           name: "Active",
-          outletCode: "AC-1",
+
           primaryRegionId: regionId,
           address: "Active Address",
         },
@@ -485,19 +485,19 @@ describe("geocoding pipeline", () => {
       await ctx.db.insert(locations).values([
         {
           name: "No Address",
-          outletCode: "NA-1",
+
           primaryRegionId: regionId,
           address: null,
         },
         {
           name: "Empty Address",
-          outletCode: "EA-1",
+
           primaryRegionId: regionId,
           address: "",
         },
         {
           name: "Has Address",
-          outletCode: "HA-1",
+
           primaryRegionId: regionId,
           address: "Real Address",
         },

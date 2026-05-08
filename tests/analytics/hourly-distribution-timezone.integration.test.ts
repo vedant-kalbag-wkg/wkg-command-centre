@@ -44,7 +44,6 @@ describe("Hourly Distribution — per-location IANA timezone bucketing (D6)", ()
       .insert(locations)
       .values({
         name: "London Test Hotel",
-        outletCode: "TZ-LON",
         primaryRegionId: uk.id,
         ianaTimezone: "Europe/London",
       })
@@ -53,7 +52,6 @@ describe("Hourly Distribution — per-location IANA timezone bucketing (D6)", ()
       .insert(locations)
       .values({
         name: "Sydney Test Hotel",
-        outletCode: "TZ-SYD",
         primaryRegionId: au.id,
         ianaTimezone: "Australia/Sydney",
       })

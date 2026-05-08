@@ -126,13 +126,16 @@ test.describe.serial("Portal analytics navigation", () => {
       portalGroupId = existing[0].id;
     }
 
-    // 2. Assign at least one location to the group so scoped queries return data
+    // 2. Assign at least one location to the group so scoped queries return data.
+    // Phase 07-06 — locations.outlet_code is gone; use the first active
+    // location by name instead. The previous "GRAND-001" preference was a
+    // local-dev seed convention; any active location satisfies the test.
     const allLocs = await db
-      .select({ id: locations.id, outletCode: locations.outletCode })
+      .select({ id: locations.id, name: locations.name })
       .from(locations);
 
     const firstLoc =
-      allLocs.find((l) => l.outletCode === "GRAND-001") ?? allLocs[0];
+      allLocs.find((l) => l.name?.startsWith("Grand")) ?? allLocs[0];
     if (firstLoc) {
       await db
         .insert(locationHotelGroupMemberships)

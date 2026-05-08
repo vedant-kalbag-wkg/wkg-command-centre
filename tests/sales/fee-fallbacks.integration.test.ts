@@ -49,7 +49,7 @@ describe("updateFeeCodeFallback (integration)", () => {
 
     const [loc] = await ctx.db
       .insert(locations)
-      .values({ name: "Test Hotel", outletCode: "TH1", primaryRegionId: regionId })
+      .values({ name: "Test Hotel", primaryRegionId: regionId })
       .returning({ id: locations.id });
     locationId = loc.id;
 

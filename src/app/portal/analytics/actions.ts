@@ -47,7 +47,11 @@ export async function getScopedDimensionOptions(): Promise<DimensionOptions> {
         .select({
           id: locations.id,
           name: locations.name,
-          outletCode: locations.outletCode,
+          // Phase 07-06 — outlet_code is gone; the dimension picker's
+          // secondary identifier is now customer_code (RPS account code).
+          // Field name preserved on the DTO so portal-side consumers stay
+          // unchanged.
+          outletCode: locations.customerCode,
         })
         .from(locations)
         .where(isNull(locations.archivedAt)),

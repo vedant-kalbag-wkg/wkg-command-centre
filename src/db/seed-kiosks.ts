@@ -46,13 +46,18 @@ async function seedKiosks() {
     return id;
   }
 
-  // Look up locations by outlet code (seeded by seed-sales-demo)
+  // Phase 07-06 — locations.outlet_code is gone; seed-sales-demo now stamps
+  // customer_code (the canonical hotel-level identifier) using the same
+  // GRAND-001 / CITY-002 / etc. strings that this script's hardcoded
+  // SEED_KIOSKS array uses for the kiosk's outletCode. We look up by
+  // customer_code here to preserve the dev-workflow shape — kiosk's outlet
+  // code matches the location's customer code in the demo seed.
   const locs = await db
-    .select({ id: locations.id, outletCode: locations.outletCode })
+    .select({ id: locations.id, customerCode: locations.customerCode })
     .from(locations);
 
   const locMap = new Map(
-    locs.filter((l) => l.outletCode).map((l) => [l.outletCode!, l.id]),
+    locs.filter((l) => l.customerCode).map((l) => [l.customerCode!, l.id]),
   );
 
   // Define kiosk seed data

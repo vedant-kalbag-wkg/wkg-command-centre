@@ -15,6 +15,17 @@ import { writeAuditLog } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
+/**
+ * @deprecated Phase 7 Plan 07-03 — `mergeLocations` is superseded by
+ * `applyLocationMerge` in `src/lib/location-merge.ts`, which adds:
+ *   - Snapshot-before-commit (Undo support).
+ *   - Sentinel guard (LOCATION_NEEDED is reassign-only).
+ *   - Full FK coverage (9 tables) inside a single transaction with collision
+ *     pre-deletion on the 4 join tables.
+ * The legacy primitive is preserved for fallback during Plan E UAT and the
+ * existing `mergeKiosks` callers (kept in this file). Do NOT add new callers.
+ */
+
 // =============================================================================
 // Location merge
 // =============================================================================

@@ -1,4 +1,9 @@
 /**
+ * @deprecated Phase 7 Plan 07-03 — superseded by the admin merge UI backed by
+ * `src/lib/location-merge.ts:applyLocationMerge`. The CLI is preserved as a
+ * fallback during Plan E UAT cutover; new operator workflows must use the UI
+ * (per the "no manual SQL for ops cleanup" lock). Do not extend.
+ *
  * Phase 6 Plan 06-01 — D8 multi-POS merge CLI.
  *
  * Loads pending merge_proposals (decision IN ('approved','swapped'),

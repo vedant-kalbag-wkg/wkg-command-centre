@@ -31,7 +31,9 @@ export async function fetchDataQualityReport(): Promise<DataQualityReport> {
     .select({
       id: locations.id,
       name: locations.name,
-      outletCode: locations.outletCode,
+      // Phase 07-06 — surface customer_code under the legacy outletCode
+      // field name (the data-quality table column header is "Outlet Code").
+      outletCode: locations.customerCode,
       operatingGroupId: locations.operatingGroupId,
       hasRegion: sql<boolean>`EXISTS(
         SELECT 1 FROM ${locationRegionMemberships}
