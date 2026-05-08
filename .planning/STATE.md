@@ -3,15 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 7 shipped (PR #34) — awaiting CI + review/merge; Phase 8 context gathered ready to plan
-last_updated: "2026-05-08T08:00:00.000Z"
-last_activity: 2026-05-08 -- Phase 7 PR #34 opened (https://github.com/vedant-kalbag-wkg/wkg-command-centre/pull/34) — 35 commits, 5 plans (DATA-01..05), 3 prod migrations (0038/0039/0040), prod cutover verified 8 PASS / 2 expected FAILs / 1 WARN. Phase 8 CONTEXT.md gathered same session.
+milestone: v1.1
+stopped_at: Phase 7 merged into main (PR #34, squash 78f5646) — Phase 8 context gathered, ready to plan
+last_updated: "2026-05-08T13:05:00.000Z"
+last_activity: 2026-05-08 -- Phase 7 (Data Foundation Rebuild) shipped + squash-merged into main as 78f5646 via PR #34. 5 plans (DATA-01..05), 3 prod migrations (0038/0039/0040). Phase 8 (Email Infrastructure) CONTEXT.md gathered same session — ready for /gsd-plan-phase 8.
 progress:
-  total_phases: 1
-  completed_phases: 0
+  total_phases: 5
+  completed_phases: 1
   total_plans: 5
   completed_plans: 5
-  percent: 95
+  percent: 20
 ---
 
 # Project State
@@ -21,19 +22,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 **Core value:** Operations and IT teams can accurately track, plan, and report on every kiosk deployment across all regions from a single tool that models the business's actual data structure — with analytics that Monday.com cannot produce.
-**Current focus:** Phase 7 — Data Foundation Rebuild
+**Current focus:** Phase 8 — Email Infrastructure (next to plan/execute; Phase 7 merged into main)
 
 ## Current Position
 
-Phase: 7 (Data Foundation Rebuild) — ALL PLANS COMPLETE
-Plan: Plan 07-05 (UAT + prod cutover) COMPLETE on 2026-05-08
-Status: Phase 7 verification + completion gate is the only remaining work before merging gsd/phase-07-data-foundation-rebuild into main
-Last activity: 2026-05-08 -- Plan 07-05 prod cutover (commit 5973f39); migrations 0039+0040 applied to prod, 95103 sales byte-perfect, 510 active locations / 400 active kiosks, 4 same-name conflicts deferred to operator merge UI on prod, 42-kiosk Monday operator-data gap accepted
+Phase: 8 (Email Infrastructure) — context gathered, ready for /gsd-plan-phase
+Status: Phase 7 (Data Foundation Rebuild) shipped + merged 2026-05-08 via PR #34 (squash 78f5646). Phase 8 CONTEXT.md captured same day. v1.1 progress: 1 of 5 phases shipped.
+Last activity: 2026-05-08 -- Phase 7 PR #34 merged into main; v1.1 phase 1/5 complete. Phase 8 CONTEXT.md ready (sending domain command.weknowgroup.com, sync-Resend for auth flows, react-email templates, minimal change-pw confirmation).
 
 ## v1.1 Phase Index
 
-- Phase 7: Data Foundation Rebuild — DATA-01..05 — branch `gsd/phase-07-data-foundation-rebuild`
-- Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure`
+- ✓ Phase 7: Data Foundation Rebuild — DATA-01..05 — **MERGED 2026-05-08** (PR #34, squash `78f5646`)
+- → Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (next; CONTEXT.md ready)
 - Phase 9: Notifications & Scheduled Reports — NOTIF-01..02, REPORT-05..06 — branch `gsd/phase-09-notifications-and-reports`
 - Phase 10: Access Control Extended — AUTH-06..07 — branch `gsd/phase-10-access-control-extended`
 - Phase 11: Tooling, Polish & Tech-Debt Close-out — TEST-01, MONDAY-01, REF-01, INFRA-01, POLISH-01..02, DEBT-01..02 — branch `gsd/phase-11-tooling-polish-debt`
@@ -96,10 +96,10 @@ None at v1.1 scoping start. Three unresolved debug sessions tracked in v1.1 cate
 
 ## Session Continuity
 
-Current session: 2026-05-08 — Phase 7 shipped (PR #34) + Phase 8 context gathered
-Stopped at: Phase 7 PR open against main; awaiting CI + reviewer + squash-merge. Phase 8 CONTEXT.md written, ready for planning.
+Current session: 2026-05-08 — Phase 7 merged + Phase 8 context gathered
+Stopped at: Phase 7 (DATA-01..05) merged into main via PR #34 (squash `78f5646`). Phase 8 CONTEXT.md written, ready to plan.
 Resume file: `.planning/phases/08-email-infrastructure/08-CONTEXT.md`
-Next action: monitor PR #34 → squash-merge once green; in parallel `/gsd-plan-phase 8`
+Next action: `/gsd-plan-phase 8`
 
 ### Phase 8 decisions captured 2026-05-08
 
