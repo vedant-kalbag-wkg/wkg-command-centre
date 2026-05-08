@@ -1,18 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
 milestone: v1.1
-stopped_at: Phase 7 merged into main (PR #34, squash 78f5646) — Phase 8 context gathered, ready to plan
-last_updated: "2026-05-08T13:05:00.000Z"
-last_activity: 2026-05-08 -- Phase 7 (Data Foundation Rebuild) shipped + squash-merged into main as 78f5646 via PR #34. 5 plans (DATA-01..05), 3 prod migrations (0038/0039/0040). Phase 8 (Email Infrastructure) CONTEXT.md gathered same session — ready for /gsd-plan-phase 8.
+milestone_name: data-foundation-and-email
+status: executing
+stopped_at: Phase 7 PR #36 — review feedback applied (commit 7746e2b); awaiting CI + re-review + re-merge
+last_updated: "2026-05-08T14:00:00.000Z"
+last_activity: 2026-05-08 -- Phase 7 cycle: PR #34 merged → PR #35 revert → PR #36 re-opened → 7746e2b applied @claude bot's three findings from PR #34 (archived_ids over-capture bug + advisory lock connection mismatch + void executeRowsFromResult code smell) plus regression tests. 715/715 vitest, tsc clean.
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 5
   completed_plans: 5
-  percent: 20
+  percent: 0
 ---
 
 # Project State
@@ -22,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 **Core value:** Operations and IT teams can accurately track, plan, and report on every kiosk deployment across all regions from a single tool that models the business's actual data structure — with analytics that Monday.com cannot produce.
-**Current focus:** Phase 8 — Email Infrastructure (next to plan/execute; Phase 7 merged into main)
+**Current focus:** Phase 7 reviewer-feedback fixes (PR #36) — re-opened after revert. Phase 8 CONTEXT.md ready in parallel.
 
 ## Current Position
 
-Phase: 8 (Email Infrastructure) — context gathered, ready for /gsd-plan-phase
-Status: Phase 7 (Data Foundation Rebuild) shipped + merged 2026-05-08 via PR #34 (squash 78f5646). Phase 8 CONTEXT.md captured same day. v1.1 progress: 1 of 5 phases shipped.
-Last activity: 2026-05-08 -- Phase 7 PR #34 merged into main; v1.1 phase 1/5 complete. Phase 8 CONTEXT.md ready (sending domain command.weknowgroup.com, sync-Resend for auth flows, react-email templates, minimal change-pw confirmation).
+Phase: 7 (Data Foundation Rebuild) — re-opened as PR #36 after PR #34 merge + PR #35 revert
+Status: Branch `gsd/phase-07-data-foundation-rebuild` (HEAD `dc72dce`) is unchanged; review feedback missed in the original merge needs to land before re-merge. Phase 8 (Email Infrastructure) CONTEXT.md captured same day, ready for /gsd-plan-phase 8 once Phase 7 closes.
+Last activity: 2026-05-08 -- Phase 7 cycle: PR #34 merged 13:00 → PR #35 revert merged ~13:25 (reviewer feedback missed) → PR #36 re-opened from same branch ~13:30, awaiting feedback fixes.
 
 ## v1.1 Phase Index
 
-- ✓ Phase 7: Data Foundation Rebuild — DATA-01..05 — **MERGED 2026-05-08** (PR #34, squash `78f5646`)
-- → Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (next; CONTEXT.md ready)
+- → Phase 7: Data Foundation Rebuild — DATA-01..05 — **PR #36 OPEN** (re-opened after PR #34 merge + PR #35 revert; review fixes applied 2026-05-08 commit `7746e2b`)
+- Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (CONTEXT.md ready, blocked on Phase 7 close)
 - Phase 9: Notifications & Scheduled Reports — NOTIF-01..02, REPORT-05..06 — branch `gsd/phase-09-notifications-and-reports`
 - Phase 10: Access Control Extended — AUTH-06..07 — branch `gsd/phase-10-access-control-extended`
 - Phase 11: Tooling, Polish & Tech-Debt Close-out — TEST-01, MONDAY-01, REF-01, INFRA-01, POLISH-01..02, DEBT-01..02 — branch `gsd/phase-11-tooling-polish-debt`
@@ -96,10 +95,10 @@ None at v1.1 scoping start. Three unresolved debug sessions tracked in v1.1 cate
 
 ## Session Continuity
 
-Current session: 2026-05-08 — Phase 7 merged + Phase 8 context gathered
-Stopped at: Phase 7 (DATA-01..05) merged into main via PR #34 (squash `78f5646`). Phase 8 CONTEXT.md written, ready to plan.
-Resume file: `.planning/phases/08-email-infrastructure/08-CONTEXT.md`
-Next action: `/gsd-plan-phase 8`
+Current session: 2026-05-08 — Phase 7 PR #34 merged then reverted; PR #36 re-opened, fixing PR #34 feedback
+Stopped at: PR #36 open from `gsd/phase-07-data-foundation-rebuild`; addressing review comments captured on PR #34 before re-merge.
+Resume file: `.planning/phases/07-data-foundation-rebuild/` (branch HEAD `dc72dce`)
+Next action: read PR #34 review comments via `gh api repos/.../pulls/34/comments` + `gh pr view 34 --comments`, fix on top of branch, push, request re-review.
 
 ### Phase 8 decisions captured 2026-05-08
 
