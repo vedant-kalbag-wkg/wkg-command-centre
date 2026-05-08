@@ -1,37 +1,61 @@
-import nodemailer from "nodemailer";
+import type { ReactElement } from "react";
+import { Resend } from "resend";
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "localhost",
-  port: parseInt(process.env.SMTP_PORT || "1025"),
-  secure: false,
-});
+import { db } from "@/db";
+import { emailLog } from "@/db/schema";
+import { ExternalInviteEmail } from "@/emails/external-invite";
+import { InviteEmail } from "@/emails/invite";
+import { PasswordResetEmail } from "@/emails/password-reset";
 
-function buildBrandedEmail({
-  heading,
-  body,
-  ctaText,
-  ctaUrl,
-  footer,
+// Phase 8 Plan 08-01 — Resend HTTP transport replaces the now-deleted SMTP
+// transport (silently failing in prod against localhost:1025). Auth-flow
+// emails (D-03) call Resend SYNCHRONOUSLY inside the request handler — zero
+// queue latency on invite/reset/external-invite. The Inngest substrate is
+// reserved for digests / notifications / reports (D-05).
+//
+// Every send writes one row to email_log (D-06) regardless of outcome;
+// payloadHash is null for auth-flow sends (no idempotency dedupe — every
+// reset is intentional). On Resend non-2xx the function throws so Better
+// Auth surfaces the failure to the UI (D-04).
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM = process.env.EMAIL_FROM ?? "noreply@command.weknowgroup.com";
+
+type Kind = "password_reset" | "invite" | "external_invite";
+
+async function send({
+  to,
+  subject,
+  react,
+  kind,
 }: {
-  heading: string;
-  body: string;
-  ctaText: string;
-  ctaUrl: string;
-  footer: string;
-}): string {
-  return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
-      <div style="margin-bottom: 32px;">
-        <span style="font-size: 20px; font-weight: 700; color: #121212; letter-spacing: -0.01em;">WK</span>
-      </div>
-      <h1 style="font-size: 24px; font-weight: 600; color: #121212; margin: 0 0 16px;">${heading}</h1>
-      <div style="font-size: 15px; line-height: 1.6; color: #333;">${body}</div>
-      <div style="margin: 24px 0;">
-        <a href="${ctaUrl}" style="display: inline-block; padding: 12px 24px; background: #00A6D3; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 15px;">${ctaText}</a>
-      </div>
-      <p style="font-size: 13px; color: #666; margin-top: 32px;">${footer}</p>
-    </div>
-  `;
+  to: string;
+  subject: string;
+  react: ReactElement;
+  kind: Kind;
+}): Promise<void> {
+  const result = await resend.emails.send({ from: FROM, to, subject, react });
+  const messageId = result.data?.id ?? null;
+  // Pitfall 6: store error.message plain text — a text column with full
+  // stringified-error blobs is unindexable + breaks queries.
+  const errorMsg = result.error
+    ? String(result.error.message ?? result.error)
+    : null;
+
+  await db.insert(emailLog).values({
+    kind,
+    recipient: to,
+    resendMessageId: messageId,
+    inngestRunId: null,
+    status: errorMsg ? "failed" : "sent",
+    lastError: errorMsg,
+    payloadHash: null,
+  });
+
+  if (errorMsg) {
+    // D-04: surface failure to UI via Better Auth's error pipeline.
+    throw new Error(`Email send failed: ${errorMsg}`);
+  }
 }
 
 export async function sendPasswordResetEmail({
@@ -40,18 +64,12 @@ export async function sendPasswordResetEmail({
 }: {
   to: string;
   resetUrl: string;
-}) {
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM || "noreply@weknow.co",
+}): Promise<void> {
+  await send({
     to,
     subject: "Reset your password — WeKnow",
-    html: buildBrandedEmail({
-      heading: "Reset your password",
-      body: "<p>Click below to reset your password:</p>",
-      ctaText: "Reset password",
-      ctaUrl: resetUrl,
-      footer: "This link expires in 1 hour. If you didn't request this, ignore this email.",
-    }),
+    react: PasswordResetEmail({ resetUrl }),
+    kind: "password_reset",
   });
 }
 
@@ -61,18 +79,12 @@ export async function sendInviteEmail({
 }: {
   to: string;
   resetUrl: string;
-}) {
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM || "noreply@weknow.co",
+}): Promise<void> {
+  await send({
     to,
     subject: "You're invited to WeKnow — Set your password",
-    html: buildBrandedEmail({
-      heading: "You're invited to WeKnow",
-      body: "<p>You've been invited to the WeKnow Command Centre.</p><p>Click below to set your password and get started:</p>",
-      ctaText: "Set your password",
-      ctaUrl: resetUrl,
-      footer: "This link expires in 1 hour.",
-    }),
+    react: InviteEmail({ resetUrl }),
+    kind: "invite",
   });
 }
 
@@ -82,17 +94,11 @@ export async function sendExternalInviteEmail({
 }: {
   to: string;
   setPasswordUrl: string;
-}) {
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM || "noreply@weknow.co",
+}): Promise<void> {
+  await send({
     to,
     subject: "Welcome to WeKnow Analytics — Set your password",
-    html: buildBrandedEmail({
-      heading: "Welcome to WeKnow Analytics",
-      body: "<p>You've been invited to the WeKnow Analytics Portal, where you can view performance analytics for your locations.</p><p>Click below to set your password and access your dashboard:</p>",
-      ctaText: "Set your password",
-      ctaUrl: setPasswordUrl,
-      footer: "Once you've set your password, you can sign in at any time to view your analytics.",
-    }),
+    react: ExternalInviteEmail({ setPasswordUrl }),
+    kind: "external_invite",
   });
 }
