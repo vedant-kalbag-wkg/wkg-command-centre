@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: data-foundation-and-email
 status: executing
-stopped_at: Phase 7 PR #36 — review feedback applied (commit 7746e2b); awaiting CI + re-review + re-merge
-last_updated: "2026-05-08T14:00:00.000Z"
-last_activity: 2026-05-08 -- Phase 7 cycle: PR #34 merged → PR #35 revert → PR #36 re-opened → 7746e2b applied @claude bot's three findings from PR #34 (archived_ids over-capture bug + advisory lock connection mismatch + void executeRowsFromResult code smell) plus regression tests. 715/715 vitest, tsc clean.
+stopped_at: Phase 7 PR #36 — full PR #34 review applied (7746e2b + a622c72); awaiting CI + re-review + re-merge
+last_updated: "2026-05-08T14:30:00.000Z"
+last_activity: 2026-05-08 -- Phase 7 cycle: PR #34 merged → PR #35 revert → PR #36 re-opened → 7746e2b (3 blocking findings: archived_ids over-capture, lock-connection mismatch, void code smell) → a622c72 (3 non-blocking observations: extractCustomerCode multi-distinct warning log, undo entityId canonical recovery, LocationMergeDb structural type). 716/716 vitest, tsc clean.
 progress:
   total_phases: 5
   completed_phases: 0
