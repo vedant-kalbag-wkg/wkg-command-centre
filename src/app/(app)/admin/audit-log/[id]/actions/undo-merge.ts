@@ -244,11 +244,28 @@ export async function undoMerge(
       // because writeAuditLog rejects unknown action enums (its TS union
       // doesn't include 'location_merge_undone' yet); this matches the
       // audit_logs.action column being plain text in the DB.
+      //
+      // entityId resolution (PR #34 review fix) — the merge's audit row had
+      // `entityId = canonicalId` (the row the merge mutated). The undo's
+      // paired audit row should point at the same canonical so audit-log
+      // lookups by entityId surface both the merge and its undo. Recover
+      // canonicalId from the original merge audit row's entity_id rather
+      // than picking `archivedIds[0]` (one of the defuncts) or
+      // `snapshotId` (a snapshot UUID landing in a column expected to hold
+      // a location UUID — the previous fallback shape).
+      const mergeAuditRow = await tx
+        .select({ entityId: auditLogs.entityId })
+        .from(auditLogs)
+        .where(eq(auditLogs.id, snapRow.audit_log_id))
+        .limit(1);
+      const canonicalId =
+        mergeAuditRow[0]?.entityId ?? archivedIds[0] ?? snapshotId;
+
       await tx.insert(auditLogs).values({
         actorId: actor.id,
         actorName: actor.name,
         entityType: "location",
-        entityId: archivedIds[0] ?? snapshotId,
+        entityId: canonicalId,
         entityName: "",
         action: "location_merge_undone",
         field: "snapshotId",

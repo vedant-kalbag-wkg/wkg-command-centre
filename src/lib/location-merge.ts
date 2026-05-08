@@ -31,7 +31,7 @@
  *   - On successful undo, the snapshot row is DELETEd — its existence is the
  *     single source of truth for "undo still available".
  */
-import { sql, and, eq, inArray, isNull } from "drizzle-orm";
+import { sql, and, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import { writeAuditLog } from "@/lib/audit";
 import { getSentinelLocationId } from "@/lib/sentinel";
 import {
@@ -140,10 +140,39 @@ export const LOCATION_MERGE_LOCK_KEY = 738294108;
  */
 export const LOCATION_MERGE_LOCK_CONTENTION = "location_merge_lock_contention";
 
-// Loose DB type — both prod's postgres-js client AND test fixtures expose the
-// `transaction()` + `execute()` Drizzle surface this primitive uses.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type LocationMergeDb = any;
+/**
+ * Minimal Drizzle DB surface used by applyLocationMerge.
+ *
+ * Replaces the previous `any` type (PR #34 review). The structural
+ * interface enumerates the methods this primitive actually calls so:
+ *   - The test mock (`buildMockDb` in location-merge.test.ts) has to
+ *     expose all of them — TS catches the mock drifting out of date.
+ *   - A future refactor that introduces `tx.delete` or `tx.with` on the
+ *     hot path is forced to update this type, surfacing the change in
+ *     code review.
+ *
+ * Chain return types are deliberately `any` (one eslint-disable per
+ * method): Drizzle's chained query builder types are deeply generic
+ * over column types and the dual-driver constraint (postgres-js client
+ * for prod + neon-serverless for some preview/edge paths) means there's
+ * no single concrete return type that satisfies both. The caller-side
+ * `as never`/`as unknown as`-style casts that would be needed instead
+ * are noisier than the localised `any`s here.
+ *
+ * Both prod's `db` (PostgresJsDatabase<Schema> per src/db/index.ts) AND
+ * the unit-test fixture mock satisfy this interface structurally.
+ */
+export interface LocationMergeDb {
+  transaction<T>(callback: (tx: LocationMergeDb) => Promise<T>): Promise<T>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  execute(query: SQL): Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  select(fields?: Record<string, unknown>): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  insert(table: unknown): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  update(table: unknown): any;
+}
 
 type FkChange = {
   table: string;
@@ -255,7 +284,14 @@ export async function applyLocationMerge(
   // catching the throw and continuing without the guard.
   let sentinelId: string | undefined;
   try {
-    sentinelId = await getSentinelLocationId(db);
+    // getSentinelLocationId is typed against the production `db` type
+    // (PostgresJsDatabase<Schema>); LocationMergeDb is the looser
+    // structural surface we accept here so unit-test mocks satisfy it.
+    // Cast at the boundary — at runtime, both prod's db and the mock
+    // expose the read API getSentinelLocationId uses (.select chain).
+    sentinelId = await getSentinelLocationId(
+      db as unknown as Parameters<typeof getSentinelLocationId>[0],
+    );
   } catch {
     sentinelId = undefined;
   }

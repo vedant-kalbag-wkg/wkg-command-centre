@@ -39,6 +39,9 @@ type TxCalls = {
   executes: string[];
   inserts: Array<{ values: Record<string, unknown> }>;
   updates: number;
+  /** Number of `tx.select(...)` chain calls — used by the entityId-fallback
+   * test to assert the merge audit row was looked up. */
+  selects: number;
 };
 
 /**
@@ -47,15 +50,24 @@ type TxCalls = {
  *   1. pg_advisory_xact_lock(738294108)  — returns {}
  *   2. SELECT … FOR UPDATE on snapshots — returns the configured snapshot rows
  *   3..N FK rewrites + DELETE snapshot — return {}
+ *
+ * `tx.select(...)` is also mocked — used by the post-PR #34 entityId
+ * recovery path (lookup the merge audit row's entity_id to use as the
+ * paired undo audit row's entityId). Returns
+ * `[{ entityId: mergeAuditEntityId }]` if provided, else an empty array
+ * (which exercises the legacy fallback to archivedIds[0] / snapshotId).
  */
-function makeTx(snapshotRows: unknown[]): {
+function makeTx(
+  snapshotRows: unknown[],
+  mergeAuditEntityId?: string,
+): {
   tx: unknown;
   calls: TxCalls;
 } {
-  const calls: TxCalls = { executes: [], inserts: [], updates: 0 };
+  const calls: TxCalls = { executes: [], inserts: [], updates: 0, selects: 0 };
   let executeCount = 0;
   const tx = {
-    execute: (frag: { queryChunks?: unknown[]; toString?: () => string }) => {
+    execute: (_frag: { queryChunks?: unknown[]; toString?: () => string }) => {
       executeCount++;
       // Stash a stringified marker per call so the test can assert ordering.
       const marker =
@@ -84,6 +96,20 @@ function makeTx(snapshotRows: unknown[]): {
         },
       }),
     }),
+    select: () => {
+      calls.selects++;
+      const drain = () =>
+        Promise.resolve(
+          mergeAuditEntityId !== undefined
+            ? [{ entityId: mergeAuditEntityId }]
+            : [],
+        );
+      return {
+        from: () => ({
+          where: () => ({ limit: drain }),
+        }),
+      };
+    },
   };
   return { tx, calls };
 }
@@ -129,24 +155,27 @@ describe("undoMerge — canonical_field_changes restore (Plan 07-03 follow-up)",
     const ARCHIVED_1 = "00000000-0000-0000-0000-00000000bbbb";
     const CANONICAL = "00000000-0000-0000-0000-00000000eeee";
 
-    const { tx, calls } = makeTx([
-      {
-        id: SNAP_ID,
-        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
-        payload: {
-          archived_ids: [ARCHIVED_1],
-          fk_changes: [],
-          canonical_field_changes: {
-            canonical_id: CANONICAL,
-            fields: {
-              address: "1 Old Address Rd",
-              hotelGroup: "Old Group",
+    const { tx, calls } = makeTx(
+      [
+        {
+          id: SNAP_ID,
+          audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+          payload: {
+            archived_ids: [ARCHIVED_1],
+            fk_changes: [],
+            canonical_field_changes: {
+              canonical_id: CANONICAL,
+              fields: {
+                address: "1 Old Address Rd",
+                hotelGroup: "Old Group",
+              },
             },
           },
+          created_at: "2026-05-06T00:00:00Z",
         },
-        created_at: "2026-05-06T00:00:00Z",
-      },
-    ]);
+      ],
+      CANONICAL,
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
       cb(tx)) as never);
@@ -166,15 +195,20 @@ describe("undoMerge — canonical_field_changes restore (Plan 07-03 follow-up)",
       snapshotId: SNAP_ID,
       canonicalFieldsRestored: 2,
     });
+    // The paired audit row's entityId must be the canonical id recovered
+    // from the merge audit row — NOT a defunct id, NOT the snapshot UUID
+    // (PR #34 review fix).
+    expect(calls.inserts[0].values.entityId).toBe(CANONICAL);
   });
 });
 
 describe("undoMerge — happy path", () => {
-  it("reverses fk_changes, restores archived rows, writes paired audit row, and deletes snapshot", async () => {
+  it("reverses fk_changes, restores archived rows, writes paired audit row with canonical entityId, and deletes snapshot", async () => {
     vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);
 
     const SNAP_ID = "00000000-0000-0000-0000-00000000aaaa";
     const ARCHIVED_1 = "00000000-0000-0000-0000-00000000bbbb";
+    const CANONICAL = "00000000-0000-0000-0000-00000000eeee";
     const FK_CHANGE = {
       table: "kiosk_assignments",
       row_id: "00000000-0000-0000-0000-00000000cccc",
@@ -182,17 +216,20 @@ describe("undoMerge — happy path", () => {
       previous_value: ARCHIVED_1,
     };
 
-    const { tx, calls } = makeTx([
-      {
-        id: SNAP_ID,
-        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
-        payload: {
-          archived_ids: [ARCHIVED_1],
-          fk_changes: [FK_CHANGE],
+    const { tx, calls } = makeTx(
+      [
+        {
+          id: SNAP_ID,
+          audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+          payload: {
+            archived_ids: [ARCHIVED_1],
+            fk_changes: [FK_CHANGE],
+          },
+          created_at: "2026-05-06T00:00:00Z",
         },
-        created_at: "2026-05-06T00:00:00Z",
-      },
-    ]);
+      ],
+      CANONICAL,
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
       cb(tx)) as never);
@@ -208,17 +245,52 @@ describe("undoMerge — happy path", () => {
     // Restoration of archived rows happens via the drizzle update builder.
     expect(calls.updates).toBe(1);
 
-    // Paired audit row written with action='location_merge_undone'.
+    // The merge-audit-row lookup (post-PR #34 review) is one tx.select call.
+    expect(calls.selects).toBe(1);
+
+    // Paired audit row written with action='location_merge_undone' and
+    // entityId pointing at the canonical (the row the merge mutated), NOT
+    // a defunct id (legacy fallback) or the snapshot UUID (legacy fallback).
     expect(calls.inserts).toHaveLength(1);
     expect(calls.inserts[0].values).toMatchObject({
       action: "location_merge_undone",
       entityType: "location",
-      entityId: ARCHIVED_1,
+      entityId: CANONICAL,
     });
     const meta = calls.inserts[0].values.metadata as Record<string, unknown>;
     expect(meta).toMatchObject({
       snapshotId: SNAP_ID,
       fkChangesReversed: 1,
     });
+  });
+
+  it("falls back to archivedIds[0] when the merge audit row is unexpectedly missing", async () => {
+    vi.mocked(requireRole).mockResolvedValueOnce(ADMIN_SESSION as never);
+
+    const SNAP_ID = "00000000-0000-0000-0000-00000000aaaa";
+    const ARCHIVED_1 = "00000000-0000-0000-0000-00000000bbbb";
+
+    // mergeAuditEntityId omitted → tx.select returns []. Defensive fallback
+    // path: entityId becomes archivedIds[0]. This preserves backward-compat
+    // shape for snapshots whose audit_logs row was deleted by an
+    // out-of-band cleanup.
+    const { tx, calls } = makeTx([
+      {
+        id: SNAP_ID,
+        audit_log_id: "00000000-0000-0000-0000-00000000dddd",
+        payload: {
+          archived_ids: [ARCHIVED_1],
+          fk_changes: [],
+        },
+        created_at: "2026-05-06T00:00:00Z",
+      },
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.transaction).mockImplementationOnce(((cb: any) =>
+      cb(tx)) as never);
+
+    const result = await undoMerge(SNAP_ID);
+    expect(result).toEqual({ success: true });
+    expect(calls.inserts[0].values.entityId).toBe(ARCHIVED_1);
   });
 });

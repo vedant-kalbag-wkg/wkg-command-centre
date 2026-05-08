@@ -18,7 +18,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 
-import { applyLocationMerge } from "./location-merge";
+import { applyLocationMerge, type LocationMergeDb } from "./location-merge";
 
 // Mock the audit log helper. Tests that care about per-field `update` audit
 // rows (Plan 07-03 follow-up: fieldResolutions lift) assert against the
@@ -217,7 +217,16 @@ function buildMockDb(opts: MockOptions = {}) {
     },
   };
 
-  return { db, captured };
+  // The structural LocationMergeDb interface enumerates execute/insert/update
+  // alongside select/transaction (the inner-tx surface the primitive uses).
+  // The OUTER mock here only needs to cover what applyLocationMerge calls
+  // outside its transaction (.select via getSentinelLocationId, and
+  // .transaction itself). Cast at the test boundary — runtime correctness
+  // is asserted by the tests themselves.
+  return {
+    db: db as unknown as LocationMergeDb,
+    captured,
+  };
 }
 
 const ACTOR = { id: "actor-1", name: "Test Admin" };

@@ -170,9 +170,15 @@ const noopLogger = (_phase: string, _msg: string) => {};
  * If the mirror surprisingly contains DIFFERENT codes (which would mean the
  * Monday board has the same hotel mapped to multiple RPS accounts — operator
  * data error), we still return the first non-empty token so the import doesn't
- * fail; the same-name detection + merge UI surfaces the inconsistency.
+ * fail; the same-name detection + merge UI surfaces the inconsistency, and a
+ * `[hotel-import]` log line records the Monday item id + the distinct tokens
+ * so the operator can find the bad item without grepping the run output
+ * (added during PR #34 review).
  */
-function extractCustomerCode(item: MondayItem): string | null {
+function extractCustomerCode(
+  item: MondayItem,
+  logger: (phase: string, msg: string) => void = noopLogger,
+): string | null {
   const mirror = item.column_values.find((cv) => cv.id === "mirror3__1");
   const display = mirror?.display_value?.trim();
   if (!display) return null;
@@ -184,7 +190,14 @@ function extractCustomerCode(item: MondayItem): string | null {
   // Per operator: same hotel = same RPS account, so "1234, 1234" → "1234".
   // We dedupe and return the first; if there are multiple distinct values we
   // still return the first (the merge / same-name surface will catch it).
-  return tokens[0];
+  const distinct = Array.from(new Set(tokens));
+  if (distinct.length > 1) {
+    logger(
+      "hotel-import",
+      `multiple distinct customer_codes on item ${item.id}: ${distinct.join(", ")} — using "${distinct[0]}" (operator triage via merge UI)`,
+    );
+  }
+  return distinct[0];
 }
 
 export async function runHotelLocationImport(
@@ -218,7 +231,7 @@ export async function runHotelLocationImport(
         itemFragment: HOTEL_ITEM_FRAGMENT,
       })) {
         boardCount++;
-        const customerCode = extractCustomerCode(item);
+        const customerCode = extractCustomerCode(item, logger);
         const groupTitle =
           (item as MondayItem & { group?: { title?: string } }).group?.title ??
           "";
