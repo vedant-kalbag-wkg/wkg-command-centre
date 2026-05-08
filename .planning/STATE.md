@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 7 Plan 05 complete (prod cutover verified) — only Phase 7 verification gate remaining before merge
-last_updated: "2026-05-08T05:45:00.000Z"
-last_activity: 2026-05-08 -- Phase 7 Plan 05 complete (prod cutover; 95103 sales byte-perfect; 372 customer_codes; commit 5973f39)
+stopped_at: Phase 8 context gathered — ready for /gsd-plan-phase 8
+last_updated: "2026-05-08T07:30:00.000Z"
+last_activity: 2026-05-08 -- Phase 8 (Email Infrastructure) context gathered; 4 areas decided (sending domain command.weknowgroup.com, sync-Resend for auth flows, react-email templates, minimal change-pw confirmation). Phase 7 verify gate still outstanding.
 progress:
   total_phases: 1
   completed_phases: 0
@@ -96,7 +96,19 @@ None at v1.1 scoping start. Three unresolved debug sessions tracked in v1.1 cate
 
 ## Session Continuity
 
-Current session: 2026-05-08 — Phase 7 Plan 05 prod cutover complete
-Stopped at: All Phase 7 plans complete; only Phase 7 verification + completion gate remaining
-Resume file: none (HANDOFF.json deleted post-resumption per workflow)
-Next action: /gsd-verify-work or /gsd-ship for Phase 7 close-out
+Current session: 2026-05-08 — Phase 8 (Email Infrastructure) context gathered
+Stopped at: Phase 8 CONTEXT.md written; ready for planning. Phase 7 verify gate still outstanding (parallel track).
+Resume file: `.planning/phases/08-email-infrastructure/08-CONTEXT.md`
+Next action: `/gsd-plan-phase 8` (or `/gsd-verify-work` for Phase 7 close-out — they're independent)
+
+### Phase 8 decisions captured 2026-05-08
+
+- Sending domain: `noreply@command.weknowgroup.com` (subdomain of weknowgroup.com, transactional-only)
+- Auth-flow emails (forgot-password / invite / external-invite): sync Resend in handler — Inngest reserved for digests/notifications/reports
+- Templates: `@react-email/components` with brand tokens in `src/emails/brand.ts`
+- Change-password confirmation: timestamp + "contact admin"; no IP, no UA (minimal PII)
+- EMAIL-03 UAT bar: invite throwaway → click link → set password → sign in (operator-driven, not Claude-driven, since deliverability requires a real inbox)
+
+### Phase 8 housekeeping flagged
+
+- `.planning/ROADMAP.md` lives only on `docs/architecture-and-azure-hosting` (commit `1a0d6a7`); port to phase-branch line before v1.1 close-out merge.
