@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: data-foundation-and-email
 status: executing
-stopped_at: Phase 7 PR #36 — both review passes applied (7746e2b + a622c72 + 05c0992); awaiting CI + final-merge
-last_updated: "2026-05-08T17:45:00.000Z"
-last_activity: 2026-05-08 -- Phase 7 cycle: PR #34 merged → PR #35 revert → PR #36 re-opened → 7746e2b (PR #34 blocking) → a622c72 (PR #34 non-blocking) → 05c0992 (PR #36 second-pass review: 1 medium bug — composite-PK undo UNIQUE violation; 4 minor: updatedAt on field-resolution write, type duplication, archive audit entityName, UndoMergeButton hardcoded string). 717/717 vitest, tsc clean.
+stopped_at: Phase 7 PR #36 — full review surface closed (4 fix commits); awaiting CI + final-merge
+last_updated: "2026-05-08T18:30:00.000Z"
+last_activity: 2026-05-08 -- Phase 7 cycle: PR #34 merged → PR #35 revert → PR #36 re-opened → 7746e2b (PR #34 blocking) → a622c72 (PR #34 non-blocking) → 05c0992 (PR #36 pass-2: 1 medium bug + 4 minor) → 0787de4 (PR #36 residual: snapshot v3 payload — canonical_id embedded; throw on unrecoverable instead of defunct-id fallback). 718/718 vitest, tsc clean.
 progress:
   total_phases: 5
   completed_phases: 0
