@@ -11,11 +11,6 @@ const alertVariants = cva(
         default: "bg-card text-card-foreground",
         destructive:
           "bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current",
-        // Phase 7 Plan 07-03 — warning variant landed for the Plan D banner;
-        // also reusable by MergeDialog's consequences block. Tokens locked by
-        // 07-UI-SPEC.md Surface 1 (do not change without UI-SPEC sync).
-        warning:
-          "bg-[#F4BA1E]/10 border-[#F4BA1E]/40 text-[#8A6B0E] *:[svg]:text-[#F4BA1E]",
       },
     },
     defaultVariants: {

@@ -5,8 +5,6 @@ import { eq, sql } from "drizzle-orm";
 import Papa from "papaparse";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
 import {
-  kioskAssignments,
-  kiosks,
   locations,
   productCodeFallbacks,
   products,
@@ -125,8 +123,6 @@ describe.skipIf(!CSV_PRESENT)("runAzureEtl (full CSV fixture)", () => {
     await ctx.db.delete(salesImports);
     await ctx.db.delete(providers);
     await ctx.db.delete(products);
-    await ctx.db.delete(kioskAssignments);
-    await ctx.db.delete(kiosks);
     await ctx.db.delete(locations);
     await ctx.db.delete(productCodeFallbacks);
     await ctx.db.delete(regions);
@@ -137,37 +133,12 @@ describe.skipIf(!CSV_PRESENT)("runAzureEtl (full CSV fixture)", () => {
       .returning({ id: regions.id });
     ukRegionId = uk.id;
 
-    // Phase 07-06 — seed a location PLUS one kiosk + active assignment per
-    // unique outlet code in the fixture. The dimension resolver's Pass 1
-    // resolves sales rows via kiosks.outlet_code → kiosk_assignments → location.
-    const insertedLocs = await ctx.db
-      .insert(locations)
-      .values(
-        outletCodes.map((code) => ({
-          name: `Test Outlet ${code}`,
-          primaryRegionId: ukRegionId,
-        })),
-      )
-      .returning({ id: locations.id, name: locations.name });
-    const insertedKiosks = await ctx.db
-      .insert(kiosks)
-      .values(
-        outletCodes.map((code) => ({
-          kioskId: `KSK-FULL-${code}`,
-          outletCode: code,
-        })),
-      )
-      .returning({ id: kiosks.id, outletCode: kiosks.outletCode });
-    const kioskByCode = new Map(
-      insertedKiosks.map((k) => [k.outletCode, k.id] as const),
-    );
-    const locByName = new Map(insertedLocs.map((l) => [l.name, l.id] as const));
-    await ctx.db.insert(kioskAssignments).values(
+    // Seed a location for every unique outlet code in the fixture.
+    await ctx.db.insert(locations).values(
       outletCodes.map((code) => ({
-        kioskId: kioskByCode.get(code)!,
-        locationId: locByName.get(`Test Outlet ${code}`)!,
-        assignedBy: ETL_ACTOR_ID,
-        assignedByName: "Test ETL",
+        name: `Test Outlet ${code}`,
+        outletCode: code,
+        primaryRegionId: ukRegionId,
       })),
     );
 

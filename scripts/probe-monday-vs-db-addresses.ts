@@ -1,24 +1,25 @@
 /**
- * Probe Monday — two modes:
+ * Probe Monday's address coverage vs what we have in `locations.address`.
  *
- *   --mode=addresses (default, back-compat)
- *     READ-ONLY. Fetches hotels from the 4 Monday hotel boards, reads each
- *     hotel's "location" column (= Monday's address field), and produces a
- *     CSV diff against the current state of `locations.address` in the DB.
- *     Status per row: MATCH / DIFF / MONDAY_BLANK / DB_BLANK / NO_MONDAY /
- *     BOTH_BLANK. Output: stdout summary + /tmp/monday-vs-db-addresses.csv.
- *     Requires: DATABASE_URL, MONDAY_API_TOKEN.
- *
- *   --mode=normalised-name-counts (Phase 7 plan 07-01)
- *     READ-ONLY. Iterates the same 4 hotel boards and tallies item counts
- *     per `normaliseName(item.name)`. Answers RESEARCH.md OQ#1: does Monday
- *     have one hotel item per same-name group, or N? Output: JSON to stdout
- *     `{ totalItems, distinctNormalisedNames, sameNameGroups[] }`; markdown
- *     summary to stderr. Requires: MONDAY_API_TOKEN. DATABASE_URL not used.
+ * READ-ONLY. Fetches hotels from the 4 Monday hotel boards (mirrors
+ * scripts/enrich-locations-from-monday.ts), reads each hotel's "location"
+ * column (= Monday's address field), and produces a CSV diff against the
+ * current state of `locations.address` in the DB.
  *
  * Usage:
  *   DATABASE_URL=... MONDAY_API_TOKEN=... npx tsx scripts/probe-monday-vs-db-addresses.ts
- *   MONDAY_API_TOKEN=... npx tsx scripts/probe-monday-vs-db-addresses.ts --mode=normalised-name-counts
+ *
+ * Output:
+ *   stdout: human-readable summary stats
+ *   /tmp/monday-vs-db-addresses.csv: full row-by-row diff
+ *
+ * Status values per row:
+ *   MATCH         — Monday and DB addresses are identical (whitespace-trimmed)
+ *   DIFF          — both populated, but different
+ *   MONDAY_BLANK  — DB has an address, Monday doesn't
+ *   DB_BLANK      — Monday has an address, DB doesn't
+ *   NO_MONDAY     — DB has an outlet_code with no matching Monday hotel
+ *   BOTH_BLANK    — neither has an address
  */
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -34,6 +35,14 @@ const BOARD_NAMES: Record<number, string> = {
 };
 
 const MONDAY_API_TOKEN = process.env.MONDAY_API_TOKEN;
+if (!MONDAY_API_TOKEN) {
+  console.error("Missing MONDAY_API_TOKEN");
+  process.exit(1);
+}
+if (!process.env.DATABASE_URL) {
+  console.error("Missing DATABASE_URL");
+  process.exit(1);
+}
 
 async function mondayQuery<T>(query: string): Promise<T> {
   const res = await fetch("https://api.monday.com/v2", {
@@ -123,96 +132,7 @@ interface PageShape {
   }>;
 }
 
-// normaliseName: same-name collapse function used by Plan A pre-flight + Plan
-// D guardrail. MUST be lifted verbatim into src/lib/normalise.ts in plan 07-02
-// (D-09 — single source of truth across hotel importer, sales ETL, same-name
-// detection). If the regex sequence changes, change all three sites together.
-function normaliseName(s: string): string {
-  return s.trim().toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ");
-}
-
-async function runNormalisedNameCountsMode(): Promise<void> {
-  if (!MONDAY_API_TOKEN) throw new Error("MONDAY_API_TOKEN not set");
-
-  type Group = { boardIds: Set<number>; count: number; rawNames: string[] };
-  const groups = new Map<string, Group>();
-  let totalItems = 0;
-
-  for (const boardId of HOTEL_BOARD_IDS) {
-    let cursor: string | null = null;
-    let firstPage = true;
-    let perBoard = 0;
-    while (true) {
-      const query = firstPage
-        ? `{ boards(ids: [${boardId}]) { items_page(limit: 500) { cursor items { id name } } } }`
-        : `{ next_items_page(limit: 500, cursor: "${cursor}") { cursor items { id name } } }`;
-      const data = (await mondayQuery(query)) as Record<string, unknown>;
-      const page: { cursor: string | null; items: Array<{ id: string; name: string }> } = firstPage
-        ? (data as { boards: Array<{ items_page: { cursor: string | null; items: Array<{ id: string; name: string }> } }> }).boards[0]
-            .items_page
-        : (data as { next_items_page: { cursor: string | null; items: Array<{ id: string; name: string }> } }).next_items_page;
-
-      for (const item of page.items) {
-        totalItems++;
-        perBoard++;
-        const norm = normaliseName(item.name);
-        let g = groups.get(norm);
-        if (!g) {
-          g = { boardIds: new Set(), count: 0, rawNames: [] };
-          groups.set(norm, g);
-        }
-        g.boardIds.add(boardId);
-        g.count++;
-        g.rawNames.push(item.name);
-      }
-      cursor = page.cursor;
-      firstPage = false;
-      if (!cursor || page.items.length === 0) break;
-    }
-    console.error(`[normalised-name-counts] ${BOARD_NAMES[boardId]}: ${perBoard} items`);
-  }
-
-  const sameNameGroups = [...groups.entries()]
-    .filter(([, g]) => g.count > 1)
-    .map(([normalised, g]) => ({
-      normalised,
-      count: g.count,
-      boardIds: [...g.boardIds].sort((a, b) => a - b),
-      rawNames: [...new Set(g.rawNames)].sort(),
-    }))
-    .sort((a, b) => b.count - a.count || a.normalised.localeCompare(b.normalised));
-
-  const result = {
-    totalItems,
-    distinctNormalisedNames: groups.size,
-    sameNameGroups,
-  };
-  process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-
-  if (sameNameGroups.length === 0) {
-    process.stderr.write("\nno same-name groups detected on Monday boards\n");
-  } else {
-    process.stderr.write(`\nSame-name groups (${sameNameGroups.length}):\n\n`);
-    process.stderr.write("| Normalised | Count | Boards | Raw names |\n");
-    process.stderr.write("|------------|-------|--------|-----------|\n");
-    for (const g of sameNameGroups) {
-      process.stderr.write(
-        `| ${g.normalised} | ${g.count} | ${g.boardIds.join(", ")} | ${g.rawNames.join(" / ")} |\n`,
-      );
-    }
-  }
-}
-
-async function runAddressProbeMode(): Promise<void> {
-  if (!MONDAY_API_TOKEN) {
-    console.error("Missing MONDAY_API_TOKEN");
-    process.exit(1);
-  }
-  if (!process.env.DATABASE_URL) {
-    console.error("Missing DATABASE_URL");
-    process.exit(1);
-  }
-
+async function main(): Promise<void> {
   console.error("[probe] fetching Monday hotels…");
   const hotels = await fetchAllHotels();
   console.error(`[probe] total Monday hotel items: ${hotels.length}`);
@@ -326,20 +246,6 @@ async function runAddressProbeMode(): Promise<void> {
   console.log(`\nFull CSV written to ${outPath}`);
 
   await pool.end();
-}
-
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const modeArg = args.find((a) => a.startsWith("--mode="));
-  const mode = modeArg ? modeArg.slice("--mode=".length) : "addresses";
-  if (mode === "normalised-name-counts") {
-    await runNormalisedNameCountsMode();
-  } else if (mode === "addresses") {
-    await runAddressProbeMode();
-  } else {
-    console.error(`Unknown --mode=${mode}. Valid: addresses, normalised-name-counts`);
-    process.exit(1);
-  }
 }
 
 main().catch((err) => {

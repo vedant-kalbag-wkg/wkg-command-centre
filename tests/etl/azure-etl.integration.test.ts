@@ -2,8 +2,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { eq, and } from "drizzle-orm";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
 import {
-  kioskAssignments,
-  kiosks,
   locations,
   productCodeFallbacks,
   products,
@@ -153,8 +151,6 @@ describe("runAzureEtl (integration)", () => {
     await ctx.db.delete(salesImports);
     await ctx.db.delete(providers);
     await ctx.db.delete(products);
-    await ctx.db.delete(kioskAssignments);
-    await ctx.db.delete(kiosks);
     await ctx.db.delete(locations);
     await ctx.db.delete(productCodeFallbacks);
     await ctx.db.delete(regions);
@@ -165,27 +161,13 @@ describe("runAzureEtl (integration)", () => {
       .returning({ id: regions.id });
     ukRegionId = uk.id;
 
-    // Phase 07-06 — locations.outlet_code is gone; the dimension resolver's
-    // Pass 1 looks up sales-CSV outlet codes via kiosks → kiosk_assignments.
-    // Seed a kiosk attached to the location with outlet_code 'Q5' so the
-    // fixture rows resolve.
-    const [loc] = await ctx.db
+    await ctx.db
       .insert(locations)
       .values({
         name: "Staycity Greenwich",
+        outletCode: "Q5",
         primaryRegionId: ukRegionId,
-      })
-      .returning({ id: locations.id });
-    const [kiosk] = await ctx.db
-      .insert(kiosks)
-      .values({ kioskId: "KSK-Q5-INTEG", outletCode: "Q5" })
-      .returning({ id: kiosks.id });
-    await ctx.db.insert(kioskAssignments).values({
-      kioskId: kiosk.id,
-      locationId: loc.id,
-      assignedBy: "00000000-0000-0000-0000-000000000001",
-      assignedByName: "Test ETL",
-    });
+      });
 
     await ctx.db.insert(productCodeFallbacks).values([
       { productName: "Booking Fee", netsuiteCode: "9991" },

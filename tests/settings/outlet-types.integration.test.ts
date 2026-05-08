@@ -67,14 +67,11 @@ describe("outlet-types server actions (pipeline)", () => {
     //  1. classified hotel (should be excluded — locationType NOT NULL)
     //  2. archived NULL-type (should be excluded — archivedAt set)
     //  3. active NULL-type (should be returned)
-    // Phase 07-06 — outletCode field on the DTO now sources from
-    // customer_code; seed with customerCode so the assertion still has a
-    // value to match against.
     const [classified] = await ctx.db
       .insert(locations)
       .values({
         name: "Classified Hotel",
-        customerCode: "CLS",
+        outletCode: "CLS",
         primaryRegionId: regionId,
         locationType: "hotel",
       })
@@ -84,7 +81,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Archived Unknown",
-        customerCode: "ARC",
+        outletCode: "ARC",
         primaryRegionId: regionId,
         archivedAt: new Date("2025-01-01"),
       })
@@ -94,7 +91,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Unclassified Outlet",
-        customerCode: "UNC",
+        outletCode: "UNC",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -112,19 +109,16 @@ describe("outlet-types server actions (pipeline)", () => {
     expect(returnedIds).not.toContain(archived.id);
   });
 
-  test("Monday placeholder locations surface with reviewReason='imported_from_monday' + notes populated", async () => {
-    // Phase 07-06 — placeholder detection switched from outlet_code prefix
-    // (`MONDAY-…`) to (NULL customer_code AND mondayItemId set). Same
-    // logical set of rows; the signal is the new combination.
+  test("MONDAY-* placeholder locations surface with reviewReason='imported_from_monday' + notes populated", async () => {
+    // Seed a placeholder location like the Monday import script would create.
     const [placeholder] = await ctx.db
       .insert(locations)
       .values({
-        name: "Example Hotel (no mirror3__1 code)",
-        customerCode: null,
-        mondayItemId: "xyz123",
+        name: "Example Hotel (no mirror9 code)",
+        outletCode: "MONDAY-xyz123",
         primaryRegionId: regionId,
         notes:
-          "Imported from Monday (mondayItemId=xyz123) — no customer code on mirror3__1, needs manual review",
+          "Imported from Monday (mondayItemId=xyz123) — no outlet code on mirror9, needs manual review",
       })
       .returning({ id: locations.id });
 
@@ -132,22 +126,19 @@ describe("outlet-types server actions (pipeline)", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe(placeholder.id);
-    // outletCode (sourced from customerCode) is NULL on placeholders.
-    expect(rows[0].outletCode).toBeNull();
+    expect(rows[0].outletCode).toBe("MONDAY-xyz123");
     expect(rows[0].reviewReason).toBe("imported_from_monday");
     expect(rows[0].notes).toContain("Imported from Monday");
     expect(rows[0].notes).toContain("xyz123");
   });
 
-  test("classified Monday-placeholder row is excluded — classification takes precedence over review reason", async () => {
-    // A placeholder that's already been classified by an operator MUST NOT
+  test("classified MONDAY-* row is excluded — classification takes precedence over review reason", async () => {
+    // A MONDAY-* row that's already been classified by an operator MUST NOT
     // reappear in the needs-review list. The exclusion key is still
-    // `locationType IS NULL`; the Monday-placeholder signal is only used
-    // to label the review reason.
+    // `locationType IS NULL`; the MONDAY-* prefix is only a display signal.
     await ctx.db.insert(locations).values({
       name: "Already Classified Monday Hotel",
-      customerCode: null,
-      mondayItemId: "abc789",
+      outletCode: "MONDAY-abc789",
       primaryRegionId: regionId,
       locationType: "hotel",
       notes: "Imported from Monday (mondayItemId=abc789)",
@@ -162,7 +153,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Outlet With Sales",
-
+        outletCode: "SLS",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -217,20 +208,16 @@ describe("outlet-types server actions (pipeline)", () => {
     expect(rows[0].last30dTransactions).toBe(2);
   });
 
-  test("suggestedType falls back to NULL when only the location name has no other classifier signals", async () => {
-    // Phase 07-06 — the classifier's outletCode='IN' / 'BK' shortcuts no
-    // longer fire from the locations row (outletCode is null here, sourced
-    // from customer_code). The remaining heuristics (name patterns,
-    // hotelGroup/numRooms/starRating) don't match this row either, so the
-    // suggester returns null — that's the correct contract.
+  test("suggestedType is populated from the classifier (outletCode 'IN' → online)", async () => {
     await ctx.db.insert(locations).values({
       name: "Online Booking",
+      outletCode: "IN",
       primaryRegionId: regionId,
     });
 
     const rows = await _listUnclassifiedOutletsForActor(ctx.db);
     expect(rows).toHaveLength(1);
-    expect(rows[0].suggestedType).toBeNull();
+    expect(rows[0].suggestedType).toBe("online");
   });
 
   test("setLocationType updates the row and writes an audit log entry", async () => {
@@ -238,7 +225,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Classify Me",
-
+        outletCode: "CLM",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -274,9 +261,9 @@ describe("outlet-types server actions (pipeline)", () => {
     const inserts = await ctx.db
       .insert(locations)
       .values([
-        { name: "Loc A", primaryRegionId: regionId },
-        { name: "Loc B", primaryRegionId: regionId },
-        { name: "Loc C", primaryRegionId: regionId, locationType: "hotel" },
+        { name: "Loc A", outletCode: "LA", primaryRegionId: regionId },
+        { name: "Loc B", outletCode: "LB", primaryRegionId: regionId },
+        { name: "Loc C", outletCode: "LC", primaryRegionId: regionId, locationType: "hotel" },
       ])
       .returning({ id: locations.id });
 
@@ -311,7 +298,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Region-Tagged Outlet",
-
+        outletCode: "RGT",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -345,7 +332,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Move Me",
-
+        outletCode: "MVM",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -380,7 +367,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Stay Put",
-
+        outletCode: "STP",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -408,27 +395,24 @@ describe("outlet-types server actions (pipeline)", () => {
       .values({ name: "Germany", code: "DE", azureCode: "DE" })
       .returning({ id: regions.id });
 
-    // Phase 07-06 — composite-unique on (region, customer_code). Seed
-    // Q5/UK and Q5/DE so a move UK→DE collides.
+    // Seed Q5/UK and Q5/DE so a move UK→DE collides.
     const [ukQ5] = await ctx.db
       .insert(locations)
       .values({
         name: "Q5 in UK",
-        customerCode: "Q5",
+        outletCode: "Q5",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
     await ctx.db.insert(locations).values({
       name: "Q5 in DE",
-      customerCode: "Q5",
+      outletCode: "Q5",
       primaryRegionId: otherRegion.id,
     });
 
-    // Error message format: "Cannot move <name>: another location with
-    // customer code 'Q5' already exists in the target region".
     await expect(
       _setPrimaryRegionForActor(ctx.db, ACTOR, ukQ5.id, otherRegion.id),
-    ).rejects.toThrow(/Q5/);
+    ).rejects.toThrow(/Cannot move Q5/);
 
     // Underlying row + audit log untouched.
     const [after] = await ctx.db
@@ -450,9 +434,9 @@ describe("outlet-types server actions (pipeline)", () => {
     const inserts = await ctx.db
       .insert(locations)
       .values([
-        { name: "Loc A", primaryRegionId: regionId },
-        { name: "Loc B", primaryRegionId: regionId },
-        { name: "Loc C", primaryRegionId: regionId },
+        { name: "Loc A", outletCode: "BLA", primaryRegionId: regionId },
+        { name: "Loc B", outletCode: "BLB", primaryRegionId: regionId },
+        { name: "Loc C", outletCode: "BLC", primaryRegionId: regionId },
       ])
       .returning({ id: locations.id });
 
@@ -493,14 +477,13 @@ describe("outlet-types server actions (pipeline)", () => {
       .values({ name: "Germany", code: "DE", azureCode: "DE" })
       .returning({ id: regions.id });
 
-    // Phase 07-06 — composite-unique on (region, customer_code). Seed
-    // Q5/UK + M3/UK + Q5/DE — moving UK→DE should apply only to M3 and
-    // report Q5 as conflicting (Q5 already taken in DE).
+    // Seed Q5/UK + M3/UK + Q5/DE — the bulk move UK→DE should apply only
+    // to M3 and report Q5 as conflicting.
     const [ukQ5] = await ctx.db
       .insert(locations)
       .values({
         name: "Q5 UK",
-        customerCode: "Q5",
+        outletCode: "Q5",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -508,13 +491,13 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "M3 UK",
-        customerCode: "M3",
+        outletCode: "M3",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
     await ctx.db.insert(locations).values({
       name: "Q5 DE",
-      customerCode: "Q5",
+      outletCode: "Q5",
       primaryRegionId: otherRegion.id,
     });
 
@@ -559,7 +542,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Should Not Move",
-
+        outletCode: "SNM",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });
@@ -587,24 +570,21 @@ describe("outlet-types server actions (pipeline)", () => {
     //   - 1 NULL-type (should always show)
     //   - 1 classified hotel (only shows when includeClassified=true)
     //   - 1 archived (always excluded, regardless of the option)
-    // Phase 07-06 — outletCode field on the DTO sources from customer_code;
-    // seed each row with a distinct customer_code so the assertions below
-    // can find them by that label.
     await ctx.db.insert(locations).values([
       {
         name: "NULL Outlet",
-        customerCode: "NUL",
+        outletCode: "NUL",
         primaryRegionId: regionId,
       },
       {
         name: "Classified Hotel",
-        customerCode: "CLS",
+        outletCode: "CLS",
         primaryRegionId: regionId,
         locationType: "hotel",
       },
       {
         name: "Archived Outlet",
-        customerCode: "ARC",
+        outletCode: "ARC",
         primaryRegionId: regionId,
         archivedAt: new Date("2025-01-01"),
       },
@@ -640,7 +620,7 @@ describe("outlet-types server actions (pipeline)", () => {
   test("includeClassified=true: a classified MONDAY-* row reports reviewReason='classified' (classification wins over Monday placeholder)", async () => {
     await ctx.db.insert(locations).values({
       name: "Reclassified Monday Hotel",
-
+      outletCode: "MONDAY-abc789",
       primaryRegionId: regionId,
       locationType: "hotel",
       notes: "Imported from Monday (mondayItemId=abc789)",
@@ -659,7 +639,7 @@ describe("outlet-types server actions (pipeline)", () => {
       .insert(locations)
       .values({
         name: "Should Not Change",
-
+        outletCode: "NCH",
         primaryRegionId: regionId,
       })
       .returning({ id: locations.id });

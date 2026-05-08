@@ -26,10 +26,9 @@ import {
   locationProducts,
   regions,
 } from "@/db/schema";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import type { db as defaultDb } from "@/db";
 import { mondayQueryWithRetry } from "@/lib/monday/client";
-import { normaliseName } from "@/lib/normalise";
 
 const HOTEL_BOARD_IDS = [1356570756, 1743012104, 5026387784, 5092887865];
 const BOARD_NAMES: Record<number, string> = {
@@ -57,21 +56,6 @@ const PLACEHOLDER_IMPORT_BOARDS = new Set<number>([
   5092887865, // Australia DCM
 ]);
 
-/**
- * Phase 7 Plan 07-04 (DATA-03 D-09) — same-name candidate detection.
- *
- * One entry per Monday hotel item whose `normaliseName(item.name)` matches
- * an existing active locations row that does NOT belong to the same Monday
- * import. Surfaced both in the dry-run return value AND as a single
- * `dry_import_warning` audit-log entry summarising the batch.
- */
-export type SameNameWarning = {
-  normalisedName: string;
-  mondayItemId: string;
-  itemName: string;
-  collidingLocationIds: string[];
-};
-
 export type MondayImportResult = {
   rowsInserted: number;
   placeholdersCreated: number;
@@ -88,37 +72,12 @@ export type MondayImportResult = {
   productsResolved: number;
   providersResolved: number;
   durationMs: number;
-  /**
-   * Phase 7 Plan 07-04 — same-name candidates detected for this run. In
-   * dry-run mode the array is computed before any DB writes (other than the
-   * single `dry_import_warning` audit entry); in normal-import mode it is
-   * always `[]` (the import does not currently insert hotels — that's the
-   * job of import-hotel-locations.ts — so there's nothing for this pass to
-   * warn against).
-   */
-  sameNameWarnings: SameNameWarning[];
 };
 
 export type MondayImportDeps = {
   mondayApiToken: string;
   db: typeof defaultDb;
   logger?: (phase: string, msg: string) => void;
-  /**
-   * Phase 7 Plan 07-04 — when `true`, run all read-only steps (Monday fetch,
-   * resolve outlet codes, compute same-name warnings) but skip writes that
-   * mutate `location_products`, `products`, `providers`, `locations`. The
-   * single `dry_import_warning` audit-log entry is the only intentional
-   * write in dry-run mode, and it is conditional on `persistWarnings`
-   * (defaults to `true` so the dry-run leaves a forensic trail).
-   */
-  dryRun?: boolean;
-  /**
-   * Phase 7 Plan 07-04 — when `false` and `dryRun=true`, suppress the
-   * `dry_import_warning` audit-log entry. Useful in tests that assert the
-   * caller's return-value contract without depending on audit_logs state.
-   * Default: `true`.
-   */
-  persistWarnings?: boolean;
 };
 
 interface SubitemData {
@@ -144,13 +103,7 @@ const noopLogger = () => {};
 export async function runMondayImport(
   deps: MondayImportDeps,
 ): Promise<MondayImportResult> {
-  const {
-    mondayApiToken,
-    db,
-    logger = noopLogger,
-    dryRun = false,
-    persistWarnings = true,
-  } = deps;
+  const { mondayApiToken, db, logger = noopLogger } = deps;
   const startedAt =
     typeof performance !== "undefined" && typeof performance.now === "function"
       ? performance.now()
@@ -312,119 +265,16 @@ export async function runMondayImport(
   // ────────────────────────────────────────────────────────────
   const hotels = await fetchAllHotelsWithProducts();
 
-  logger(
-    "IMPORT",
-    dryRun
-      ? "Dry-run: computing same-name warnings only (no writes)..."
-      : "Starting location product import...",
-  );
+  logger("IMPORT", "Starting location product import...");
 
-  // ────────────────────────────────────────────────────────────
-  // Phase 7 Plan 07-04 (DATA-03 D-09) — same-name candidate detection.
-  //
-  // Build a map from `normalised_name` to the list of active `locations.id`
-  // rows that have it. Then, for every hotel we're about to import, compute
-  // `normaliseName(hotel.hotelName)` and emit a warning if the normalised
-  // name already belongs to active locations rows.
-  //
-  // We deliberately do this BEFORE any DB writes so the dry-run path is
-  // side-effect-free (other than the single `dry_import_warning` audit log
-  // entry, which is intentional). In normal-import mode we still compute the
-  // warnings (cheap) but never emit the audit entry; the warnings are
-  // returned in the result for the caller to surface.
-  // ────────────────────────────────────────────────────────────
-  const sameNameWarnings: SameNameWarning[] = [];
-  const activeLocationsRows = await db
-    .select({
-      id: locations.id,
-      normalisedName: locations.normalisedName,
-    })
-    .from(locations)
-    .where(isNull(locations.archivedAt));
-  const normalisedNameToActiveIds = new Map<string, string[]>();
-  for (const row of activeLocationsRows) {
-    if (!row.normalisedName) continue;
-    const list = normalisedNameToActiveIds.get(row.normalisedName) ?? [];
-    list.push(row.id);
-    normalisedNameToActiveIds.set(row.normalisedName, list);
-  }
-  for (const hotel of hotels) {
-    const norm = normaliseName(hotel.hotelName);
-    if (!norm) continue;
-    const colliding = normalisedNameToActiveIds.get(norm);
-    if (!colliding || colliding.length === 0) continue;
-    sameNameWarnings.push({
-      normalisedName: norm,
-      mondayItemId: hotel.mondayItemId,
-      itemName: hotel.hotelName,
-      collidingLocationIds: colliding,
-    });
-  }
-  if (sameNameWarnings.length > 0) {
-    logger(
-      "IMPORT",
-      `Same-name warnings: ${sameNameWarnings.length} Monday item(s) collide with existing active locations`,
-    );
-    if (dryRun && persistWarnings) {
-      // Single audit-log entry summarising the batch — keeps the log
-      // forensically useful without flooding it with one row per warning.
-      await db.insert(auditLogs).values({
-        actorId: "system:runMondayImport",
-        actorName: "System (Monday import dry-run)",
-        entityType: "system",
-        entityId: "monday-import",
-        entityName: "Monday hotel import (dry-run)",
-        action: "dry_import_warning",
-        metadata: {
-          warnings: sameNameWarnings.length,
-          sample: sameNameWarnings.slice(0, 5),
-        },
-      });
-    }
-  }
-
-  // Dry-run short-circuit — bail out before any further DB writes. We still
-  // return the same-shape result so callers can pattern-match on counts.
-  if (dryRun) {
-    const endedAt =
-      typeof performance !== "undefined" &&
-      typeof performance.now === "function"
-        ? performance.now()
-        : Date.now();
-    return {
-      rowsInserted: 0,
-      placeholdersCreated: 0,
-      placeholderNames: [],
-      hotelsSkipped: 0,
-      placeholdersSkippedNoRegion: 0,
-      productsResolved: 0,
-      providersResolved: 0,
-      durationMs: endedAt - startedAt,
-      sameNameWarnings,
-    };
-  }
-
-  // Load location lookup by Monday item id (Phase 07-06).
-  //
-  // Pre-07-06 this map was keyed by `locations.outlet_code` so we could
-  // resolve `mirror9` outlet codes back to the location row. Now that the
-  // hotel-import path stamps every row with `monday_item_id`, the lookup is
-  // direct: every hotel item processed here has a corresponding row in
-  // `locations` (inserted by `runHotelLocationImport` upstream in the
-  // runbook), so we can resolve item.id → locations.id without round-tripping
-  // through mirror9.
+  // Load location lookup by outlet code
   const locRows = await db
-    .select({ id: locations.id, mondayItemId: locations.mondayItemId })
+    .select({ id: locations.id, outletCode: locations.outletCode })
     .from(locations);
-  const locMapByMondayId = new Map<string, string>(
-    locRows
-      .filter((l) => l.mondayItemId !== null)
-      .map((l) => [l.mondayItemId!, l.id]),
+  const locMap = new Map(
+    locRows.filter((l) => l.outletCode).map((l) => [l.outletCode!, l.id]),
   );
-  logger(
-    "IMPORT",
-    `Loaded ${locMapByMondayId.size} locations with Monday item ids`,
-  );
+  logger("IMPORT", `Loaded ${locMap.size} locations with outlet codes`);
 
   // Region code → id lookup for placeholder creation. We fetch once up front
   // so the main loop stays pure (no DB reads in the hot path).
@@ -442,20 +292,17 @@ export async function runMondayImport(
 
   /**
    * Create (or find, if it already exists from a prior run) a placeholder
-   * location for a Monday hotel with no mirror3__1 customer code. Returns
-   * null when the hotel's board has no unambiguous regional default (so the
-   * caller can skip + log instead of silently mis-attributing).
-   *
-   * Phase 07-06 — placeholder locations are now keyed by `mondayItemId`
-   * (universal idempotency key) and have NULL `customer_code`. Pre-07-06
-   * they used a `MONDAY-<mondayItemId>` outlet_code as the dedup key; that
-   * column is gone. The "Imported from Monday" badge in the
-   * /settings/outlet-types admin UI now keys off the absence of customer_code
-   * combined with the audit-log entry's metadata (see pipeline.ts).
+   * location for a Monday hotel with no mirror9 outlet code. Returns null
+   * when the hotel's board has no unambiguous regional default (so the
+   * caller can skip + log instead of silently mis-attributing). The
+   * outletCode is `MONDAY-<mondayItemId>` — the MONDAY- prefix is also
+   * the signal the /settings/outlet-types admin UI uses to badge the row
+   * as "Imported from Monday" (see pipeline.ts::reviewReason).
    */
   async function createPlaceholderLocation(
     hotel: HotelWithProducts,
   ): Promise<string | null> {
+    const outletCode = `MONDAY-${hotel.mondayItemId}`;
     const regionCode = BOARD_REGION[hotel.boardId];
     if (!regionCode) return null;
     const primaryRegionId = regionByCode.get(regionCode);
@@ -468,27 +315,23 @@ export async function runMondayImport(
 
     const notes =
       `Imported from Monday (mondayItemId=${hotel.mondayItemId}) on ` +
-      `${new Date().toISOString().slice(0, 10)} — no customer code on mirror3__1, ` +
+      `${new Date().toISOString().slice(0, 10)} — no outlet code on mirror9, ` +
       `needs manual review (verify region + set type). Board=${BOARD_NAMES[hotel.boardId]}.`;
 
-    // ON CONFLICT target → mondayItemId (the universal idempotency key).
-    // Returning can be empty if the row already exists from a prior run, in
-    // which case we SELECT it back by the same key.
+    // onConflictDoNothing on (primaryRegionId, outletCode) — the existing
+    // unique constraint. Returning can be empty if the row already exists
+    // from a prior run, in which case we SELECT to get the id.
     const [inserted] = await db
       .insert(locations)
       .values({
         name: hotel.hotelName,
-        normalisedName: normaliseName(hotel.hotelName),
-        mondayItemId: hotel.mondayItemId,
+        outletCode,
         primaryRegionId,
         locationType: null,
         notes,
       })
       .onConflictDoNothing({
-        target: locations.mondayItemId,
-        // Phase 07-06 — partial unique on (monday_item_id) requires the
-        // ON CONFLICT predicate to match for arbiter inference.
-        where: sql`monday_item_id IS NOT NULL`,
+        target: [locations.primaryRegionId, locations.outletCode],
       })
       .returning({ id: locations.id });
 
@@ -509,11 +352,16 @@ export async function runMondayImport(
       return inserted.id;
     }
 
-    // Already exists — look it up by mondayItemId.
+    // Already exists — look it up.
     const [existing] = await db
       .select({ id: locations.id })
       .from(locations)
-      .where(eq(locations.mondayItemId, hotel.mondayItemId));
+      .where(
+        and(
+          eq(locations.primaryRegionId, primaryRegionId),
+          eq(locations.outletCode, outletCode),
+        ),
+      );
     return existing.id;
   }
 
@@ -624,18 +472,12 @@ export async function runMondayImport(
         continue;
       }
     } else {
-      // Case 2: hotel has outlet codes on mirror9 — resolve directly via
-      // mondayItemId (Phase 07-06). The mirror9 outlet codes are no longer
-      // a useful key (they used to map onto locations.outlet_code, which is
-      // gone), but the import-hotel-locations path stamps every Monday item
-      // with mondayItemId so the lookup is one-shot.
-      //
-      // hotel.outletCodes is retained on the in-memory record for telemetry
-      // (the operator dashboard still surfaces "X mirror9 codes seen" as a
-      // sanity check) but isn't used as the resolution key here. A single
-      // location per Monday item is the post-07-06 invariant.
-      const locId = locMapByMondayId.get(hotel.mondayItemId);
-      if (locId) locationIds.push(locId);
+      // Case 2: hotel has outlet codes on mirror9 — resolve each to an
+      // existing location. If NONE resolve, skip (unchanged behaviour).
+      for (const code of hotel.outletCodes) {
+        const locId = locMap.get(code);
+        if (locId) locationIds.push(locId);
+      }
       if (locationIds.length === 0) {
         skippedNoLoc++;
         continue;
@@ -741,10 +583,6 @@ export async function runMondayImport(
       productsResolved: productMap.size,
       providersResolved: providerMap.size,
       durationMs: endedAt - startedAt,
-      // Phase 7 Plan 07-04 — populated above before any DB writes; carried
-      // through to the normal-import return so callers don't need to branch
-      // on dryRun to read the field.
-      sameNameWarnings,
     };
   } finally {
     // Restore the prior MONDAY_API_TOKEN value. `delete` on `previousToken

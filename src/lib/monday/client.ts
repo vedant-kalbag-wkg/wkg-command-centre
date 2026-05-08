@@ -62,25 +62,15 @@ function getApiToken(): string {
 /**
  * Heuristic for "this error is worth retrying". Monday's GraphQL surface
  * doesn't give us a structured rate-limit code — it embeds the cue in the
- * error message text. Includes:
- *   - rate-limit / complexity / budget exhausted (the legacy cases the
- *     existing `import-location-products` code already detects)
- *   - HTTP 502 / 503 / 504 from the GraphQL gateway (transient infra hiccups
- *     observed during long Phase 7 runbook fetches)
- *   - generic "timeout" / "gateway" hints in the error message
+ * error message text. Match the patterns the existing `import-location-products`
+ * code already detects (Rate limit / complexity).
  */
 function isRateLimitError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
     lower.includes("rate limit") ||
     lower.includes("complexity") ||
-    lower.includes("budget exhausted") ||
-    lower.includes("http 502") ||
-    lower.includes("http 503") ||
-    lower.includes("http 504") ||
-    lower.includes("gateway timeout") ||
-    lower.includes("bad gateway") ||
-    lower.includes("service unavailable")
+    lower.includes("budget exhausted")
   );
 }
 

@@ -35,18 +35,9 @@ interface MergeDialogProps<T> {
     targetId: string,
     sourceIds: string[],
     resolutions: Record<string, unknown>
-  ) => Promise<
-    | { success: true; merged: number }
-    | { error: string }
-    | { status: "lock_contention" }
-  >;
+  ) => Promise<{ success: true; merged: number } | { error: string }>;
   onSuccess: () => void;
   entityLabel?: string;
-  // Phase 7 Plan 07-03 — sentinel triage mode (DATA-04 D-07).
-  // When true, swap dialog copy + consequences bullets to the "Reassign N
-  // orphan kiosks" flow that lifts records off LOCATION_NEEDED. The merge
-  // primitive is the same; only the framing changes.
-  isSentinelTriage?: boolean;
 }
 
 // =============================================================================
@@ -64,7 +55,6 @@ export function MergeDialog<T>({
   onMerge,
   onSuccess,
   entityLabel = "record",
-  isSentinelTriage = false,
 }: MergeDialogProps<T>) {
   const [targetId, setTargetId] = React.useState<string>("");
   const [resolutions, setResolutions] = React.useState<Record<string, string>>({});
@@ -108,17 +98,9 @@ export function MergeDialog<T>({
     setIsSubmitting(true);
     try {
       const result = await onMerge(targetId, sourceIds, resolutions);
-      if ("status" in result && result.status === "lock_contention") {
-        toast.error(
-          "Another merge is in progress. Wait a moment and try again.",
-        );
-        return;
-      }
       if ("error" in result) {
         toast.error(result.error);
-        return;
-      }
-      if ("success" in result) {
+      } else {
         toast.success(`Merged ${result.merged} ${entityLabel}(s)`);
         onOpenChange(false);
         onSuccess();
@@ -130,35 +112,22 @@ export function MergeDialog<T>({
     }
   }
 
-  // Sentinel-triage mode runs with N>=1 (one orphan kiosk row + one
-  // destination location); default merge mode keeps the N>=2 contract.
-  const minRecords = isSentinelTriage ? 1 : 2;
-  if (records.length < minRecords) return null;
-
-  // Copy bank — picks the right strings per mode. Centralised here so the
-  // JSX below stays declarative; UI-SPEC Surface 2 + 3 lock these literals.
-  const dialogTitle = isSentinelTriage
-    ? `Reassign ${sourceIds.length} orphan kiosks`
-    : `Merge ${records.length} ${entityLabel}s`;
-  const dialogDescription = isSentinelTriage
-    ? "Pick the real location to move these kiosks to. Their sales records will follow."
-    : "Pick the canonical record to keep. Source records will be archived and all references re-pointed.";
-  const pickerLabel = isSentinelTriage
-    ? "Assign to this location"
-    : "Keep this record";
-  const confirmCta = isSentinelTriage ? "Reassign kiosks" : "Merge locations";
+  if (records.length < 2) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{dialogTitle}</DialogTitle>
-          <DialogDescription>{dialogDescription}</DialogDescription>
+          <DialogTitle>Merge {records.length} {entityLabel}s</DialogTitle>
+          <DialogDescription>
+            Pick the canonical record to keep. Source records will be archived
+            and all references re-pointed.
+          </DialogDescription>
         </DialogHeader>
 
         {/* Step 1: Pick canonical */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">{pickerLabel}</Label>
+          <Label className="text-sm font-medium">Keep this record</Label>
           <div className="space-y-1.5">
             {records.map((record) => {
               const id = getId(record);
@@ -230,42 +199,14 @@ export function MergeDialog<T>({
           </div>
         )}
 
-        {/* Consequences preview — Phase 7 Plan 07-03 (UI-SPEC Surface 2/3).
-            Shown once a canonical/destination record is selected. Bullet copy
-            differs between merge mode and sentinel-triage reassign mode. */}
+        {/* Summary */}
         {targetRecord && (
-          <div className="bg-muted/30 rounded-lg p-3 space-y-2">
-            <p className="text-sm font-bold tracking-[-0.01em]">
-              What will happen
+          <div className="border-t pt-3">
+            <p className="text-sm text-muted-foreground">
+              <strong>{sourceIds.length}</strong> {entityLabel}(s) will be merged
+              into <strong>{getName(targetRecord)}</strong>.
+              {conflicts.length === 0 && " No field conflicts detected."}
             </p>
-            <ul className="space-y-1 text-sm text-muted-foreground">
-              {isSentinelTriage ? (
-                <>
-                  <li>
-                    {sourceIds.length} kiosk
-                    {sourceIds.length === 1 ? "" : "s"} will be moved to{" "}
-                    {getName(targetRecord)}
-                  </li>
-                  <li>Sales records re-attributed to {getName(targetRecord)}</li>
-                  <li>LOCATION_NEEDED sentinel survives un-archived</li>
-                  <li>A snapshot of original data will be saved to audit log</li>
-                </>
-              ) : (
-                <>
-                  <li>
-                    {sourceIds.length} location
-                    {sourceIds.length === 1 ? "" : "s"} will be archived
-                  </li>
-                  <li>
-                    All kiosk assignments re-pointed to {getName(targetRecord)}
-                  </li>
-                  <li>
-                    All sales records re-attributed to {getName(targetRecord)}
-                  </li>
-                  <li>A snapshot of original data will be saved to audit log</li>
-                </>
-              )}
-            </ul>
           </div>
         )}
 
@@ -280,10 +221,10 @@ export function MergeDialog<T>({
           <Button
             onClick={handleConfirm}
             disabled={isSubmitting || !targetId}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold tracking-[-0.01em]"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {isSubmitting && <Loader2 className="size-4 animate-spin mr-1.5" />}
-            {confirmCta}
+            Merge {entityLabel}s
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,4 +1,6 @@
+import { db } from "@/db";
 import {
+  outletExclusions,
   locations,
   salesRecords,
   kioskAssignments,
@@ -9,28 +11,29 @@ import {
 } from "@/db/schema";
 import { sql, inArray, type SQL } from "drizzle-orm";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
-import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 
-/**
- * Phase 07-06 — `buildExclusionCondition` now delegates to
- * `buildActiveLocationCondition` (which scans `kiosks` via
- * `kiosk_assignments` for per-kiosk outlet codes matching exclusions).
- *
- * Pre-07-06 this helper produced a `NOT (locations.outlet_code = ... OR ...)`
- * predicate that callers ANDed into a WHERE clause that already INNER JOINed
- * `locations`. The locations.outlet_code column is gone (migration 0040)
- * and outlet codes now live on kiosks. Rather than duplicate the
- * kiosk-scan logic here, we delegate to the (cached) active-locations
- * helper — semantically identical: a sales row is in scope iff its
- * location's currently-assigned kiosks have no outlet code matching an
- * exclusion in the same region.
- *
- * Caller contract is preserved: returns `undefined` if no exclusions
- * apply (so the caller's `combineConditions` sees a no-op), otherwise
- * returns a `salesRecords.location_id = ANY(...)` predicate.
- */
 export async function buildExclusionCondition(): Promise<SQL | undefined> {
-  return buildActiveLocationCondition();
+  const exclusions = await db.select().from(outletExclusions);
+  if (exclusions.length === 0) return undefined;
+
+  // Region-scoped match (Task 1.9 / PR-6 Part F). An exclusion only applies
+  // to locations in the same region — outlet codes are unique per region, not
+  // globally, so 'Q5' in UK and 'Q5' in DE are distinct outlets.
+  const conditions: SQL[] = [];
+  for (const ex of exclusions) {
+    if (ex.patternType === "exact") {
+      conditions.push(
+        sql`(${locations.outletCode} = ${ex.outletCode} AND ${locations.primaryRegionId} = ${ex.regionId})`,
+      );
+    } else if (ex.patternType === "regex") {
+      conditions.push(
+        sql`(${locations.outletCode} ~ ${ex.outletCode} AND ${locations.primaryRegionId} = ${ex.regionId})`,
+      );
+    }
+  }
+
+  if (conditions.length === 0) return undefined;
+  return sql`NOT (${sql.join(conditions, sql` OR `)})`;
 }
 
 export function buildDateCondition(filters: AnalyticsFilters): SQL {

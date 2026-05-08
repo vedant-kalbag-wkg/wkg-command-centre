@@ -166,16 +166,26 @@ describe("updateLocationField — internalPocId clear behaviour (Phase 7.4)", ()
   });
 });
 
-describe("updateLocationField — outletCode rejected post-Phase-07-06", () => {
-  // Phase 07-06 — locations.outlet_code is gone (migration 0040). The
-  // outletCode field is no longer in EDITABLE_LOCATION_FIELDS, so the
-  // zod-driven validator now rejects it as an unknown field. The previous
-  // trim/length validation tests are subsumed by this single contract:
-  // the column doesn't exist, so the API path doesn't exist either.
-  it("rejects outletCode as an unknown field (column gone)", async () => {
-    setSpy.mockReset();
-    const result = await updateLocationField(LOC_ID, "outletCode", "anything");
-    expect(result).toEqual({ error: "Invalid field: outletCode" });
+describe("updateLocationField — outletCode validation (Phase 7.2)", () => {
+  it("trims and writes a non-empty outletCode through", async () => {
+    const result = await updateLocationField(LOC_ID, "outletCode", "  KD  ");
+    expect(result).not.toHaveProperty("error");
+    expect(setSpy.mock.calls[0]![0]).toMatchObject({ outletCode: "KD" });
+  });
+
+  it("rejects empty / whitespace-only outletCode (NOT NULL since 0022)", async () => {
+    for (const value of [null, "", "   "]) {
+      setSpy.mockReset();
+      const result = await updateLocationField(LOC_ID, "outletCode", value);
+      expect(result).toEqual({ error: "Outlet code is required" });
+      expect(setSpy).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects outletCode longer than 64 chars (matches createLocation invariant)", async () => {
+    const tooLong = "x".repeat(65);
+    const result = await updateLocationField(LOC_ID, "outletCode", tooLong);
+    expect(result).toEqual({ error: "Outlet code must be 64 characters or fewer" });
     expect(setSpy).not.toHaveBeenCalled();
   });
 });

@@ -54,11 +54,7 @@ const IS_SALES_TXN_RAW_SQL =
  */
 export const ALLOWED_COLUMNS = new Map<string, string>([
   ["product_name", "products.name"],
-  // Phase 07-06 — locations.outlet_code is gone; the pivot engine's
-  // logical "outlet_code" dimension is now sourced from customer_code
-  // (the canonical hotel-level identifier). Operator-facing label
-  // "Outlet Code" stays the same; the underlying column changes.
-  ["outlet_code", "locations.customer_code"],
+  ["outlet_code", "locations.outlet_code"],
   ["hotel_name", "locations.name"],
   // Denormalised text columns on `locations`; see migration 0022.
   ["hotel_group", "locations.hotel_group"],

@@ -8,12 +8,7 @@ import type { DimensionOptions } from "@/lib/analytics/types";
 export async function getDimensionOptions(): Promise<DimensionOptions> {
   const [locs, prods, hGroups, regs, lGroups] = await Promise.all([
     db
-      // Phase 07-06 — outlet_code is gone from locations; the operator-facing
-      // dimension picker now surfaces customer_code as the secondary
-      // identifier. The DimensionOption shape kept the field name `outletCode`
-      // (the consumer label is "Outlet Code") but the source column is now
-      // `customer_code` — semantically the hotel-level RPS account code.
-      .select({ id: locations.id, name: locations.name, outletCode: locations.customerCode })
+      .select({ id: locations.id, name: locations.name, outletCode: locations.outletCode })
       .from(locations)
       .where(isNull(locations.archivedAt)),
     db
