@@ -780,3 +780,101 @@ describe("FX-03 / D-17 / Pitfall 4 — saved-pivot field id back-compat", () => 
     expect(sql).toContain('AS "currency_key_net_amount"');
   });
 });
+
+// ─── FX-03 / D-10 — formatCell auto-pick (plan 09.1-07) ─────────────────────
+
+describe("FX-03 / D-10 — formatCell auto-pick (plan 09.1-07)", () => {
+  const config: PivotConfig = {
+    rowFields: ["hotel_name"],
+    columnFields: [],
+    values: [{ field: "net_amount", aggregation: "sum" }],
+  };
+
+  it("single-currency cohort: cell formats with native symbol (EUR → €)", () => {
+    // currency_key_net_amount = 'EUR' on every row → grand total + per-cell
+    // both render with the EUR symbol via formatNativeCurrency. The primary
+    // alias (sum_net_amount) carries the native sum; sum_net_amount_gbp is
+    // present too but ignored when currency_key is set.
+    const rawRows = [
+      {
+        hotel_name: "Paris",
+        sum_net_amount: 1000,
+        sum_net_amount_gbp: 850,
+        currency_key_net_amount: "EUR",
+      },
+      {
+        hotel_name: "Berlin",
+        sum_net_amount: 2000,
+        sum_net_amount_gbp: 1700,
+        currency_key_net_amount: "EUR",
+      },
+    ];
+    const result = formatPivotResults(rawRows, config);
+    expect(result.rows[0].cells["sum_net_amount"].formatted).toContain("€");
+    expect(result.rows[0].cells["sum_net_amount"].value).toBe(1000); // native arm
+    expect(result.grandTotals["sum_net_amount"].formatted).toContain("€");
+    expect(result.grandTotals["sum_net_amount"].value).toBe(3000); // native sum
+  });
+
+  it("multi-currency cohort: cell formats with GBP (£) using the GBP arm", () => {
+    // currency_key_net_amount differs across rows → grand-total bucket is
+    // multi-currency → fall back to formatCurrency. Per-cell each row's
+    // own currency_key is set, so per-cell stays native; but the grand total
+    // uses the GBP arm because the bucket spans EUR + GBP.
+    const rawRows = [
+      {
+        hotel_name: "Paris",
+        sum_net_amount: 1000,
+        sum_net_amount_gbp: 850,
+        currency_key_net_amount: "EUR",
+      },
+      {
+        hotel_name: "London",
+        sum_net_amount: 1500,
+        sum_net_amount_gbp: 1500,
+        currency_key_net_amount: "GBP",
+      },
+    ];
+    const result = formatPivotResults(rawRows, config);
+    // Grand total: bucket is multi-currency → formatCurrency (GBP) on the
+    // GBP arm sum (850 + 1500 = 2350).
+    expect(result.grandTotals["sum_net_amount"].formatted).toContain("£");
+    expect(result.grandTotals["sum_net_amount"].value).toBe(2350);
+  });
+
+  it("back-compat: rows without dual-emit substrate render as before (GBP-pinned)", () => {
+    // D-17 / Pitfall 4 back-compat: a saved-pivot caller that has not
+    // migrated to read `<alias>_gbp` + currency_key columns continues to see
+    // the same numbers and the same GBP-pinned format. This guards against
+    // a silent regression in pivot consumers that bypass buildPivotSQL.
+    const rawRows = [
+      { hotel_name: "A", sum_net_amount: 1000 },
+      { hotel_name: "B", sum_net_amount: 3000 },
+    ];
+    const result = formatPivotResults(rawRows, config);
+    expect(result.rows[0].cells["sum_net_amount"].formatted).toContain("£");
+    expect(result.grandTotals["sum_net_amount"].formatted).toContain("£");
+    expect(result.grandTotals["sum_net_amount"].value).toBe(4000);
+  });
+
+  it("count aggregation skips the dispatch (currency-agnostic)", () => {
+    const countConfig: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "count" }],
+    };
+    const rawRows = [
+      {
+        hotel_name: "Paris",
+        count_net_amount: 10,
+        // Even with currency_key set, count must render as a plain number,
+        // not formatted with a currency symbol.
+        currency_key_net_amount: "EUR",
+      },
+    ];
+    const result = formatPivotResults(rawRows, countConfig);
+    expect(result.rows[0].cells["count_net_amount"].formatted).not.toContain("€");
+    expect(result.rows[0].cells["count_net_amount"].formatted).not.toContain("£");
+    expect(result.rows[0].cells["count_net_amount"].value).toBe(10);
+  });
+});
