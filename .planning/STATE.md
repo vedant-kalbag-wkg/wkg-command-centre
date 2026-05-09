@@ -96,10 +96,10 @@ None at v1.1 scoping start. Three unresolved debug sessions tracked in v1.1 cate
 
 ## Session Continuity
 
-Current session: 2026-05-09 — Phase 9 close-out
-Stopped at: Phase 9 (POC Underperformance Alerts) code-complete via /gsd-execute-phase 9. 7 plans / ~30 commits across 5 waves. Code-complete: schema (0043 + 0044 migrations), pure-logic library (decideAlert / isoWeekKey / groupByPoc / sha256), POC underperformance email template + plain-text companion, weekly Inngest cron + classify-kiosks bridge, admin /admin/performance-alerts page + Run-now trigger, kiosk silencing UI on /kiosks/[id]. Operator UAT punch list (8 items) tracked in `09-HUMAN-UAT.md` (to be persisted by verifier). Phase 8 also still awaiting operator UAT (`08-HUMAN-UAT.md`).
-Resume file: `.planning/phases/09-poc-underperformance-alerts/09-07-SUMMARY.md`
-Next action: operator runs Phase 9 Playwright specs against preview alias (per CLAUDE.md "Playwright specs against preview deploys"); when both green, merge phase 9 to main. Then `/gsd-discuss-phase 10` for Access Control Extended (AUTH-06..07).
+Current session: 2026-05-09 (resumed → completed) — Phase 9 hotel-level refactor code-complete
+Stopped at: Phase 9 PR #38 follow-up rewrite from kiosk-level → hotel-level alerts is code-complete. 5 commits ahead of `origin/gsd/phase-09-poc-underperformance-alerts`: `b3363aa` (wip schema + classifier), `e0ae7fc` (cron + journal), `7188362` (email template + plain-text + UAT screenshot), `8dd9b36` (silencing UI move), `6066d9c` (test refactor). 796/796 vitest pass, `tsc --noEmit` clean. Migration 0045 applied to Neon preview DB via `scripts/migrate-neon-dev.ts --env-file=.env.preview`.
+Resume file: none (HANDOFF.json + .continue-here.md retired — both served their purpose).
+Next action: operator pushes branch to origin, runs Phase 9 Playwright specs (`tests/locations/silence.spec.ts` + integration tests) against the preview alias, plus end-to-end manual UAT against the new hotel-shape email render. PR #38 picks up the new commits automatically. When green: merge phase 9 to main. Then `/gsd-discuss-phase 10` for Access Control Extended (AUTH-06..07).
 
 ### Phase 8 decisions captured 2026-05-08
 
