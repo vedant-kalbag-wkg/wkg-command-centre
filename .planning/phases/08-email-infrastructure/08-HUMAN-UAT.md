@@ -3,7 +3,7 @@ status: partial
 phase: 08-email-infrastructure
 source: [08-VERIFICATION.md]
 started: "2026-05-09T12:00:00Z"
-updated: "2026-05-09T13:30:00Z"
+updated: "2026-05-09T13:35:00Z"
 ---
 
 # Phase 8 — Human UAT
@@ -55,18 +55,27 @@ result: deferred-to-dns-cutover — no throwaway was provisioned in sandbox UAT 
 
 ### 9. Visual review of polished email templates (added 2026-05-09 after CTA-rendering bug surfaced)
 expected: All 4 templates render with: (a) WeKnow text wordmark + Azure period accent in header, (b) clickable "Reset password / Set your password / Contact admin" pill button (NOT raw URL text), (c) "Or paste this link in your browser:" fallback URL line below the button as a separate clickable anchor, (d) brand-azure tinted "Changed at" panel for password-changed, (e) muted footer with product line + legal line.
-result: pending — operator inbox check of the second password_reset send (5:56:37 UTC) and the password_changed send (5:57:05 UTC).
+result: passed — verified by rendering each template via `@react-email/render` (same path used by `src/inngest/functions/send-email.ts`) and screenshotting. Renderer fixture script: `scripts/uat-render-emails.tsx`. Screenshots in `.planning/phases/08-email-infrastructure/uat-artifacts/`:
+- `uat-email-password-reset.png` — (a)+(b: "Reset password" Azure pill)+(c)+(e). Body copy: "We received a request to reset the password on your WeKnow Command Centre account. Click the button below to choose a new one." + "This link expires in 1 hour…".
+- `uat-email-invite.png` — (a)+(b: "Set your password" Azure pill)+(c)+(e). Heading "You're invited to WeKnow"; body confirms internal-portal invite copy.
+- `uat-email-external-invite.png` — (a)+(b: "Set your password" Azure pill)+(c)+(e). Heading "Welcome to WeKnow Analytics"; body confirms portal-distinct copy.
+- `uat-email-password-changed.png` — (a)+(b: "Contact admin" Azure pill)+(c)+(d: Azure-tinted "CHANGED AT 9 May 2026, 14:00 UTC" panel)+(e). D-11 PII guardrail confirmed: only timestamp + "contact admin" copy in body — NO IP/UA shown anywhere.
+- `uat-email-poc-underperformance.png` (phase 9 template, rendered for completeness) — (a)+(b: "View portfolio" Azure pill)+(c)+(e); 4-column kiosks table + percentile rank, +1 more line, footer CTA to portfolio.
+
+## DNS-cutover-deferred items (unchanged from sandbox UAT)
+
+Items 1, 4, 8 remain `deferred-to-dns-cutover` — see CLAUDE.md and 08-03-SUMMARY.md operator runbook for the cutover steps when DNS is added on `command.weknowgroup.com`.
 
 ## Summary
 
 total: 9
-passed: 3
+passed: 6
 issues: 0
-pending: 3
+pending: 0
 skipped: 0
 blocked: 0
 deferred-to-dns-cutover: 3
 
 ## Gaps
 
-(none)
+(none — sandbox UAT closed; remaining 3 items unblocked only by DNS cutover on `command.weknowgroup.com`)

@@ -141,6 +141,8 @@ export const kiosks = pgTable("kiosks", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  // Phase 9 — alert silencing now lives on `locations` (the alert is hotel-
+  // level, not kiosk-level — see migration 0045 + classify-locations.ts).
 });
 
 // Locations
@@ -238,6 +240,12 @@ export const locations = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    // Phase 9 — POC alert silencing now lives at the location (hotel) level.
+    // When set, the weekly alert job skips every kiosk at this location.
+    // Reason is a free-text note for the admin UI ("hotel asked for 4-week
+    // reprieve", etc.). Migrated from kiosks in 0045.
+    alertSilencedAt: timestamp("alert_silenced_at", { withTimezone: true }),
+    alertSilencedReason: text("alert_silenced_reason"),
   },
   (t) => ({
     // Phase 7 Plan 07-04 (DATA-03) — partial unique index over the canonical
@@ -1117,7 +1125,7 @@ export const emailLog = pgTable(
     recipient: text("recipient").notNull(),
     resendMessageId: text("resend_message_id"),
     inngestRunId: text("inngest_run_id"),
-    status: text("status", { enum: ["sent", "failed"] }).notNull(),
+    status: text("status", { enum: ["queued", "sent", "failed", "skipped"] }).notNull(),
     lastError: text("last_error"),
     payloadHash: text("payload_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -1130,5 +1138,31 @@ export const emailLog = pgTable(
       t.recipient,
       t.createdAt.desc(),
     ),
+  }),
+);
+
+// Phase 9 — POC underperformance alert state (POC-ALERT-01).
+// One row per LOCATION (hotel) — upserted each time the weekly Inngest job
+// runs. Tracks the current composite-score tier classification (used to
+// detect transitions into "Emerging") and when the last alert email was
+// sent (used to enforce the 30-day re-alert window). Composite score is
+// recorded numerically so the audit-log reader can show drift without
+// re-running the classifier.
+export const locationPerformanceAlertState = pgTable(
+  "location_performance_alert_state",
+  {
+    locationId: uuid("location_id")
+      .primaryKey()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    tier: text("tier", {
+      enum: ["Premium", "Standard", "Developing", "Emerging"],
+    }).notNull(),
+    compositeScore: numeric("composite_score", { precision: 6, scale: 2 }).notNull(),
+    classifiedAt: timestamp("classified_at", { withTimezone: true }).notNull(),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }).notNull(),
+    lastAlertedAt: timestamp("last_alerted_at", { withTimezone: true }),
+  },
+  (t) => ({
+    tierIdx: index("location_performance_alert_state_tier_idx").on(t.tier),
   }),
 );

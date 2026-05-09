@@ -16,6 +16,9 @@ import {
   listLocationsForSelect,
 } from "@/app/(app)/kiosks/actions";
 
+// Phase 9 (hotel-level rewrite, post PR #38) — Alert silencing moved from
+// per-kiosk to per-hotel; the admin panel now lives at /locations/[id].
+
 interface KioskDetailPageProps {
   params: Promise<{ id: string }>;
 }
@@ -61,7 +64,7 @@ export default async function KioskDetailPage({ params }: KioskDetailPageProps) 
         actions={<KioskDetailActions kioskId={kiosk.id} />}
       />
       <div className="flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-3xl space-y-6">
           <KioskDetailForm
             kiosk={kiosk}
             pipelineStages={stages}

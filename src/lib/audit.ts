@@ -10,7 +10,7 @@ export async function writeAuditLog(
   entry: {
     actorId: string;
     actorName: string;
-    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation" | "app_setting" | "location_flag" | "experiment_cohort" | "action_item" | "commission_ledger" | "product_code_fallback" | "cache" | "system";
+    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation" | "app_setting" | "location_flag" | "experiment_cohort" | "action_item" | "commission_ledger" | "product_code_fallback" | "cache" | "system" | "performance_alert_run" | "performance_alert_run_request";
     entityId: string;
     entityName: string;
     action:
@@ -32,7 +32,10 @@ export async function writeAuditLog(
       | "purge"
       | "set_location_type"
       | "set_primary_region"
-      | "monday_import_triggered";
+      | "monday_import_triggered"
+      | "trigger"
+      | "silence_alerts"
+      | "unsilence_alerts";
     field?: string;
     oldValue?: string;
     newValue?: string;

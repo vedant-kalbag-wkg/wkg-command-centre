@@ -30,7 +30,9 @@ export default defineConfig({
           environment: "node",
           include: [
             "src/**/__tests__/**/*.test.ts",
+            "src/**/__tests__/**/*.test.tsx",
             "src/**/*.test.ts",
+            "src/**/*.test.tsx",
             // Pure-unit tests under tests/ (no DB, no Testcontainers).
             // Excluded variants: *.integration.test.ts owned by the integration
             // project, *.spec.ts owned by Playwright.
@@ -55,6 +57,9 @@ export default defineConfig({
           environment: "node",
           include: ["tests/**/*.integration.test.ts"],
           exclude: ["node_modules/**", "tests/**/*.spec.ts"],
+          // Mock next/cache (unstable_cache) before any test module is imported
+          // so Next.js does not throw "Invariant: incrementalCache missing".
+          setupFiles: ["tests/helpers/vitest-setup-integration.ts"],
           // Testcontainers: first-run image pull can be slow.
           testTimeout: 120_000,
           hookTimeout: 180_000,

@@ -302,6 +302,27 @@
       "when": 1780500000000,
       "tag": "0042_phase_08_email_log_status_check",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1780600000000,
+      "tag": "0043_phase_09_poc_alert_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1780700000000,
+      "tag": "0044_phase_09_email_log_skipped_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1780800000000,
+      "tag": "0045_phase_09_hotel_alerts",
+      "breakpoints": true
     }
   ]
 }
