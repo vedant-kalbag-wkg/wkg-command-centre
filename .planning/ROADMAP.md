@@ -93,8 +93,8 @@ Plans:
 **Plans**: 8 plans
 
 Plans:
-- [ ] 09.1-01-PLAN.md — Wave 0: Test fixtures + RED-stage scaffolds (FX-01..04)
-- [ ] 09.1-02-PLAN.md — Wave 1: Schema + EmailKind + drizzle push (FX-01/FX-02)
+- [x] 09.1-01-PLAN.md — Wave 0: Test fixtures + RED-stage scaffolds (FX-01..04)
+- [x] 09.1-02-PLAN.md — Wave 1: Schema + EmailKind + drizzle push (FX-01/FX-02)
 - [ ] 09.1-03-PLAN.md — Wave 1: FX library — boe-fetch + rate-lookup + currencies (FX-01/FX-02)
 - [ ] 09.1-04-PLAN.md — Wave 2: Inngest cron fx-rates.fetch-daily + serve registration (FX-01)
 - [ ] 09.1-05-PLAN.md — Wave 3: ETL stamping + backfill script + 0048 NOT-NULL flip operator-gated (FX-02)
