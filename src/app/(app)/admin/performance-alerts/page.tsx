@@ -4,8 +4,8 @@ import { db } from "@/db";
 import {
   auditLogs,
   emailLog,
-  kioskPerformanceAlertState,
-  kiosks,
+  locationPerformanceAlertState,
+  locations,
 } from "@/db/schema";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +15,8 @@ export default async function AdminPerformanceAlertsPage() {
   await requireRole("admin");
 
   // Latest run timestamp = MAX(created_at) on the performance_alert_run audit
-  // log row. Reading from `kiosk_performance_alert_state.last_run_at` would
-  // miss zero-kiosk runs (empty fleet, all-silenced fleet) — those still
+  // log row. Reading from `location_performance_alert_state.last_run_at` would
+  // miss zero-hotel runs (empty fleet, all-silenced fleet) — those still
   // write an audit_logs row but no state rows, so the dashboard would render
   // "—" for "Last run" while the recent-runs list below contradicted it.
   const [latestRow] = await db
@@ -28,11 +28,11 @@ export default async function AdminPerformanceAlertsPage() {
   // Counts grouped by tier (for the latest run — tier reflects most-recent classification).
   const tierCountsRows = await db
     .select({
-      tier: kioskPerformanceAlertState.tier,
+      tier: locationPerformanceAlertState.tier,
       count: sql<number>`COUNT(*)::int`,
     })
-    .from(kioskPerformanceAlertState)
-    .groupBy(kioskPerformanceAlertState.tier);
+    .from(locationPerformanceAlertState)
+    .groupBy(locationPerformanceAlertState.tier);
   const tierCounts: Record<string, number> = Object.fromEntries(
     tierCountsRows.map((r) => [r.tier, r.count]),
   );
@@ -63,11 +63,11 @@ export default async function AdminPerformanceAlertsPage() {
   const sentCount = sentRow?.count ?? 0;
   const skippedCount = skippedRow?.count ?? 0;
 
-  // Silenced count.
+  // Silenced count (per-hotel since Phase 9 hotel-level rewrite).
   const [silencedRow] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
-    .from(kiosks)
-    .where(isNotNull(kiosks.alertSilencedAt));
+    .from(locations)
+    .where(isNotNull(locations.alertSilencedAt));
   const silencedCount = silencedRow?.count ?? 0;
 
   // Recent runs (last 10).
@@ -103,7 +103,7 @@ export default async function AdminPerformanceAlertsPage() {
             <Stat label="Bottom tier" value={String(bottomCount)} />
             <Stat label="Emails sent (24h)" value={String(sentCount)} />
             <Stat label="Skipped — no POC (24h)" value={String(skippedCount)} />
-            <Stat label="Silenced kiosks" value={String(silencedCount)} />
+            <Stat label="Silenced hotels" value={String(silencedCount)} />
           </CardContent>
         </Card>
 

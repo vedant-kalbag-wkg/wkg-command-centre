@@ -15,8 +15,9 @@ import {
   listPipelineStages,
   listLocationsForSelect,
 } from "@/app/(app)/kiosks/actions";
-import { getSessionOrThrow } from "@/lib/rbac";
-import { KioskAdminPanel } from "./kiosk-admin-panel";
+
+// Phase 9 (hotel-level rewrite, post PR #38) — Alert silencing moved from
+// per-kiosk to per-hotel; the admin panel now lives at /locations/[id].
 
 interface KioskDetailPageProps {
   params: Promise<{ id: string }>;
@@ -25,11 +26,10 @@ interface KioskDetailPageProps {
 export default async function KioskDetailPage({ params }: KioskDetailPageProps) {
   const { id } = await params;
 
-  const [kioskResult, stages, locations, session] = await Promise.all([
+  const [kioskResult, stages, locations] = await Promise.all([
     getKiosk(id),
     listPipelineStages(),
     listLocationsForSelect(),
-    getSessionOrThrow(),
   ]);
 
   if ("error" in kioskResult) {
@@ -70,13 +70,6 @@ export default async function KioskDetailPage({ params }: KioskDetailPageProps) 
             pipelineStages={stages}
             locations={locations}
           />
-          {session.user.role === "admin" && (
-            <KioskAdminPanel
-              kioskId={kiosk.id}
-              isSilenced={kiosk.alertSilencedAt !== null}
-              currentReason={kiosk.alertSilencedReason ?? null}
-            />
-          )}
         </div>
       </div>
     </div>

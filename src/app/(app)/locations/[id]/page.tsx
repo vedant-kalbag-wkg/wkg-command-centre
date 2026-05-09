@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { LocationDetailForm } from "@/components/locations/location-detail-form";
 import { getLocation } from "@/app/(app)/locations/actions";
 import { getSessionOrThrow, canAccessSensitiveFields, type Role } from "@/lib/rbac";
+import { LocationAdminPanel } from "./location-admin-panel";
 
 interface LocationDetailPageProps {
   params: Promise<{ id: string }>;
@@ -32,11 +33,18 @@ export default async function LocationDetailPage({ params }: LocationDetailPageP
         description={location.address ?? undefined}
       />
       <div className="flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-3xl space-y-6">
           <LocationDetailForm
             location={location}
             canSeeSensitive={canAccessSensitiveFields({ userType, role })}
           />
+          {role === "admin" && (
+            <LocationAdminPanel
+              locationId={location.id}
+              isSilenced={location.alertSilencedAt !== null}
+              currentReason={location.alertSilencedReason ?? null}
+            />
+          )}
         </div>
       </div>
     </div>

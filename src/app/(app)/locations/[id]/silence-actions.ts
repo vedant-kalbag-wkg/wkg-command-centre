@@ -4,24 +4,35 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { kiosks } from "@/db/schema";
+import { locations } from "@/db/schema";
 import { requireRole } from "@/lib/rbac";
 import { writeAuditLog } from "@/lib/audit";
 
+// Phase 9 (hotel-level rewrite, post PR #38) — Admin-only per-hotel silencing
+// of weekly POC underperformance alerts. Mirrors the legacy kiosk-side
+// actions (now deleted) but writes to `locations.alert_silenced_*` columns
+// added by migration 0045.
+
 const SILENCE_INPUT = z.object({
-  kioskId: z.string().uuid(),
-  reason: z.string().min(3, "Reason must be at least 3 characters").max(500, "Reason must be at most 500 characters"),
+  locationId: z.string().uuid(),
+  reason: z
+    .string()
+    .min(3, "Reason must be at least 3 characters")
+    .max(500, "Reason must be at most 500 characters"),
 });
 
 const UNSILENCE_INPUT = z.object({
-  kioskId: z.string().uuid(),
-  reason: z.string().max(500, "Reason must be at most 500 characters").optional(),
+  locationId: z.string().uuid(),
+  reason: z
+    .string()
+    .max(500, "Reason must be at most 500 characters")
+    .optional(),
 });
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
-export async function silenceKiosk(
-  kioskId: string,
+export async function silenceLocation(
+  locationId: string,
   reason: string,
 ): Promise<ActionResult> {
   let session;
@@ -31,48 +42,48 @@ export async function silenceKiosk(
     return { ok: false, error: "Forbidden" };
   }
 
-  const parsed = SILENCE_INPUT.safeParse({ kioskId, reason });
+  const parsed = SILENCE_INPUT.safeParse({ locationId, reason });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
   const rows = await db
-    .select({ id: kiosks.id, kioskId: kiosks.kioskId })
-    .from(kiosks)
-    .where(eq(kiosks.id, parsed.data.kioskId))
+    .select({ id: locations.id, name: locations.name })
+    .from(locations)
+    .where(eq(locations.id, parsed.data.locationId))
     .limit(1);
 
   if (rows.length === 0) {
-    return { ok: false, error: "Kiosk not found" };
+    return { ok: false, error: "Location not found" };
   }
 
-  const kiosk = rows[0];
+  const location = rows[0];
 
   await db
-    .update(kiosks)
+    .update(locations)
     .set({
       alertSilencedAt: new Date(),
       alertSilencedReason: parsed.data.reason,
     })
-    .where(eq(kiosks.id, parsed.data.kioskId));
+    .where(eq(locations.id, parsed.data.locationId));
 
   await writeAuditLog({
     actorId: session.user.id,
     actorName: session.user.name,
-    entityType: "kiosk",
-    entityId: kiosk.id,
-    entityName: kiosk.kioskId,
+    entityType: "location",
+    entityId: location.id,
+    entityName: location.name,
     action: "silence_alerts",
     metadata: { reason: parsed.data.reason },
   });
 
-  revalidatePath(`/kiosks/${parsed.data.kioskId}`);
+  revalidatePath(`/locations/${parsed.data.locationId}`);
 
   return { ok: true };
 }
 
-export async function unsilenceKiosk(
-  kioskId: string,
+export async function unsilenceLocation(
+  locationId: string,
   reason?: string,
 ): Promise<ActionResult> {
   let session;
@@ -82,42 +93,42 @@ export async function unsilenceKiosk(
     return { ok: false, error: "Forbidden" };
   }
 
-  const parsed = UNSILENCE_INPUT.safeParse({ kioskId, reason });
+  const parsed = UNSILENCE_INPUT.safeParse({ locationId, reason });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
   const rows = await db
-    .select({ id: kiosks.id, kioskId: kiosks.kioskId })
-    .from(kiosks)
-    .where(eq(kiosks.id, parsed.data.kioskId))
+    .select({ id: locations.id, name: locations.name })
+    .from(locations)
+    .where(eq(locations.id, parsed.data.locationId))
     .limit(1);
 
   if (rows.length === 0) {
-    return { ok: false, error: "Kiosk not found" };
+    return { ok: false, error: "Location not found" };
   }
 
-  const kiosk = rows[0];
+  const location = rows[0];
 
   await db
-    .update(kiosks)
+    .update(locations)
     .set({
       alertSilencedAt: null,
       alertSilencedReason: null,
     })
-    .where(eq(kiosks.id, parsed.data.kioskId));
+    .where(eq(locations.id, parsed.data.locationId));
 
   await writeAuditLog({
     actorId: session.user.id,
     actorName: session.user.name,
-    entityType: "kiosk",
-    entityId: kiosk.id,
-    entityName: kiosk.kioskId,
+    entityType: "location",
+    entityId: location.id,
+    entityName: location.name,
     action: "unsilence_alerts",
     metadata: parsed.data.reason ? { reason: parsed.data.reason } : undefined,
   });
 
-  revalidatePath(`/kiosks/${parsed.data.kioskId}`);
+  revalidatePath(`/locations/${parsed.data.locationId}`);
 
   return { ok: true };
 }

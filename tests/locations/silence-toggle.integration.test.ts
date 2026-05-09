@@ -24,31 +24,42 @@ vi.mock("@/lib/rbac", () => ({
 }));
 
 import { eq } from "drizzle-orm";
-import { kiosks } from "@/db/schema";
-import { silenceKiosk, unsilenceKiosk } from "@/app/(app)/kiosks/[id]/silence-actions";
+import { locations, regions } from "@/db/schema";
+import {
+  silenceLocation,
+  unsilenceLocation,
+} from "@/app/(app)/locations/[id]/silence-actions";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
 
-// Stable test kiosk UUID (version 4, variant 8 — passes Zod uuid() validation)
-const TEST_KIOSK_ID = "f1000000-0000-4000-8000-000000000001";
-const TEST_KIOSK_TEXT_ID = "TEST-SILENCE-001";
+// Stable test location UUID + region (regions.primaryRegionId is NOT NULL on
+// locations since migration 0022).
+const TEST_LOCATION_ID = "f1000000-0000-4000-8000-000000000001";
+const TEST_REGION_ID = "f2000000-0000-4000-8000-000000000001";
 
-async function seedKiosk(ctx: TestDbContext) {
-  await ctx.db.insert(kiosks).values({
-    id: TEST_KIOSK_ID,
-    kioskId: TEST_KIOSK_TEXT_ID,
+async function seedLocation(ctx: TestDbContext) {
+  await ctx.db.insert(regions).values({
+    id: TEST_REGION_ID,
+    name: "Test Region",
+    code: "TS",
+  }).onConflictDoNothing();
+  await ctx.db.insert(locations).values({
+    id: TEST_LOCATION_ID,
+    name: "Test Hotel — Silence Toggle",
+    primaryRegionId: TEST_REGION_ID,
+    ianaTimezone: "Europe/London",
   }).onConflictDoNothing();
 }
 
-async function getKioskRow(ctx: TestDbContext) {
+async function getLocationRow(ctx: TestDbContext) {
   const rows = await ctx.db
     .select()
-    .from(kiosks)
-    .where(eq(kiosks.id, TEST_KIOSK_ID))
+    .from(locations)
+    .where(eq(locations.id, TEST_LOCATION_ID))
     .limit(1);
   return rows[0] ?? null;
 }
 
-describe("silenceKiosk + unsilenceKiosk (PERF-06)", () => {
+describe("silenceLocation + unsilenceLocation (PERF-06, hotel-level)", () => {
   let ctx: TestDbContext;
 
   beforeAll(async () => {
@@ -61,59 +72,60 @@ describe("silenceKiosk + unsilenceKiosk (PERF-06)", () => {
   });
 
   beforeEach(async () => {
-    // Reset kiosk silencing state between tests
+    // Reset silencing state between tests
     await ctx.db
-      .update(kiosks)
+      .update(locations)
       .set({ alertSilencedAt: null, alertSilencedReason: null })
-      .where(eq(kiosks.id, TEST_KIOSK_ID));
+      .where(eq(locations.id, TEST_LOCATION_ID));
   });
 
-  it("silenceKiosk: sets alertSilencedAt + reason in DB", async () => {
-    await seedKiosk(ctx);
+  it("silenceLocation: sets alertSilencedAt + reason in DB", async () => {
+    await seedLocation(ctx);
 
-    const result = await silenceKiosk(TEST_KIOSK_ID, "Undergoing scheduled maintenance");
+    const result = await silenceLocation(
+      TEST_LOCATION_ID,
+      "Undergoing scheduled maintenance",
+    );
     expect(result.ok).toBe(true);
 
-    const row = await getKioskRow(ctx);
+    const row = await getLocationRow(ctx);
     expect(row).not.toBeNull();
     expect(row!.alertSilencedAt).toBeInstanceOf(Date);
     expect(row!.alertSilencedReason).toBe("Undergoing scheduled maintenance");
   });
 
-  it("unsilenceKiosk: clears alertSilencedAt + reason in DB", async () => {
-    await seedKiosk(ctx);
+  it("unsilenceLocation: clears alertSilencedAt + reason in DB", async () => {
+    await seedLocation(ctx);
 
-    // First silence it
-    await silenceKiosk(TEST_KIOSK_ID, "Temporary silence");
-    const silenced = await getKioskRow(ctx);
+    await silenceLocation(TEST_LOCATION_ID, "Temporary silence");
+    const silenced = await getLocationRow(ctx);
     expect(silenced!.alertSilencedAt).toBeInstanceOf(Date);
 
-    // Then unsilence
-    const result = await unsilenceKiosk(TEST_KIOSK_ID);
+    const result = await unsilenceLocation(TEST_LOCATION_ID);
     expect(result.ok).toBe(true);
 
-    const row = await getKioskRow(ctx);
+    const row = await getLocationRow(ctx);
     expect(row!.alertSilencedAt).toBeNull();
     expect(row!.alertSilencedReason).toBeNull();
   });
 
-  it("silenceKiosk: rejects reason shorter than 3 chars", async () => {
-    await seedKiosk(ctx);
+  it("silenceLocation: rejects reason shorter than 3 chars", async () => {
+    await seedLocation(ctx);
 
-    const result = await silenceKiosk(TEST_KIOSK_ID, "ab");
+    const result = await silenceLocation(TEST_LOCATION_ID, "ab");
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toMatch(/at least 3/i);
     }
   });
 
-  it("silenceKiosk: rejects invalid UUID", async () => {
-    const result = await silenceKiosk("not-a-uuid", "Valid reason here");
+  it("silenceLocation: rejects invalid UUID", async () => {
+    const result = await silenceLocation("not-a-uuid", "Valid reason here");
     expect(result.ok).toBe(false);
   });
 
-  it("silenceKiosk: returns error for non-existent kiosk", async () => {
-    const result = await silenceKiosk(
+  it("silenceLocation: returns error for non-existent location", async () => {
+    const result = await silenceLocation(
       "99999999-0000-4000-8000-000000000099",
       "Valid reason here",
     );
@@ -123,15 +135,18 @@ describe("silenceKiosk + unsilenceKiosk (PERF-06)", () => {
     }
   });
 
-  it("unsilenceKiosk: accepts optional reason", async () => {
-    await seedKiosk(ctx);
+  it("unsilenceLocation: accepts optional reason", async () => {
+    await seedLocation(ctx);
 
-    await silenceKiosk(TEST_KIOSK_ID, "Temporary silence");
+    await silenceLocation(TEST_LOCATION_ID, "Temporary silence");
 
-    const result = await unsilenceKiosk(TEST_KIOSK_ID, "Issue resolved — re-enabling alerts");
+    const result = await unsilenceLocation(
+      TEST_LOCATION_ID,
+      "Issue resolved — re-enabling alerts",
+    );
     expect(result.ok).toBe(true);
 
-    const row = await getKioskRow(ctx);
+    const row = await getLocationRow(ctx);
     expect(row!.alertSilencedAt).toBeNull();
   });
 });

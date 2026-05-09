@@ -117,6 +117,11 @@ export type LocationWithRelations = {
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
+  // Phase 9 (hotel-level rewrite) — admin-only per-hotel silencing of weekly
+  // POC underperformance alerts. Surfaced read-write on the locations/[id]
+  // admin panel; mutated via locations/[id]/silence-actions.ts.
+  alertSilencedAt: Date | null;
+  alertSilencedReason: string | null;
   assignedKiosks: Array<{
     assignmentId: string;
     kioskId: string;
