@@ -1,12 +1,17 @@
 /**
- * Groups classified kiosks by their assigned POC (Point of Contact).
+ * Groups classified rows by their assigned POC (Point of Contact).
  *
- * Kiosks with `internalPocId: null` are grouped into a sentinel bucket
+ * Rows with `internalPocId: null` are grouped into a sentinel bucket
  * (pocUserId: null) that the cron job skips when dispatching emails (D-07).
+ *
+ * Phase 9 follow-up: the constraint only requires `internalPocId`. Both
+ * `ClassifiedKioskRow` (legacy kiosk-level) and `ClassifiedLocationRow`
+ * (current hotel-level) satisfy it. The grouped field is still named
+ * `kiosks` for backwards-compat with the existing tests + cron callsite —
+ * read it as "items batched per POC".
  */
 
 export type ClassifiedKiosk = {
-  kioskId: string;
   internalPocId: string | null;
   [k: string]: unknown;
 };
