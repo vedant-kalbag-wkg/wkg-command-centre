@@ -323,6 +323,20 @@
       "when": 1780800000000,
       "tag": "0045_phase_09_hotel_alerts",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1780900000000,
+      "tag": "0046_phase_09_1_exchange_rates",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1781000000000,
+      "tag": "0047_phase_09_1_sales_records_net_amount_gbp",
+      "breakpoints": true
     }
   ]
 }
