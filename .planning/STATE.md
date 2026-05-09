@@ -22,19 +22,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 **Core value:** Operations and IT teams can accurately track, plan, and report on every kiosk deployment across all regions from a single tool that models the business's actual data structure — with analytics that Monday.com cannot produce.
-**Current focus:** Phase 9 code-complete; awaiting operator UAT before merging. Phase 10 (Access Control Extended) is the next planning target.
+**Current focus:** Phase 9 merged 2026-05-09 (PR #38). Phase 9.1 (Multi-currency forex normalisation, INSERTED — tracks GitHub issue #39) is the next planning target.
 
 ## Current Position
 
-Phase: 09
-Status: Phase 9 code-complete 2026-05-09. ~30 commits ahead of origin/main across 5 waves (schema → pure logic → email template → cron + classification → admin UI + kiosk silencing UI → doc close-out). 629 unit tests pass, `tsc --noEmit` clean. 8 operator-only items pending: branch push, Vercel preview deploy, BETTER_AUTH_URL preview env var pinned to git-branch alias, migrations 0043+0044 applied to preview DB, Playwright specs (`tests/admin/performance-alerts.spec.ts` + `tests/kiosks/silence.spec.ts`) run against preview, manual visual UAT, end-to-end weekly cron event verification. POC-ALERT-01 ticked in REQUIREMENTS.md.
+Phase: 09.1
+Status: Phase 9.1 inserted 2026-05-09 to address cross-currency mis-ranking surfaced from PR #38 code review. Phase directory created at `.planning/phases/09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. ROADMAP.md created and updated. Next: `/gsd-discuss-phase 9.1` to surface assumptions (rate source choice, historical backfill policy, staleness tolerance, query-audit count) before planning.
 Last activity: 2026-05-09
 
 ## v1.1 Phase Index
 
 - ✓ Phase 7: Data Foundation Rebuild — DATA-01..05 — **MERGED 2026-05-08** (PR #36, squash `05fbf07`; full review loop: PR #34 merge → PR #35 revert → PR #36 with 4 fix commits)
 - → Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (code-complete; awaiting operator UAT)
-- → Phase 9: POC Underperformance Alerts — POC-ALERT-01 — branch `gsd/phase-09-poc-underperformance-alerts` (code-complete 2026-05-09; awaiting operator Playwright + manual UAT against Vercel preview alias)
+- ✓ Phase 9: POC Underperformance Alerts — POC-ALERT-01 — **MERGED 2026-05-09** (PR #38; 3-round Claude review loop closed, all CR-01..03 + WR-03 + revenue/percentile float bugs + cosmetic nits fixed)
+- Phase 9.1 (INSERTED): Multi-currency analytics — forex normalisation to GBP base reporting — TBD requirements (FX-01..04 likely) — branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep` — tracks GitHub issue #39, surfaced from PR #38 code review
 - Phase 10: Access Control Extended — AUTH-06..07 — branch `gsd/phase-10-access-control-extended`
 - Phase 11: Tooling, Polish & Tech-Debt Close-out — TEST-01, MONDAY-01, REF-01, INFRA-01, POLISH-01..02, DEBT-01..02 — branch `gsd/phase-11-tooling-polish-debt`
 
@@ -78,6 +79,10 @@ Phase 7 Plan 06 decisions (locked 2026-05-06 during Plan 06 execution):
 - **Dimension resolver Pass 0** — sales rows with non-empty `customerCode` resolve via `locations.customer_code` first; falls back to kiosks-side outlet_code (Pass 1) then sentinel (Pass 2). Validated byte-perfect against the prod-canonical Jan2026 corpus (95103 rows / £1,783,083.58).
 
 Full v1.0 decision history: `milestones/v1.0-ROADMAP.md` and per-plan SUMMARY.md files in `milestones/v1.0-phases/`.
+
+### Roadmap Evolution
+
+- Phase 9.1 inserted after Phase 9 — Multi-currency analytics (forex normalisation to GBP base reporting). URGENT. Tracks GitHub issue #39, surfaced from PR #38 code review where the cross-currency mis-ranking gap was identified in `classifyEligibleLocations`. v1.1 ROADMAP.md created the same day (2026-05-09) — previously the v1.1 phase index lived only in STATE.md.
 
 ### Blockers/Concerns
 
