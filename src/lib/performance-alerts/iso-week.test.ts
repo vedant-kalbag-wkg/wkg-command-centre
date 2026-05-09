@@ -36,11 +36,13 @@ describe("isoWeekKey", () => {
   });
 
   it("handles BST: a datetime that is Monday in London but Sunday in UTC", () => {
-    // 2026-06-01T00:00:00Z = Sunday 31 May 2026 in UTC
-    // BUT in Europe/London (BST = UTC+1): it's Monday 1 June 2026 → 2026-W23
-    // This test verifies we use London wall-clock, not UTC
-    // 2026-06-01 Monday is W23
-    expect(isoWeekKey(new Date("2026-06-01T00:00:00Z"))).toBe("2026-W23");
+    // 2026-05-31T23:30:00Z = Sunday 23:30 UTC
+    // BUT in Europe/London (BST = UTC+1): it's Monday 00:30 → 2026-W23.
+    // The previous version used 2026-06-01T00:00:00Z which is Monday in BOTH
+    // UTC and London (01:00 BST), so it didn't actually exercise the boundary.
+    // This timestamp is genuinely Sunday in UTC (W22) and Monday in London (W23) —
+    // the assertion proves we use London wall-clock, not UTC.
+    expect(isoWeekKey(new Date("2026-05-31T23:30:00Z"))).toBe("2026-W23");
   });
 
   it("pads single-digit week numbers with leading zero", () => {

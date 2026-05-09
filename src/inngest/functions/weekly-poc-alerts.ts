@@ -125,7 +125,11 @@ export async function _handleWeeklyPocAlerts({
     : decisions;
 
   // ── Step 4: write-state ─────────────────────────────────────────────────────
-  await step.run("write-state", async () => {
+  // Compute `runIsoWeek` inside this step boundary so Inngest memoises it across
+  // retries (CR-02). Outside any step.run, a retry that crosses a Monday
+  // boundary in Europe/London would recompute a different ISO week and defeat
+  // the email_log payloadHash dedup → duplicate emails.
+  const runIsoWeek = await step.run("write-state", async () => {
     const now = new Date();
     for (const d of effectiveDecisions) {
       await db
@@ -153,18 +157,19 @@ export async function _handleWeeklyPocAlerts({
           },
         });
     }
+    return isoWeekKey(now);
   });
 
-  const runIsoWeek = isoWeekKey(new Date());
-
   // ── Step 5: emit-poc-emails ─────────────────────────────────────────────────
+  // Inngest does not replay step.run closures — return counts as the step's
+  // resolved value (CR-03). Closure-side mutation of an outer `let` would
+  // leave the counter at 0 on every retry replay.
   const alertable = effectiveDecisions.filter((d) => d.decision !== "no-alert");
   const groups = groupByPoc(alertable);
-  let alertedCount = 0;
 
-  await step.run("emit-poc-emails", async () => {
+  const alertedCount = await step.run("emit-poc-emails", async () => {
     const realPocGroups = groups.filter((g) => g.pocUserId !== null);
-    if (realPocGroups.length === 0) return;
+    if (realPocGroups.length === 0) return 0;
 
     const pocIds = realPocGroups.map((g) => g.pocUserId!);
     const userRows = await db
@@ -208,6 +213,9 @@ export async function _handleWeeklyPocAlerts({
               moreCount,
               windowDays: classification.windowDays,
               runIsoWeek,
+              // CR-01: required by pocUnderperformanceText — without it the
+              // plain-text CTA link renders as "undefined" for every recipient.
+              portfolioUrl: `${BRAND.prodUrl}/analytics/portfolio`,
             },
             payloadHash: sha256(`${g.pocUserId}:${runIsoWeek}`),
           },
@@ -215,21 +223,21 @@ export async function _handleWeeklyPocAlerts({
       })
       .filter((e): e is NonNullable<typeof e> => e !== null);
 
-    alertedCount = events.length;
     if (events.length > 0) {
       await step.sendEvent("emit-poc-emails", events);
     }
+    return events.length;
   });
 
   // ── Step 6: emit-skip-rows ──────────────────────────────────────────────────
-  let skippedCount = 0;
-
-  await step.run("emit-skip-rows", async () => {
+  // Same fix as CR-03: return the count from step.run instead of mutating
+  // an outer `let`.
+  const skippedCount = await step.run("emit-skip-rows", async () => {
     const skipKiosks = effectiveDecisions.filter(
       (d) => d.decision !== "no-alert" && d.internalPocId === null,
     );
-    skippedCount = skipKiosks.length;
     for (const k of skipKiosks) {
+      void k;
       await db
         .insert(emailLog)
         .values({
@@ -241,6 +249,7 @@ export async function _handleWeeklyPocAlerts({
         })
         .onConflictDoNothing();
     }
+    return skipKiosks.length;
   });
 
   // ── Step 7: write-run-audit ─────────────────────────────────────────────────
