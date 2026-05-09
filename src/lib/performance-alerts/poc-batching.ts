@@ -4,11 +4,10 @@
  * Rows with `internalPocId: null` are grouped into a sentinel bucket
  * (pocUserId: null) that the cron job skips when dispatching emails (D-07).
  *
- * Phase 9 follow-up: the constraint only requires `internalPocId`. Both
- * `ClassifiedKioskRow` (legacy kiosk-level) and `ClassifiedLocationRow`
- * (current hotel-level) satisfy it. The grouped field is still named
- * `kiosks` for backwards-compat with the existing tests + cron callsite —
- * read it as "items batched per POC".
+ * The constraint only requires `internalPocId`, so any row shape that carries
+ * one (currently `ClassifiedLocationRow`) can be batched. The grouped field
+ * is still named `kiosks` for backwards-compat with the existing tests + cron
+ * callsite — read it as "items batched per POC".
  */
 
 export type ClassifiedKiosk = {

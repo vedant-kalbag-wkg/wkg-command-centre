@@ -94,6 +94,12 @@ export type ClassifiedLocationRow = {
  * Cross-currency forex normalisation is NOT applied — the percentile ranks
  * compare raw revenue across currencies. Acceptable for the current GBP-only
  * portfolio; tracked in #39 for multi-currency rollouts.
+ *
+ * Single-eligible-hotel cohort: `percentRanks` returns 50 for every metric
+ * (matching the heat-map's lone-hotel convention), giving a composite of 50.
+ * That sits above the default Bottom cutoff (20), so a one-hotel fleet is
+ * effectively never alerted — there is no peer to be "underperforming" against.
+ * Intentional and consistent with the dashboard.
  */
 export async function classifyEligibleLocations(): Promise<{
   rows: ClassifiedLocationRow[];

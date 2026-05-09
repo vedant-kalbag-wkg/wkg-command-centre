@@ -20,10 +20,7 @@ import { sql, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { locationPerformanceAlertState, emailLog, user } from "@/db/schema";
 import { inngest } from "../client";
-import {
-  classifyEligibleLocations,
-  type ClassifiedLocationRow,
-} from "@/lib/performance-alerts/classify-locations";
+import { classifyEligibleLocations } from "@/lib/performance-alerts/classify-locations";
 import {
   decideAlert,
   type Decision,
@@ -192,9 +189,7 @@ export async function _handleWeeklyPocAlerts({
         // Worst (lowest composite) hotels surface first — matches the email
         // body's "these need attention" framing.
         const sortedHotels = [...g.kiosks].sort(
-          (a, b) =>
-            (a as ClassifiedLocationRow).compositeScore -
-            (b as ClassifiedLocationRow).compositeScore,
+          (a, b) => a.compositeScore - b.compositeScore,
         );
         const truncated = sortedHotels.slice(0, HOTEL_TRUNCATION_CAP);
         const moreCount = Math.max(0, sortedHotels.length - HOTEL_TRUNCATION_CAP);
@@ -209,8 +204,7 @@ export async function _handleWeeklyPocAlerts({
             template: "poc-underperformance" as const,
             templateProps: {
               pocName: u.name ?? "there",
-              hotels: truncated.map((h) => {
-                const hr = h as ClassifiedLocationRow;
+              hotels: truncated.map((hr) => {
                 const salesPerRoomValue = hr.subMetrics.revenuePerRoom.value;
                 return {
                   locationId: hr.locationId,
