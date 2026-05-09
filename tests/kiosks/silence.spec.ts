@@ -33,7 +33,7 @@ test.describe("Kiosk alert silencing (PERF-07)", () => {
 
   test("PERF-07: admin sees alert silencing panel on kiosk detail page", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: /alert silencing/i }),
+      page.getByText(/alert silencing \(admin only\)/i),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /silence alerts/i }),
