@@ -91,6 +91,7 @@ export function pocUnderperformanceText({
   windowDays,
   runIsoWeek,
   portfolioUrl,
+  bottomPercentile = 10,
 }: {
   pocName: string;
   kiosks: Array<{
@@ -105,21 +106,26 @@ export function pocUnderperformanceText({
   windowDays: number;
   runIsoWeek: string;
   portfolioUrl: string;
+  /** Emerging-tier cutoff in percentile points; mirrors the HTML template. */
+  bottomPercentile?: number;
 }): string {
-  const kioskLines = kiosks.map(
-    (k) =>
-      `  - ${k.locationName} (${k.region}) | Revenue: ${k.revenue} | p${k.percentile}\n    ${k.detailUrl}`,
-  );
+  const kioskLines = kiosks.map((k) => {
+    const pctRendered =
+      typeof k.percentile === "number"
+        ? Math.round(k.percentile)
+        : k.percentile;
+    return `  - ${k.locationName} (${k.region}) | Revenue: ${k.revenue} | p${pctRendered}\n    ${k.detailUrl}`;
+  });
 
   const moreNote =
     moreCount > 0
-      ? `\n… and ${moreCount} more kiosks below the 10th percentile — see your portfolio for the full list.\n`
+      ? `\n… and ${moreCount} more kiosks below the ${bottomPercentile}th percentile — see your portfolio for the full list.\n`
       : "";
 
   return [
     `Underperforming kiosks — ${runIsoWeek}`,
     "",
-    `Hi ${pocName}, the following kiosks in your portfolio fell below the 10th percentile over the last ${windowDays} days:`,
+    `Hi ${pocName}, the following kiosks in your portfolio fell below the ${bottomPercentile}th percentile over the last ${windowDays} days:`,
     "",
     ...kioskLines,
     moreNote,

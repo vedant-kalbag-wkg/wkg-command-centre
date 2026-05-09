@@ -210,7 +210,10 @@ export async function _handleWeeklyPocAlerts({
                   // renders this string verbatim — see comment in
                   // src/emails/poc-underperformance.tsx.
                   revenue: formatRevenueForKiosk(kr.revenue, kr.currency),
-                  percentile: kr.percentile,
+                  // Round to a whole number for the rendered cell — the raw
+                  // computation `(lo / total) * 100` produces floats like
+                  // 3.3333333333333335 that the template renders verbatim.
+                  percentile: Math.round(kr.percentile),
                   detailUrl: `${BRAND.prodUrl}/kiosks/${kr.kioskId}`,
                 };
               }),
@@ -220,6 +223,10 @@ export async function _handleWeeklyPocAlerts({
               // CR-01: required by pocUnderperformanceText — without it the
               // plain-text CTA link renders as "undefined" for every recipient.
               portfolioUrl: `${BRAND.prodUrl}/analytics/portfolio`,
+              // Emerging cutoff is admin-configurable via app_settings; render
+              // it dynamically so the body copy never drifts from the actual
+              // tier boundary.
+              bottomPercentile: classification.tierConfig.bottom,
             },
             payloadHash: sha256(`${g.pocUserId}:${runIsoWeek}`),
           },

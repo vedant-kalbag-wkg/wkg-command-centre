@@ -53,9 +53,13 @@ describe("performance-alerts admin action (09-05)", () => {
     requireRoleMock.mockReset();
     requireRoleMock.mockResolvedValue(ADMIN_SESSION);
     // Clear audit_logs between tests so rate-limit checks start clean.
+    // Both the trigger-request rows AND the cron's own rows live in audit_logs
+    // — wipe both to avoid pollution between test cases.
     await ctx.db
       .delete(auditLogs)
-      .where(eq(auditLogs.entityType, "performance_alert_run"));
+      .where(
+        sql`${auditLogs.entityType} IN ('performance_alert_run', 'performance_alert_run_request')`,
+      );
   });
 
   it("triggerRunNow throws Forbidden for non-admin sessions", async () => {
@@ -78,11 +82,14 @@ describe("performance-alerts admin action (09-05)", () => {
     expect(sentEvent.data.actorId).toBe("usr-admin-001");
     expect(sentEvent.data.actorName).toBe("Test Admin");
 
-    // Audit row written to real DB.
+    // Audit row written to real DB. Trigger rows use the dedicated
+    // `performance_alert_run_request` entity type so the recent-runs list on
+    // the admin dashboard (which reads `performance_alert_run`) shows only
+    // cron-side completions, not button-press telemetry.
     const rows = await ctx.db
       .select()
       .from(auditLogs)
-      .where(eq(auditLogs.entityType, "performance_alert_run"));
+      .where(eq(auditLogs.entityType, "performance_alert_run_request"));
     expect(rows).toHaveLength(1);
     expect(rows[0].action).toBe("trigger");
     expect(rows[0].actorId).toBe("usr-admin-001");
@@ -91,11 +98,13 @@ describe("performance-alerts admin action (09-05)", () => {
   });
 
   it("triggerRunNow rate-limits a second call within 5 minutes", async () => {
-    // Seed an audit row with createdAt = NOW() (simulates a very recent run).
+    // Seed a trigger-request row with createdAt = NOW() (simulates a very
+    // recent button press). Rate-limit reads from `*_run_request`, not the
+    // cron's own `*_run` rows.
     await ctx.db.insert(auditLogs).values({
       actorId: "usr-admin-001",
       actorName: "Test Admin",
-      entityType: "performance_alert_run",
+      entityType: "performance_alert_run_request",
       entityId: "manual-seed",
       entityName: "Manual run trigger",
       action: "trigger",
@@ -109,13 +118,34 @@ describe("performance-alerts admin action (09-05)", () => {
     expect(inngestSendMock).not.toHaveBeenCalled();
   });
 
-  it("triggerRunNow proceeds when the most recent audit row is older than 5 minutes", async () => {
-    // Seed an audit row with createdAt = 10 minutes ago.
+  it("triggerRunNow does NOT rate-limit when only a recent cron run exists", async () => {
+    // A cron-side completion row (entity_type='performance_alert_run') must
+    // not block a manual trigger — the rate-limit only counts manual clicks
+    // against each other. Without this distinction, the weekly cron at 09:00
+    // Mondays would lock out admins for 5 minutes.
+    await ctx.db.insert(auditLogs).values({
+      actorId: "system",
+      actorName: "weekly-poc-alerts cron",
+      entityType: "performance_alert_run",
+      entityId: "cron-seed",
+      entityName: "Run 2026-W19",
+      action: "trigger",
+      createdAt: new Date(),
+    });
+
+    const result = await triggerRunNow();
+
+    expect(result).toEqual({ ok: true });
+    expect(inngestSendMock).toHaveBeenCalledOnce();
+  });
+
+  it("triggerRunNow proceeds when the most recent trigger-request row is older than 5 minutes", async () => {
+    // Seed a trigger-request row with createdAt = 10 minutes ago.
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
     await ctx.db.insert(auditLogs).values({
       actorId: "usr-admin-001",
       actorName: "Test Admin",
-      entityType: "performance_alert_run",
+      entityType: "performance_alert_run_request",
       entityId: "manual-old",
       entityName: "Manual run trigger",
       action: "trigger",

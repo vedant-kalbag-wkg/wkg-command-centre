@@ -49,6 +49,13 @@ export interface PocUnderperformanceEmailProps {
    * variants always agree on the CTA target.
    */
   portfolioUrl?: string;
+  /**
+   * Emerging-tier cutoff in percentile points (e.g. 20 means kiosks
+   * below the 20th percentile). Defaults to 10 only if the prop is
+   * omitted — production callers always pass `tierConfig.bottom` so the
+   * body copy stays aligned with the live admin-configured threshold.
+   */
+  bottomPercentile?: number;
 }
 
 export function PocUnderperformanceEmail({
@@ -58,6 +65,7 @@ export function PocUnderperformanceEmail({
   windowDays,
   runIsoWeek,
   portfolioUrl,
+  bottomPercentile = 10,
 }: PocUnderperformanceEmailProps) {
   const resolvedPortfolioUrl = portfolioUrl ?? `${BRAND.prodUrl}/analytics/portfolio`;
 
@@ -88,7 +96,7 @@ export function PocUnderperformanceEmail({
         }}
       >
         Hi {pocName}, the following kiosks in your portfolio fell below the
-        10th percentile over the last {windowDays} days.
+        {" "}{bottomPercentile}th percentile over the last {windowDays} days.
       </Text>
 
       {/* Kiosk table */}
@@ -244,8 +252,8 @@ export function PocUnderperformanceEmail({
             fontStyle: "italic",
           }}
         >
-          … and {moreCount} more kiosks below the 10th percentile — see full
-          list in your portfolio.
+          … and {moreCount} more kiosks below the {bottomPercentile}th percentile —
+          see full list in your portfolio.
         </Text>
       ) : null}
 
