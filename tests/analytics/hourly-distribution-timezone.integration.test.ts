@@ -75,6 +75,7 @@ describe("Hourly Distribution — per-location IANA timezone bucketing (D6)", ()
     // are stored as the UTC clock face — matching what the NetSuite ETL
     // writes. salesRecords has several NOT NULL columns beyond the obvious
     // ones (saleRef / refNo / vatAmount / netsuiteCode); seed minimal values.
+    // Phase 9.1 FX-02 NOT NULL — GBP identity stamps.
     await ctx.db.insert(salesRecords).values([
       {
         locationId: ukLocId,
@@ -82,6 +83,7 @@ describe("Hourly Distribution — per-location IANA timezone bucketing (D6)", ()
         transactionDate: "2025-06-15",
         transactionTime: "09:00:00",
         netAmount: "10.00",
+        netAmountGbp: "10.00",
         vatAmount: "0.00",
         netsuiteCode: "9999",
         saleRef: "TZ-LON-1",
@@ -94,6 +96,7 @@ describe("Hourly Distribution — per-location IANA timezone bucketing (D6)", ()
         transactionDate: "2025-06-15",
         transactionTime: "09:00:00",
         netAmount: "10.00",
+        netAmountGbp: "10.00",
         vatAmount: "0.00",
         netsuiteCode: "9999",
         saleRef: "TZ-SYD-1",

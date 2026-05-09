@@ -44,6 +44,15 @@ describe("backfill-net-amount-gbp integration (Wave 0 RED scaffolding)", () => {
       .from(user)
       .where(eq(user.id, ETL_ACTOR_ID));
     if (!etl) throw new Error("ETL actor seed missing — check migration 0018");
+    // The backfill's contract is "rows that existed BEFORE 0048's NOT NULL
+    // flip have net_amount_gbp = NULL → fill them in". Recreating that
+    // pre-flip shape in a test means temporarily dropping the NOT NULL
+    // constraint so seeds can leave net_amount_gbp NULL. This mirrors the
+    // production sequence: 0047 added the column nullable → backfill
+    // populated every row → 0048 flipped to NOT NULL.
+    await ctx.db.execute(
+      sql`ALTER TABLE sales_records ALTER COLUMN net_amount_gbp DROP NOT NULL`,
+    );
   }, 180_000);
 
   afterAll(async () => {
