@@ -1,6 +1,9 @@
+import { and, desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { db } from "@/db";
+import { emailLog } from "@/db/schema";
 import { inngest } from "@/inngest/client";
 import { auth } from "@/lib/auth";
 
@@ -33,17 +36,39 @@ import { auth } from "@/lib/auth";
 const ADMIN_SUPPORT_EMAIL =
   process.env.ADMIN_SUPPORT_EMAIL ?? "vedant.kalbag@weknowgroup.com";
 
+// T-08.02-01 mitigation: per-recipient cooldown to stop an authenticated
+// session from spamming the inbox by repeatedly POSTing this route. Querying
+// `email_log` is cheaper than a separate rate-limit store and uses state
+// already written by the Inngest send-email step. 30s is long enough to
+// catch double-clicks and replay loops, short enough that a legitimate
+// rotate-then-rotate-again sequence isn't blocked.
+const PASSWORD_CHANGED_COOLDOWN_MS = 30_000;
+
 export async function POST() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {
     return NextResponse.json({ error: "unauthorised" }, { status: 401 });
   }
 
-  // TODO (Phase 9 hardening): rate-limit per session/user. An authenticated
-  // session can POST this endpoint repeatedly to spam confirmation emails
-  // (T-08.02-01 informational). The underlying password change has already
-  // succeeded, so this only affects mailbox volume — gated on Phase 9 adding
-  // either Inngest rate-limit middleware or a DB cooldown window.
+  const recent = await db
+    .select({ createdAt: emailLog.createdAt })
+    .from(emailLog)
+    .where(
+      and(
+        eq(emailLog.kind, "password_changed"),
+        eq(emailLog.recipient, session.user.email),
+      ),
+    )
+    .orderBy(desc(emailLog.createdAt))
+    .limit(1);
+
+  if (
+    recent[0] &&
+    Date.now() - recent[0].createdAt.getTime() < PASSWORD_CHANGED_COOLDOWN_MS
+  ) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
+
   await inngest.send({
     name: "email/send.requested",
     data: {
