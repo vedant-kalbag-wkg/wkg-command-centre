@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   ALLOWED_COLUMNS,
+  CURRENCY_GBP_COLUMNS,
   DERIVED_GROUP_COLUMNS,
   derivedGroupColumns,
+  isCurrencyField,
+  gbpAlias,
+  currencyKeyAlias,
   validatePivotConfig,
   buildPivotSQL,
   formatPivotResults,
@@ -601,5 +605,178 @@ describe("formatPivotResults", () => {
     // Cell keys + grand-total keys must match the multi-value composer.
     expect(result.grandTotals["Jan 2025 | sum_net_amount"].value).toBe(800);
     expect(result.grandTotals["Jan 2025 | count_net_amount"].value).toBe(8);
+  });
+});
+
+// ─── FX-03 / D-17 / Pitfall 4 — saved-pivot back-compat + dual-emit substrate ─
+//
+// Phase 9.1 introduces dual-emit (native + GBP + currency_key) for analytics
+// SUM(net_amount) sites. The pivot engine's contract per D-17 is:
+//   1. PRESERVE the field id "net_amount" (and "booking_fee") so saved pivots
+//      in production — which serialise {field: "net_amount", aggregation: ...}
+//      into JSON — keep resolving without a saved-pivot rewrite (Pitfall 4).
+//   2. ADD GBP + currency_key sibling columns to the SQL row so plan 09.1-07
+//      can dispatch native-vs-GBP cell rendering per D-10.
+//
+// The tests below pin both halves: ALLOWED_COLUMNS still maps "net_amount" to
+// the original native expression (D-17), and buildPivotSQL emits the new
+// `<alias>_gbp` + `currency_key_<field>` companions whenever a value config
+// references a currency-typed field.
+
+describe("FX-03 / D-17 / Pitfall 4 — saved-pivot field id back-compat", () => {
+  it("ALLOWED_COLUMNS still maps 'net_amount' to the native sales_records expression", () => {
+    // Saved pivots in prod reference the field id `net_amount` directly. Any
+    // change to this id (to e.g. `net_amount_native`) silently breaks every
+    // saved pivot that has been emailed/exported and reloaded later. D-17
+    // says preserve the id even though the SQL contract evolves.
+    expect(ALLOWED_COLUMNS.get("net_amount")).toBe(
+      "sales_records.net_amount::numeric",
+    );
+    // booking_fee gets the same back-compat treatment — it's also a
+    // currency-typed metric saved pivots reference by id.
+    expect(ALLOWED_COLUMNS.get("booking_fee")).toContain(
+      "sales_records.net_amount::numeric",
+    );
+  });
+
+  it("CURRENCY_GBP_COLUMNS exposes the GBP companion expression for both currency fields", () => {
+    expect(CURRENCY_GBP_COLUMNS.get("net_amount")).toBe(
+      "sales_records.net_amount_gbp::numeric",
+    );
+    expect(CURRENCY_GBP_COLUMNS.get("booking_fee")).toContain(
+      "sales_records.net_amount_gbp::numeric",
+    );
+    expect(CURRENCY_GBP_COLUMNS.get("booking_fee")).toContain(
+      "sales_records.is_weknow_fee = true",
+    );
+  });
+
+  it("isCurrencyField returns true for net_amount + booking_fee, false otherwise", () => {
+    expect(isCurrencyField("net_amount")).toBe(true);
+    expect(isCurrencyField("booking_fee")).toBe(true);
+    expect(isCurrencyField("product_name")).toBe(false);
+    expect(isCurrencyField("sale_month")).toBe(false);
+  });
+
+  it("gbpAlias + currencyKeyAlias compose stable companion names", () => {
+    // Stable shape so renderer code in plan 09.1-07 can derive cell keys
+    // without inspecting the SQL — pure function of (agg, field).
+    expect(gbpAlias("sum", "net_amount")).toBe("sum_net_amount_gbp");
+    expect(gbpAlias("avg", "net_amount")).toBe("avg_net_amount_gbp");
+    expect(gbpAlias("sum", "booking_fee")).toBe("sum_booking_fee_gbp");
+    expect(currencyKeyAlias("net_amount")).toBe("currency_key_net_amount");
+    expect(currencyKeyAlias("booking_fee")).toBe("currency_key_booking_fee");
+  });
+
+  it("a saved pivot row keyed on field id 'net_amount' still resolves to a non-empty cell", () => {
+    // Simulates a pre-FX-03 saved pivot config being re-loaded post-deploy.
+    // The pivot config still references `net_amount` (D-17 — id preserved),
+    // and formatPivotResults must produce a cell at the same alias the saved
+    // pivot would look up (`sum_net_amount`).
+    const savedPivot: PivotConfig = {
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    };
+    // Driver-shape row carries the new companions alongside the legacy
+    // `sum_net_amount` alias — saved pivot still finds its cell at the
+    // legacy alias, while plan 09.1-07's renderer can reach for the GBP
+    // sibling and currency_key when it lands.
+    const rawRows = [
+      {
+        hotel_name: "Hotel A",
+        sum_net_amount: 1000,
+        sum_net_amount_gbp: 800,
+        currency_key_net_amount: "EUR",
+      },
+    ];
+    const result = formatPivotResults(rawRows, savedPivot);
+    expect(result.rows[0].cells["sum_net_amount"]).toBeDefined();
+    expect(result.rows[0].cells["sum_net_amount"].value).toBe(1000);
+    expect(result.rows[0].cells["sum_net_amount"].formatted).not.toBe("");
+  });
+
+  it("buildPivotSQL emits sum_net_amount_gbp + currency_key_net_amount alongside sum_net_amount", () => {
+    // Substrate for renderer dispatch (plan 09.1-07): the SQL row now carries
+    // (sum_net_amount, sum_net_amount_gbp, currency_key_net_amount) for every
+    // pivot that aggregates the net_amount metric.
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    });
+    // Primary alias preserved (D-17): saved pivots resolve their cell here.
+    expect(sql).toContain('AS "sum_net_amount"');
+    // GBP companion: SUM over the net_amount_gbp column.
+    expect(sql).toContain("sales_records.net_amount_gbp::numeric");
+    expect(sql).toContain('AS "sum_net_amount_gbp"');
+    // currency_key resolver per D-10.
+    expect(sql).toContain("COUNT(DISTINCT sales_records.currency)");
+    expect(sql).toContain('AS "currency_key_net_amount"');
+  });
+
+  it("buildPivotSQL emits the same dual-emit shape for booking_fee (FILTER (WHERE is_weknow_fee))", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "booking_fee", aggregation: "sum" }],
+    });
+    expect(sql).toContain('AS "sum_booking_fee"');
+    expect(sql).toContain('AS "sum_booking_fee_gbp"');
+    expect(sql).toContain('AS "currency_key_booking_fee"');
+    // currency_key for booking_fee scopes to fee rows so the resolver tracks
+    // fee-only cohorts (a sales-only cohort would compute a meaningless key).
+    expect(sql).toMatch(
+      /COUNT\(DISTINCT sales_records\.currency\) FILTER \(WHERE sales_records\.is_weknow_fee = true\)/,
+    );
+  });
+
+  it("buildPivotSQL skips dual-emit for COUNT aggregations (count is currency-agnostic)", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "count" }],
+    });
+    // Count alias preserved.
+    expect(sql).toContain('AS "count_net_amount"');
+    // No GBP arm or currency_key for count — would be meaningless to count
+    // "rows in GBP" and waste cycles.
+    expect(sql).not.toContain('AS "count_net_amount_gbp"');
+    expect(sql).not.toContain('AS "currency_key_net_amount"');
+  });
+
+  it("buildPivotSQL skips dual-emit for non-currency value configs", () => {
+    // Currently the schema's only currency value-fields are net_amount +
+    // booking_fee. If a future config tries to aggregate a hypothetical
+    // non-currency metric (e.g., a row count promoted to a metric), the
+    // engine MUST NOT emit GBP companions — there's no sales_records
+    // counterpart and the SQL would fail to compile.
+    //
+    // This test pins the contract via isCurrencyField + the absence of GBP
+    // emissions in a pivot whose only metric is a count of net_amount.
+    const sql = buildPivotSQL({
+      rowFields: ["product_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "count" }],
+    });
+    expect(sql).not.toContain("net_amount_gbp");
+    expect(sql).not.toContain("currency_key");
+  });
+
+  it("pivot row carries net_amount + net_amount_gbp + currency_key for renderer dispatch (plan 09.1-07)", () => {
+    // End-to-end SQL substrate check: a pivot SELECT with a SUM(net_amount)
+    // metric MUST project the three columns the renderer dispatch in plan
+    // 09.1-07 will read. Saved pivots that have not been resaved post-deploy
+    // continue to read `sum_net_amount` and see native sums; the renderer
+    // can additionally pick `sum_net_amount_gbp` + `currency_key_net_amount`
+    // to flip cells in single-currency cohorts.
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: ["sale_month"],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    });
+    expect(sql).toContain('AS "sum_net_amount"');
+    expect(sql).toContain('AS "sum_net_amount_gbp"');
+    expect(sql).toContain('AS "currency_key_net_amount"');
   });
 });

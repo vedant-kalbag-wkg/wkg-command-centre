@@ -134,8 +134,16 @@ export async function _listUnclassifiedOutletsForActor(
       primaryRegionId: locations.primaryRegionId,
       mondayItemId: locations.mondayItemId,
       primaryRegionCode: regions.code,
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
-      transactions: sql<string>`COALESCE(COUNT(${salesRecords.id}) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
+      // Phase 9.1 / D-11 / D-12 — outlet-tier classifier dual-emits revenue
+      // (native + GBP + currency_key). Public `revenue` reads GBP because
+      // tier classification is cross-currency by definition (the operator
+      // reviews unclassified outlets across regions in one pass) — sorting on
+      // raw native sums would bury a EUR-only kiosk under GBP runners-up
+      // simply because of FX magnitude.
+      revenue:        sql<string>`COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
+      revenueNative:  sql<string>`COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
+      currencyKey:    sql<string | null>`CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${buildSalesTxnCondition()}) = 1 THEN MIN(${salesRecords.currency}) FILTER (WHERE ${buildSalesTxnCondition()}) ELSE NULL END`,
+      transactions:   sql<string>`COALESCE(COUNT(${salesRecords.id}) FILTER (WHERE ${buildSalesTxnCondition()}), 0)`,
     })
     .from(locations)
     .innerJoin(regions, eq(regions.id, locations.primaryRegionId))
@@ -148,7 +156,9 @@ export async function _listUnclassifiedOutletsForActor(
     )
     .where(whereClause)
     .groupBy(locations.id, regions.code)
-    .orderBy(desc(sql`COALESCE(SUM(${salesRecords.netAmount}), 0)`));
+    // D-12 — order by GBP so cross-currency tier review surfaces by absolute
+    // £-impact. Was `SUM(net_amount)` which mixes raw currency magnitudes.
+    .orderBy(desc(sql`COALESCE(SUM(${salesRecords.netAmountGbp}), 0)`));
 
   return rows.map(
     (r: {
@@ -163,7 +173,13 @@ export async function _listUnclassifiedOutletsForActor(
       primaryRegionId: string;
       mondayItemId: string | null;
       primaryRegionCode: string;
+      // Phase 9.1 / D-11 — `revenue` is GBP-bound; `revenueNative` + `currencyKey`
+      // are surfaced for the eventual native-display dispatch (renderer in 09.1-07).
+      // Existing consumers reading `last30dRevenue` get the GBP value, which is
+      // the correct ranking signal for the operator's tier-review backlog (D-12).
       revenue: string;
+      revenueNative: string;
+      currencyKey: string | null;
       transactions: string;
     }) => {
       // Review-reason precedence (Phase 07-06):

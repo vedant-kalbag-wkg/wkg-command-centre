@@ -102,7 +102,9 @@ export async function getLocationGroupsList(
   const rows = await executeRows<{
     group_id: string;
     group_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     hotel_count: string;
     total_rooms: string | null;
@@ -111,7 +113,11 @@ export async function getLocationGroupsList(
     SELECT
       ${locationGroups.id} AS group_id,
       ${locationGroups.name} AS group_name,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count,
       ${totalRoomsExpr}::text AS total_rooms,
@@ -119,11 +125,12 @@ export async function getLocationGroupsList(
     FROM ${baseFromWithLocationGroups()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${locationGroups.id}, ${locationGroups.name}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: location-group ranking always GBP
   `);
 
   return rows.map((row) => {
-    const revenue = Number(row.revenue);
+    // D-12 — location-group ranking always GBP; renderer dispatch (09.1-07).
+    const revenue = Number(row.revenue_gbp);
     const transactions = Number(row.transactions);
     const totalRooms = row.total_rooms ? Number(row.total_rooms) : null;
     const totalKiosks = row.total_kiosks ? Number(row.total_kiosks) : null;
@@ -169,14 +176,20 @@ export async function getLocationGroupDetail(
 
   // Summary + capacity metrics
   const summaryRows = await executeRows<{
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     hotel_count: string;
     total_rooms: string | null;
     total_kiosks: string | null;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count,
       ${totalRoomsExpr}::text AS total_rooms,
@@ -186,7 +199,8 @@ export async function getLocationGroupDetail(
   `);
 
   const summary = summaryRows[0]!;
-  const revenue = Number(summary.revenue);
+  // D-12 — location-group detail summary: GBP-bound public revenue.
+  const revenue = Number(summary.revenue_gbp);
   const transactions = Number(summary.transactions);
   const hotelCount = Number(summary.hotel_count);
   const totalRooms = summary.total_rooms ? Number(summary.total_rooms) : null;
@@ -237,7 +251,9 @@ export async function getLocationGroupDetail(
     location_id: string;
     outlet_code: string;
     hotel_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     rooms: string | null;
     kiosks: string | null;
@@ -249,7 +265,11 @@ export async function getLocationGroupDetail(
       -- output column name (UI label stays "Outlet Code").
       COALESCE(${locations.customerCode}, '') AS outlet_code,
       ${locations.name} AS hotel_name,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       ${locations.numRooms}::text AS rooms,
       ${activeKioskCountFragment()}::text AS kiosks,
@@ -257,11 +277,13 @@ export async function getLocationGroupDetail(
     FROM ${baseFromWithLocationGroups()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
     GROUP BY ${salesRecords.locationId}, ${locations.customerCode}, ${locations.name}, ${locations.numRooms}, ${locations.starRating}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: hotel ranking inside group always GBP
   `);
 
   const hotelBreakdown: HotelInGroup[] = hotelRows.map((row) => {
-    const hotelRevenue = Number(row.revenue);
+    // D-12 — single-property cells render native via 09.1-07 dispatch when
+    // currency_key is set; the GBP value drives ranking + cross-property comparison.
+    const hotelRevenue = Number(row.revenue_gbp);
     const rooms = row.rooms ? Number(row.rooms) : null;
     return {
       locationId: row.location_id,
@@ -285,17 +307,24 @@ export async function getLocationGroupDetail(
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
     const prevSummary = await executeRows<{
-      revenue: string;
+      revenue_native: string;
+      revenue_gbp: string;
+      currency_key: string | null;
       transactions: string;
     }>(sql`
       SELECT
-        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+        COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+        CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+             THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+             ELSE NULL END AS currency_key,
         COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
       FROM ${baseFromWithLocationGroups()}
       ${prevFullWhere ? sql`WHERE ${prevFullWhere}` : sql``}
     `);
     previousMetrics = {
-      revenue: Number(prevSummary[0]!.revenue),
+      // D-12 — previous period for % change uses GBP both sides.
+      revenue: Number(prevSummary[0]!.revenue_gbp),
       transactions: Number(prevSummary[0]!.transactions),
     };
   } catch {

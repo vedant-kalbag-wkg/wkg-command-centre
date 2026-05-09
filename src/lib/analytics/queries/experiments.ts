@@ -61,14 +61,19 @@ export async function getCohortMetrics(
 
   const rows = await db
     .select({
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}), 0)`,
-      transactions: sql<number>`COUNT(*) FILTER (WHERE ${salesTxn})::int`,
+      // Phase 9.1 / D-11 — dual-emit native + GBP + currency_key.
+      revenueNative: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric)     FILTER (WHERE ${amountMode}), 0)`,
+      revenueGbp:    sql<string>`COALESCE(SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${amountMode}), 0)`,
+      currencyKey:   sql<string | null>`CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1 THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode}) ELSE NULL END`,
+      transactions:  sql<number>`COUNT(*) FILTER (WHERE ${salesTxn})::int`,
     })
     .from(salesRecords)
     .where(where);
 
   const row = rows[0];
-  const revenue = Number(row?.revenue ?? 0);
+  // D-12 — cohort metrics rank cross-cohort, so the public `revenue` is GBP.
+  // currencyKey is materialised to support the future renderer dispatch (D-10).
+  const revenue = Number(row?.revenueGbp ?? 0);
   const transactions = Number(row?.transactions ?? 0);
   const avgRevenue = transactions > 0 ? revenue / transactions : 0;
 
@@ -119,14 +124,19 @@ export async function getRestOfPortfolioMetrics(
 
   const rows = await db
     .select({
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}), 0)`,
-      transactions: sql<number>`COUNT(*) FILTER (WHERE ${salesTxn})::int`,
+      // Phase 9.1 / D-11 — dual-emit native + GBP + currency_key.
+      revenueNative: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric)     FILTER (WHERE ${amountMode}), 0)`,
+      revenueGbp:    sql<string>`COALESCE(SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${amountMode}), 0)`,
+      currencyKey:   sql<string | null>`CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1 THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode}) ELSE NULL END`,
+      transactions:  sql<number>`COUNT(*) FILTER (WHERE ${salesTxn})::int`,
     })
     .from(salesRecords)
     .where(where);
 
   const row = rows[0];
-  const revenue = Number(row?.revenue ?? 0);
+  // D-12 — rest-of-portfolio comparison ranks cross-cohort, so GBP is the
+  // canonical numerator. The native arm is kept for the renderer (09.1-07).
+  const revenue = Number(row?.revenueGbp ?? 0);
   const transactions = Number(row?.transactions ?? 0);
   const avgRevenue = transactions > 0 ? revenue / transactions : 0;
 
@@ -164,7 +174,14 @@ export async function findSimilarLocations(
 
   const cohortRevRows = await db
     .select({
-      avgRevPerLocation: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0)`,
+      // D-11 — dual-emit; D-12 — peer-matching is intrinsically cross-currency
+      // (matching against the entire portfolio). The avg-rev-per-location bound
+      // for similarity must be in GBP so a EUR cohort doesn't fail to match
+      // its GBP peers because of the raw-value gap. Native is materialised for
+      // any future native-side similarity report.
+      avgRevPerLocationNative: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0)`,
+      avgRevPerLocationGbp:    sql<string>`COALESCE(SUM(${salesRecords.netAmountGbp}::numeric) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}), 0), 0)`,
+      currencyKey:             sql<string | null>`CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) = 1 THEN MIN(${salesRecords.currency}) ELSE NULL END`,
     })
     .from(salesRecords)
     .where(
@@ -176,7 +193,7 @@ export async function findSimilarLocations(
       ]),
     );
 
-  const avgRevPerLocation = Number(cohortRevRows[0]?.avgRevPerLocation ?? 0);
+  const avgRevPerLocation = Number(cohortRevRows[0]?.avgRevPerLocationGbp ?? 0);
 
   // 3. Build room count bounds: ±30% or ±20 rooms, whichever is larger
   const roomMarginPct = avgRooms * 0.3;
@@ -189,10 +206,20 @@ export async function findSimilarLocations(
   const revHigh = avgRevPerLocation * 1.4;
 
   // 5. Find matching locations
+  //
+  // D-11 / D-12 — the SELECT dual-emits revenue (native + GBP + currency_key)
+  // for any caller that wants the materialised columns; the HAVING that bounds
+  // the similarity range has been switched to net_amount_gbp so the revLow/
+  // revHigh thresholds (computed in GBP via the cohort SUM above) compare to
+  // a like-for-like number. Pre-FX a EUR-only cohort matched against a USD-only
+  // peer pool would exclude valid peers because raw-currency magnitudes don't
+  // line up.
   const matchRows = await db
     .select({
       locationId: locations.id,
-      revenue: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric), 0)`,
+      revenueNative: sql<string>`COALESCE(SUM(${salesRecords.netAmount}::numeric),     0)`,
+      revenueGbp:    sql<string>`COALESCE(SUM(${salesRecords.netAmountGbp}::numeric), 0)`,
+      currencyKey:   sql<string | null>`CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) = 1 THEN MIN(${salesRecords.currency}) ELSE NULL END`,
     })
     .from(locations)
     .leftJoin(
@@ -219,7 +246,8 @@ export async function findSimilarLocations(
     )
     .groupBy(locations.id)
     .having(
-      sql`COALESCE(SUM(${salesRecords.netAmount}::numeric), 0) >= ${revLow} AND COALESCE(SUM(${salesRecords.netAmount}::numeric), 0) <= ${revHigh}`,
+      // D-12 — bound on GBP so revLow/revHigh (themselves GBP) are like-for-like.
+      sql`COALESCE(SUM(${salesRecords.netAmountGbp}::numeric), 0) >= ${revLow} AND COALESCE(SUM(${salesRecords.netAmountGbp}::numeric), 0) <= ${revHigh}`,
     )
     .limit(10);
 

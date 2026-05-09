@@ -8,6 +8,7 @@ import {
   buildPartialReversalCondition,
   buildOrphanReversalCondition,
   buildNonFeeCondition,
+  pickRevenueDisplay,
 } from "./shared";
 
 // Drizzle SQL fragments aren't string-comparable directly; serialise via the
@@ -58,5 +59,38 @@ describe("reversal helpers (shared.ts)", () => {
   it("buildNonFeeCondition: single-column predicate post-D10", () => {
     const sqlText = render(buildNonFeeCondition());
     expect(sqlText).toContain('"sales_records"."is_weknow_fee" = false');
+  });
+});
+
+// Phase 9.1 / FX-03 — D-10 dispatch helper. Consumers (renderer in plan
+// 09.1-07) call this once per row to pick which side of the dual-emit shape
+// to render. Single-currency cohort → native; multi-currency cohort → GBP.
+describe("pickRevenueDisplay (D-10 dispatch)", () => {
+  it("single-currency cohort: returns native value + currency_key", () => {
+    const out = pickRevenueDisplay({
+      revenue_native: "1234.56",
+      revenue_gbp: "987.65",
+      currency_key: "EUR",
+    });
+    expect(out).toEqual({ value: 1234.56, currency: "EUR" });
+  });
+
+  it("multi-currency cohort: returns GBP value + 'GBP'", () => {
+    const out = pickRevenueDisplay({
+      revenue_native: "0",
+      revenue_gbp: "5000.00",
+      currency_key: null,
+    });
+    expect(out).toEqual({ value: 5000, currency: "GBP" });
+  });
+
+  it("coerces string-shaped numerics to JS numbers (Postgres numeric → text)", () => {
+    const out = pickRevenueDisplay({
+      revenue_native: "12.345",
+      revenue_gbp: "10.000",
+      currency_key: "USD",
+    });
+    expect(out.value).toBeCloseTo(12.345, 3);
+    expect(out.currency).toBe("USD");
   });
 });

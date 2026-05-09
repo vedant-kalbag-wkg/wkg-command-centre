@@ -91,7 +91,9 @@ export async function getRegionsList(
       region_name: string;
       market_id: string | null;
       market_name: string | null;
-      revenue: string;
+      revenue_native: string;
+      revenue_gbp: string;
+      currency_key: string | null;
       transactions: string;
     }>(sql`
       SELECT
@@ -99,12 +101,16 @@ export async function getRegionsList(
         ${regions.name} AS region_name,
         ${markets.id} AS market_id,
         ${markets.name} AS market_name,
-        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+        COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+        CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+             THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+             ELSE NULL END AS currency_key,
         COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
       FROM ${baseFromWithRegions()}
       ${whereClause ? sql`WHERE ${whereClause}` : sql``}
       GROUP BY ${regions.id}, ${regions.name}, ${markets.id}, ${markets.name}
-      ORDER BY revenue DESC
+      ORDER BY revenue_gbp DESC      -- D-12: ranking always GBP
     `),
     // Query 2: badge counts (hotel groups + location groups per region).
     //
@@ -151,7 +157,13 @@ export async function getRegionsList(
   return rows.map((row) => ({
     id: row.region_id,
     name: row.region_name,
-    revenue: Number(row.revenue),
+    // Phase 9.1 / D-12: ranking is always GBP, so the public `revenue` field
+    // (consumed by the metric tile renderer + cross-region sort) reads from
+    // `revenue_gbp`. Plan 09.1-07 layers the auto-pick (D-10) on top by
+    // adding `revenueNative` + `currencyKey` to the public shape and dispatching
+    // in the renderer. Internal binding to GBP keeps cross-currency comparisons
+    // correct (a EUR-only region and a GBP-only region rank on the same scale).
+    revenue: Number(row.revenue_gbp),
     transactions: Number(row.transactions),
     hotelGroupCount: countMap.get(row.region_id)?.hg ?? 0,
     locationGroupCount: countMap.get(row.region_id)?.lg ?? 0,
@@ -175,18 +187,26 @@ export async function getRegionDetail(
 
   // Summary metrics
   const summaryRows = await executeRows<{
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${baseFromWithRegions()}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
   `);
 
   const summary = summaryRows[0]!;
-  const revenue = Number(summary.revenue);
+  // D-12 — bind public `revenue` to GBP side; renderer dispatch (09.1-07) will
+  // surface revenue_native + currency_key when the cohort is single-currency.
+  const revenue = Number(summary.revenue_gbp);
   const transactions = Number(summary.transactions);
 
   // Get location IDs in this region for sub-queries
@@ -204,13 +224,19 @@ export async function getRegionDetail(
   // exactly once.
   const hgRows = await executeRows<{
     group_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     hotel_count: string;
   }>(sql`
     SELECT
       ${hotelGroups.name} AS group_name,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS hotel_count
     FROM ${hotelGroups}
@@ -223,11 +249,12 @@ export async function getRegionDetail(
     WHERE ${salesRecords.locationId} IN (${locationIdsInRegion})
       ${whereClause ? sql`AND ${whereClause}` : sql``}
     GROUP BY ${hotelGroups.id}, ${hotelGroups.name}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: ranking always GBP
   `);
 
   const hotelGroupBreakdown = hgRows.map((row) => {
-    const hgRevenue = Number(row.revenue);
+    // D-12 — bind to GBP side; renderer dispatch lands in 09.1-07.
+    const hgRevenue = Number(row.revenue_gbp);
     const hotelCount = Number(row.hotel_count);
     return {
       name: row.group_name,
@@ -252,14 +279,20 @@ export async function getRegionDetail(
   );
   const lgRows = await executeRows<{
     group_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     outlet_count: string;
     total_rooms: string | null;
   }>(sql`
     SELECT
       ${locationGroups.name} AS group_name,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${salesTxn})::text AS outlet_count,
       ${totalRoomsExpr}::text AS total_rooms
@@ -270,12 +303,13 @@ export async function getRegionDetail(
     WHERE ${salesRecords.locationId} IN (${locationIdsInRegion})
       ${whereClause ? sql`AND ${whereClause}` : sql``}
     GROUP BY ${locationGroups.id}, ${locationGroups.name}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: ranking always GBP
   `);
 
   const locationGroupBreakdown = lgRows.map((row) => ({
     name: row.group_name,
-    revenue: Number(row.revenue),
+    // D-12 — bind to GBP side; renderer dispatch (09.1-07) reads currency_key.
+    revenue: Number(row.revenue_gbp),
     transactions: Number(row.transactions),
     outletCount: Number(row.outlet_count),
     totalRooms: row.total_rooms ? Number(row.total_rooms) : null,
@@ -290,17 +324,25 @@ export async function getRegionDetail(
   let previousMetrics: { revenue: number; transactions: number } | null = null;
   try {
     const prevSummary = await executeRows<{
-      revenue: string;
+      revenue_native: string;
+      revenue_gbp: string;
+      currency_key: string | null;
       transactions: string;
     }>(sql`
       SELECT
-        COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+        COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+        CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+             THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+             ELSE NULL END AS currency_key,
         COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
       FROM ${baseFromWithRegions()}
       ${prevFullWhere ? sql`WHERE ${prevFullWhere}` : sql``}
     `);
     previousMetrics = {
-      revenue: Number(prevSummary[0]!.revenue),
+      // D-12 — % change vs previous period must compare like-for-like; both
+      // arms read GBP so a EUR-only region's MoM is consistent year-round.
+      revenue: Number(prevSummary[0]!.revenue_gbp),
       transactions: Number(prevSummary[0]!.transactions),
     };
   } catch {
