@@ -43,7 +43,6 @@ yarn-error.log*
 
 # tooling / agent state
 .claude/
-.planning/
 .worktrees/
 
 # generated email preview HTML (run `tsx scripts/render-email-preview.ts`)
