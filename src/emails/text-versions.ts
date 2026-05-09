@@ -78,3 +78,54 @@ export function passwordChangedText({
     FOOTER,
   ].join("\n");
 }
+
+// Phase 9 Plan 09-04 — Plain-text companion for PocUnderperformanceEmail.
+//
+// Avoids auto-generated render(el, { plainText: true }) which produces
+// [URL]Label-style output unreadable in plain-text Outlook configurations.
+// The `portfolioUrl` is rendered once at the bottom as the sole CTA link.
+export function pocUnderperformanceText({
+  pocName,
+  kiosks,
+  moreCount,
+  windowDays,
+  runIsoWeek,
+  portfolioUrl,
+}: {
+  pocName: string;
+  kiosks: Array<{
+    kioskId: string;
+    locationName: string;
+    region: string;
+    revenue: number | string;
+    percentile: number | string;
+    detailUrl: string;
+  }>;
+  moreCount: number;
+  windowDays: number;
+  runIsoWeek: string;
+  portfolioUrl: string;
+}): string {
+  const kioskLines = kiosks.map(
+    (k) =>
+      `  - ${k.locationName} (${k.region}) | Revenue: ${k.revenue} | p${k.percentile}\n    ${k.detailUrl}`,
+  );
+
+  const moreNote =
+    moreCount > 0
+      ? `\n… and ${moreCount} more kiosks below the 10th percentile — see your portfolio for the full list.\n`
+      : "";
+
+  return [
+    `Underperforming kiosks — ${runIsoWeek}`,
+    "",
+    `Hi ${pocName}, the following kiosks in your portfolio fell below the 10th percentile over the last ${windowDays} days:`,
+    "",
+    ...kioskLines,
+    moreNote,
+    "Review your portfolio to investigate and take action:",
+    portfolioUrl,
+    "",
+    FOOTER,
+  ].join("\n");
+}
