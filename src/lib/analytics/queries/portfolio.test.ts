@@ -66,6 +66,10 @@ const userCtx: UserCtx = {
  * Two properties; the driver-shaped rows the raw query would return.
  *  - Hotel A: 3 active kiosks, 100 rooms, £10,000 revenue, belongs to "Hilton"
  *  - Hotel B: 0 kiosks, null rooms, £5,000 revenue, no group membership
+ *
+ * Phase 9.1 / FX-03 (D-11/D-12): outlet-tier rows now dual-emit revenue_native
+ * + revenue_gbp + currency_key. Public `revenue` field on OutletTierRow binds
+ * to the GBP arm so percentile rank and sharePercentage compare on a single base.
  */
 const outletTierRows = [
   {
@@ -76,7 +80,9 @@ const outletTierRows = [
     hotel_group_name: "Hilton",
     kiosk_count: 3,
     num_rooms: 100,
-    revenue: "10000",
+    revenue_native: "10000",
+    revenue_gbp: "10000",
+    currency_key: "GBP",
     transactions: "500",
     total_count: 2,
   },
@@ -88,7 +94,9 @@ const outletTierRows = [
     hotel_group_name: null,
     kiosk_count: 0,
     num_rooms: null,
-    revenue: "5000",
+    revenue_native: "5000",
+    revenue_gbp: "5000",
+    currency_key: "GBP",
     transactions: "200",
     total_count: 2,
   },
@@ -156,7 +164,9 @@ describe("getOutletTiers – property-level enrichment (Phase 4.2)", () => {
         hotel_group_name: null,
         kiosk_count: 2,
         num_rooms: 0,
-        revenue: "1000",
+        revenue_native: "1000",
+        revenue_gbp: "1000",
+        currency_key: "GBP",
         transactions: "10",
         total_count: 1,
       },
@@ -190,7 +200,9 @@ describe("getOutletTiers – property-level enrichment (Phase 4.2)", () => {
         hotel_group_name: null,
         kiosk_count: 1,
         num_rooms: 50,
-        revenue: String(1000 - i),
+        revenue_native: String(1000 - i),
+        revenue_gbp: String(1000 - i),
+        currency_key: "GBP",
         transactions: "10",
         total_count: 250,
       })),

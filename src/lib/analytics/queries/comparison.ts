@@ -94,23 +94,30 @@ async function getLocationMetrics(
   const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
   }>(sql`
     SELECT
       ${locations.id} AS entity_id,
       ${locations.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
     GROUP BY ${locations.id}, ${locations.name}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: comparison ranking always GBP
   `);
 
   return rows.map((row) => {
-    const revenue = Number(row.revenue);
+    // D-12 — comparison metrics rank cross-entity, so GBP-bind.
+    const revenue = Number(row.revenue_gbp);
     const transactions = Number(row.transactions);
     return {
       entityId: row.entity_id,
@@ -141,13 +148,19 @@ async function getHotelGroupMetrics(
   const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
   }>(sql`
     SELECT
       ${hotelGroups.id} AS entity_id,
       ${hotelGroups.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${hotelGroups}
       INNER JOIN ${salesRecords} ON EXISTS (
@@ -158,11 +171,11 @@ async function getHotelGroupMetrics(
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
     GROUP BY ${hotelGroups.id}, ${hotelGroups.name}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: comparison ranking always GBP
   `);
 
   return rows.map((row) => {
-    const revenue = Number(row.revenue);
+    const revenue = Number(row.revenue_gbp);
     const transactions = Number(row.transactions);
     return {
       entityId: row.entity_id,
@@ -188,13 +201,19 @@ async function getRegionMetrics(
   const rows = await executeRows<{
     entity_id: string;
     entity_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
   }>(sql`
     SELECT
       ${regions.id} AS entity_id,
       ${regions.name} AS entity_name,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${salesRecords}
       INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
@@ -202,11 +221,11 @@ async function getRegionMetrics(
       INNER JOIN ${regions} ON ${locationRegionMemberships.regionId} = ${regions.id}
     ${fullWhere ? sql`WHERE ${fullWhere}` : sql``}
     GROUP BY ${regions.id}, ${regions.name}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: comparison ranking always GBP
   `);
 
   return rows.map((row) => {
-    const revenue = Number(row.revenue);
+    const revenue = Number(row.revenue_gbp);
     const transactions = Number(row.transactions);
     return {
       entityId: row.entity_id,

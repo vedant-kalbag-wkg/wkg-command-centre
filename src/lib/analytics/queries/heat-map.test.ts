@@ -53,7 +53,13 @@ const userCtx: UserCtx = {
   role: "admin",
 };
 
-/** Two hotels: Hotel A has more revenue, Hotel B has more transactions */
+/** Two hotels: Hotel A has more revenue, Hotel B has more transactions.
+ *
+ * Phase 9.1 / FX-03: heat-map now reads `revenue_gbp` (D-12: percentile rank
+ * is cross-cohort and must compare GBP). Fixtures emit dual-emit shape so
+ * the consumer's Number(row.revenue_gbp) resolves; native + currency_key
+ * are surfaced for the future renderer dispatch (09.1-07).
+ */
 const salesRows = [
   {
     location_id: "loc-1",
@@ -63,7 +69,9 @@ const salesRows = [
     live_date: "2025-01-15T00:00:00.000Z",
     hotel_group_name: "Alpha Group",
     kiosk_count: 5,
-    revenue: "50000",
+    revenue_native: "50000",
+    revenue_gbp: "50000",
+    currency_key: "GBP",
     transactions: "200",
     quantity: "400",
   },
@@ -75,7 +83,9 @@ const salesRows = [
     live_date: null,
     hotel_group_name: "Beta Group",
     kiosk_count: 2,
-    revenue: "30000",
+    revenue_native: "30000",
+    revenue_gbp: "30000",
+    currency_key: "GBP",
     transactions: "400",
     quantity: "600",
   },
@@ -190,9 +200,9 @@ describe("getHeatMapData – percentile-rank normalisation (D7 / Task 2.8)", () 
    */
   it("ranks the middle hotel at the 50th percentile, not min-max-crushed by an outlier", async () => {
     const threeHotels = [
-      { ...salesRows[0], location_id: "loc-low",  outlet_code: "LOW",  hotel_name: "Low",  revenue: "100",  transactions: "1", quantity: "1" },
-      { ...salesRows[0], location_id: "loc-mid",  outlet_code: "MID",  hotel_name: "Mid",  revenue: "200",  transactions: "2", quantity: "2" },
-      { ...salesRows[0], location_id: "loc-high", outlet_code: "HIGH", hotel_name: "High", revenue: "1000", transactions: "3", quantity: "3" },
+      { ...salesRows[0], location_id: "loc-low",  outlet_code: "LOW",  hotel_name: "Low",  revenue_native: "100",  revenue_gbp: "100",  currency_key: "GBP", transactions: "1", quantity: "1" },
+      { ...salesRows[0], location_id: "loc-mid",  outlet_code: "MID",  hotel_name: "Mid",  revenue_native: "200",  revenue_gbp: "200",  currency_key: "GBP", transactions: "2", quantity: "2" },
+      { ...salesRows[0], location_id: "loc-high", outlet_code: "HIGH", hotel_name: "High", revenue_native: "1000", revenue_gbp: "1000", currency_key: "GBP", transactions: "3", quantity: "3" },
     ];
 
     mockExecute
@@ -233,9 +243,9 @@ describe("getHeatMapData – percentile-rank normalisation (D7 / Task 2.8)", () 
    */
   it("optimistic ties — two hotels with the same revenue share the better percentile", async () => {
     const tiedHotels = [
-      { ...salesRows[0], location_id: "loc-tieA", outlet_code: "TA", hotel_name: "Tie A", revenue: "200", transactions: "1", quantity: "1" },
-      { ...salesRows[0], location_id: "loc-tieB", outlet_code: "TB", hotel_name: "Tie B", revenue: "200", transactions: "2", quantity: "2" },
-      { ...salesRows[0], location_id: "loc-top",  outlet_code: "TP", hotel_name: "Top",   revenue: "500", transactions: "3", quantity: "3" },
+      { ...salesRows[0], location_id: "loc-tieA", outlet_code: "TA", hotel_name: "Tie A", revenue_native: "200", revenue_gbp: "200", currency_key: "GBP", transactions: "1", quantity: "1" },
+      { ...salesRows[0], location_id: "loc-tieB", outlet_code: "TB", hotel_name: "Tie B", revenue_native: "200", revenue_gbp: "200", currency_key: "GBP", transactions: "2", quantity: "2" },
+      { ...salesRows[0], location_id: "loc-top",  outlet_code: "TP", hotel_name: "Top",   revenue_native: "500", revenue_gbp: "500", currency_key: "GBP", transactions: "3", quantity: "3" },
     ];
 
     mockExecute

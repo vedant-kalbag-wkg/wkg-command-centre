@@ -99,8 +99,11 @@ export async function getRevenueByMaturityBucket(
   const rows = await executeRows<{
     bucket: string;
     location_count: string;
-    avg_revenue: string;
-    total_revenue: string;
+    avg_revenue_native: string;
+    avg_revenue_gbp: string;
+    total_revenue_native: string;
+    total_revenue_gbp: string;
+    currency_key: string | null;
   }>(sql`
     SELECT
       CASE
@@ -111,8 +114,19 @@ export async function getRevenueByMaturityBucket(
         ELSE '9+mo'
       END AS bucket,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
-      COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue,
-      COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}), 0) AS total_revenue
+      -- D-11: dual-emit avg + total in both native and GBP. The avg is derived
+      -- (SUM/COUNT-distinct-locations); we apply the dual-emit to the SUM
+      -- numerator only — denominator is currency-agnostic. D-12: maturity
+      -- buckets aggregate cross-currency by definition (a 0-1mo bucket spans
+      -- every region's youngest installs); the public avgRevenue and
+      -- totalRevenue fields read GBP so cohort-vs-cohort comparison is meaningful.
+      COALESCE(SUM(${salesRecords.netAmount}::numeric)     FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue_gbp,
+      COALESCE(SUM(${salesRecords.netAmount}::numeric)     FILTER (WHERE ${amountMode}), 0) AS total_revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${amountMode}), 0) AS total_revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key
     FROM ${baseFrom()}
     WHERE ${fullWhere}
     GROUP BY bucket
@@ -127,8 +141,10 @@ export async function getRevenueByMaturityBucket(
       {
         bucket: r.bucket,
         locationCount: Number(r.location_count),
-        avgRevenue: Number(r.avg_revenue),
-        totalRevenue: Number(r.total_revenue),
+        // D-12 — bind public fields to the GBP arm; renderer (09.1-07) flips
+        // to native when currency_key is set.
+        avgRevenue: Number(r.avg_revenue_gbp),
+        totalRevenue: Number(r.total_revenue_gbp),
       },
     ]),
   );
@@ -164,7 +180,9 @@ export async function getRevenueRampCurve(
   // without re-deriving labels client-side.
   const rows = await executeRows<{
     bucket_index: string;
-    avg_revenue: string;
+    avg_revenue_native: string;
+    avg_revenue_gbp: string;
+    currency_key: string | null;
     location_count: string;
   }>(sql`
     SELECT
@@ -175,7 +193,12 @@ export async function getRevenueRampCurve(
         WHEN EXTRACT(EPOCH FROM (${salesRecords.transactionDate}::timestamp - ${kioskLiveDateSubquery})) / (30.44 * 86400) < 9 THEN 6
         ELSE 9
       END AS bucket_index,
-      COALESCE(SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue,
+      -- D-11: dual-emit avg-revenue numerator (SUM(net_amount) and SUM(net_amount_gbp)).
+      COALESCE(SUM(${salesRecords.netAmount}::numeric)     FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${amountMode}) / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0), 0) AS avg_revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count
     FROM ${baseFrom()}
     WHERE ${fullWhere}
@@ -191,7 +214,9 @@ export async function getRevenueRampCurve(
       Number(r.bucket_index),
       {
         monthsSinceInstall: Number(r.bucket_index),
-        avgRevenue: Number(r.avg_revenue),
+        // D-12 — ramp curve compares cross-cohort over months-since-live; bind
+        // GBP so a EUR-only ramp doesn't flatten relative to a GBP-only ramp.
+        avgRevenue: Number(r.avg_revenue_gbp),
         locationCount: Number(r.location_count),
       },
     ]),
@@ -229,17 +254,30 @@ export async function getInstallCohorts(
   const rows = await executeRows<{
     install_month: string;
     location_count: string;
-    avg_monthly_revenue: string;
+    avg_monthly_revenue_native: string;
+    avg_monthly_revenue_gbp: string;
+    currency_key: string | null;
   }>(sql`
     SELECT
       TO_CHAR(${kioskLiveDateSubquery}, 'YYYY-MM') AS install_month,
       COUNT(DISTINCT ${salesRecords.locationId}) AS location_count,
+      -- D-11: dual-emit. Numerator dual-emits; denominator (location count
+      -- × months) is currency-agnostic.
       COALESCE(
         SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${amountMode})
           / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0)
           / ${monthsInWindow},
         0
-      ) AS avg_monthly_revenue
+      ) AS avg_monthly_revenue_native,
+      COALESCE(
+        SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${amountMode})
+          / NULLIF(COUNT(DISTINCT ${salesRecords.locationId}) FILTER (WHERE ${amountMode}), 0)
+          / ${monthsInWindow},
+        0
+      ) AS avg_monthly_revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key
     FROM ${baseFrom()}
     WHERE ${fullWhere}
     GROUP BY install_month
@@ -249,7 +287,8 @@ export async function getInstallCohorts(
   return rows.map((r) => ({
     installMonth: r.install_month,
     locationCount: Number(r.location_count),
-    avgMonthlyRevenue: Number(r.avg_monthly_revenue),
+    // D-12 — install-month cohorts compare across regions/currencies; bind GBP.
+    avgMonthlyRevenue: Number(r.avg_monthly_revenue_gbp),
   }));
 }
 
