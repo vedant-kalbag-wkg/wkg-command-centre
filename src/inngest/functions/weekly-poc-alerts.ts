@@ -2,28 +2,28 @@
  * Weekly POC underperformance alert job.
  *
  * Fires every Monday at 09:00 Europe/London, or on demand via the
- * "performance-alerts/run.requested" event. Classifies all eligible live
- * kiosks, computes tier changes, and emails each POC whose kiosks are in the
- * bottom tier.
+ * "performance-alerts/run.requested" event. Classifies all eligible mature
+ * hotels by composite-score percentile, computes tier changes, and emails each
+ * POC whose hotels are in the bottom tier.
  *
  * Steps:
- *   1. load-config       — classify kiosks via SQL
- *   2. diff-state        — compare against kiosk_performance_alert_state
+ *   1. load-config       — classify hotels via SQL (5 sub-metrics → composite)
+ *   2. diff-state        — compare against location_performance_alert_state
  *   3. (inline)          — detect first-run; suppress all alerts on cold start
- *   4. write-state       — upsert kiosk_performance_alert_state rows
+ *   4. write-state       — upsert location_performance_alert_state rows
  *   5. emit-poc-emails   — fan-out email/send.requested events per POC
- *   6. emit-skip-rows    — write email_log skip rows for kiosks with no POC
+ *   6. emit-skip-rows    — write email_log skip rows for hotels with no POC
  *   7. write-run-audit   — append performance_alert_run audit log row
  */
 
 import { sql, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { kioskPerformanceAlertState, emailLog, user } from "@/db/schema";
+import { locationPerformanceAlertState, emailLog, user } from "@/db/schema";
 import { inngest } from "../client";
 import {
-  classifyEligibleKiosks,
-  type ClassifiedKioskRow,
-} from "@/lib/performance-alerts/classify-kiosks";
+  classifyEligibleLocations,
+  type ClassifiedLocationRow,
+} from "@/lib/performance-alerts/classify-locations";
 import {
   decideAlert,
   type Decision,
@@ -38,7 +38,7 @@ import { BRAND } from "@/emails/brand";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const KIOSK_TRUNCATION_CAP = 25;
+const HOTEL_TRUNCATION_CAP = 25;
 
 // ─── Inline event type (D-03: do not add to events.ts) ───────────────────────
 
@@ -80,25 +80,25 @@ export async function _handleWeeklyPocAlerts({
 }> {
   // ── Step 1: classify ────────────────────────────────────────────────────────
   const classification = await step.run("load-config", async () => {
-    return await classifyEligibleKiosks();
+    return await classifyEligibleLocations();
   });
 
-  const kioskIds = classification.rows.map((r) => r.kioskId);
+  const locationIds = classification.rows.map((r) => r.locationId);
 
   // ── Step 2: diff-state ──────────────────────────────────────────────────────
   const decisions = await step.run("diff-state", async () => {
     const now = new Date();
     const priorRows =
-      kioskIds.length === 0
+      locationIds.length === 0
         ? []
         : await db
             .select()
-            .from(kioskPerformanceAlertState)
-            .where(inArray(kioskPerformanceAlertState.kioskId, kioskIds));
-    const priorByKiosk = new Map(priorRows.map((r) => [r.kioskId, r]));
+            .from(locationPerformanceAlertState)
+            .where(inArray(locationPerformanceAlertState.locationId, locationIds));
+    const priorByLocation = new Map(priorRows.map((r) => [r.locationId, r]));
 
     return classification.rows.map((row) => {
-      const prior = priorByKiosk.get(row.kioskId);
+      const prior = priorByLocation.get(row.locationId);
       const decision = decideAlert(
         prior
           ? { tier: prior.tier as Tier, lastAlertedAt: prior.lastAlertedAt }
@@ -117,7 +117,7 @@ export async function _handleWeeklyPocAlerts({
   });
 
   // ── Step 3: detect first-run ─────────────────────────────────────────────────
-  // Pitfall 8 option a: if every kiosk is new (no prior state rows), suppress
+  // Pitfall 8 option a: if every hotel is new (no prior state rows), suppress
   // all alerts — this is a cold-start run, not a genuine underperformance event.
   const firstRun =
     decisions.length > 0 && decisions.every((d) => !d.hadPriorRow);
@@ -133,11 +133,15 @@ export async function _handleWeeklyPocAlerts({
   const runIsoWeek = await step.run("write-state", async () => {
     const now = new Date();
     for (const d of effectiveDecisions) {
+      // numeric(6,2) accepts string on insert under drizzle's default mode;
+      // .toFixed(2) matches the column scale exactly.
+      const compositeScoreStr = d.compositeScore.toFixed(2);
       await db
-        .insert(kioskPerformanceAlertState)
+        .insert(locationPerformanceAlertState)
         .values({
-          kioskId: d.kioskId,
+          locationId: d.locationId,
           tier: d.tier,
+          compositeScore: compositeScoreStr,
           classifiedAt: now,
           lastRunAt: now,
           lastAlertedAt:
@@ -146,9 +150,10 @@ export async function _handleWeeklyPocAlerts({
               : d.lastAlertedAt,
         })
         .onConflictDoUpdate({
-          target: kioskPerformanceAlertState.kioskId,
+          target: locationPerformanceAlertState.locationId,
           set: {
             tier: d.tier,
+            compositeScore: compositeScoreStr,
             classifiedAt: now,
             lastRunAt: now,
             lastAlertedAt:
@@ -184,12 +189,16 @@ export async function _handleWeeklyPocAlerts({
         const u = userById.get(g.pocUserId!);
         if (!u || !u.email) return null;
 
-        const sortedKiosks = [...g.kiosks].sort(
-          (a, b) => (a as ClassifiedKioskRow).revenue - (b as ClassifiedKioskRow).revenue,
+        // Worst (lowest composite) hotels surface first — matches the email
+        // body's "these need attention" framing.
+        const sortedHotels = [...g.kiosks].sort(
+          (a, b) =>
+            (a as ClassifiedLocationRow).compositeScore -
+            (b as ClassifiedLocationRow).compositeScore,
         );
-        const truncated = sortedKiosks.slice(0, KIOSK_TRUNCATION_CAP);
-        const moreCount = Math.max(0, sortedKiosks.length - KIOSK_TRUNCATION_CAP);
-        const subject = `Performance update — ${sortedKiosks.length} kiosk${sortedKiosks.length === 1 ? "" : "s"} need attention`;
+        const truncated = sortedHotels.slice(0, HOTEL_TRUNCATION_CAP);
+        const moreCount = Math.max(0, sortedHotels.length - HOTEL_TRUNCATION_CAP);
+        const subject = `These hotels are underperforming — ${sortedHotels.length} hotel${sortedHotels.length === 1 ? "" : "s"} need attention`;
 
         return {
           name: "email/send.requested" as const,
@@ -200,21 +209,39 @@ export async function _handleWeeklyPocAlerts({
             template: "poc-underperformance" as const,
             templateProps: {
               pocName: u.name ?? "there",
-              kiosks: truncated.map((k) => {
-                const kr = k as ClassifiedKioskRow;
+              hotels: truncated.map((h) => {
+                const hr = h as ClassifiedLocationRow;
+                const salesPerRoomValue = hr.subMetrics.revenuePerRoom.value;
                 return {
-                  kioskId: kr.outletCode,
-                  locationName: kr.locationName,
-                  region: kr.region,
-                  // Pre-format with the kiosk's own currency. The template
-                  // renders this string verbatim — see comment in
+                  locationId: hr.locationId,
+                  hotelName: hr.hotelName,
+                  region: hr.region,
+                  currency: hr.currency,
+                  // Pre-format with the hotel's modal currency. The template
+                  // renders these strings verbatim — see comment in
                   // src/emails/poc-underperformance.tsx.
-                  revenue: formatRevenueForKiosk(kr.revenue, kr.currency),
-                  // Round to a whole number for the rendered cell — the raw
-                  // computation `(lo / total) * 100` produces floats like
-                  // 3.3333333333333335 that the template renders verbatim.
-                  percentile: Math.round(kr.percentile),
-                  detailUrl: `${BRAND.prodUrl}/kiosks/${kr.kioskId}`,
+                  totalRevenue: formatRevenueForKiosk(hr.totalRevenue, hr.currency),
+                  totalTransactions: hr.totalTransactions,
+                  kioskCount: hr.kioskCount,
+                  numRooms: hr.numRooms,
+                  // null when numRooms is unknown — template renders "—".
+                  salesPerRoom:
+                    salesPerRoomValue === null
+                      ? null
+                      : formatRevenueForKiosk(salesPerRoomValue, hr.currency),
+                  // 0–100 composite, rounded to whole for display.
+                  compositeScore: Math.round(hr.compositeScore),
+                  subMetricPercentiles: {
+                    revenue: Math.round(hr.subMetrics.revenue.percentile ?? 0),
+                    transactions: Math.round(hr.subMetrics.transactions.percentile ?? 0),
+                    revenuePerRoom:
+                      hr.subMetrics.revenuePerRoom.percentile === null
+                        ? null
+                        : Math.round(hr.subMetrics.revenuePerRoom.percentile),
+                    txnPerKiosk: Math.round(hr.subMetrics.txnPerKiosk.percentile ?? 0),
+                    basketValue: Math.round(hr.subMetrics.basketValue.percentile ?? 0),
+                  },
+                  detailUrl: `${BRAND.prodUrl}/locations/${hr.locationId}`,
                 };
               }),
               moreCount,
@@ -223,10 +250,16 @@ export async function _handleWeeklyPocAlerts({
               // CR-01: required by pocUnderperformanceText — without it the
               // plain-text CTA link renders as "undefined" for every recipient.
               portfolioUrl: `${BRAND.prodUrl}/analytics/portfolio`,
-              // Emerging cutoff is admin-configurable via app_settings; render
-              // it dynamically so the body copy never drifts from the actual
-              // tier boundary.
+              // Bottom-tier cutoff is admin-configurable via app_settings;
+              // render dynamically so the body copy never drifts from the
+              // actual tier boundary.
               bottomPercentile: classification.tierConfig.bottom,
+              // Composite-score weights footnote: the email renders these as
+              // a sticky "Composite = revenue 30% · transactions 20% · ..."
+              // line. Sourced from the classifier so a future migration of
+              // weights → app_settings flows through to the rendered email
+              // without a coupled change here.
+              weights: classification.weights,
             },
             payloadHash: sha256(`${g.pocUserId}:${runIsoWeek}`),
           },
@@ -254,10 +287,10 @@ export async function _handleWeeklyPocAlerts({
   // skipped count on the admin dashboard would be inflated. Acceptable
   // imprecision for metrics-only data.
   const skippedCount = await step.run("emit-skip-rows", async () => {
-    const skipKiosks = effectiveDecisions.filter(
+    const skipLocations = effectiveDecisions.filter(
       (d) => d.decision !== "no-alert" && d.internalPocId === null,
     );
-    for (let i = 0; i < skipKiosks.length; i++) {
+    for (let i = 0; i < skipLocations.length; i++) {
       await db.insert(emailLog).values({
         kind: "underperforming_poc",
         recipient: "[skip:no-poc]",
@@ -266,7 +299,7 @@ export async function _handleWeeklyPocAlerts({
         payloadHash: null,
       });
     }
-    return skipKiosks.length;
+    return skipLocations.length;
   });
 
   // ── Step 7: write-run-audit ─────────────────────────────────────────────────

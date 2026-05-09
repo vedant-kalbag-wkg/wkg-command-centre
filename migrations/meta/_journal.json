@@ -316,6 +316,13 @@
       "when": 1780700000000,
       "tag": "0044_phase_09_email_log_skipped_status",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1780800000000,
+      "tag": "0045_phase_09_hotel_alerts",
+      "breakpoints": true
     }
   ]
 }
