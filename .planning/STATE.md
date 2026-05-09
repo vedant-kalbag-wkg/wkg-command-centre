@@ -3,15 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: data-foundation-and-email
 status: executing
-stopped_at: Phase 7 merged into main (PR #36, squash 05fbf07) — Phase 8 CONTEXT.md ready to plan
-last_updated: "2026-05-08T18:00:00.000Z"
-last_activity: 2026-05-08 -- Phase 7 (Data Foundation Rebuild) shipped + squash-merged into main as 05fbf07 via PR #36. Cycle: PR #34 merged → PR #35 revert → PR #36 re-opened with 4 fix commits (7746e2b, a622c72, 05c0992, 0787de4) addressing 9 review findings. Phase 8 (Email Infrastructure) CONTEXT.md gathered same session — ready for /gsd-plan-phase 8.
+stopped_at: Phase 8 code-complete on gsd/phase-08-email-infrastructure — operator UAT pending in 08-HUMAN-UAT.md
+last_updated: "2026-05-09T12:30:00.000Z"
+last_activity: 2026-05-09 -- Phase 8 (Email Infrastructure) code-complete. 3 plans / 19 commits on gsd/phase-08-email-infrastructure. Verifier returned status=human_needed (16/16 must-haves COVERED, 8 operator items deferred to UAT day per D-14). EMAIL-01/02/04 marked validated; EMAIL-03 stays open until operator UAT closes the loop.
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 8
+  completed_plans: 8
   percent: 20
+  notes: "Phase 8 code-complete (3 plans), pending operator UAT (08-HUMAN-UAT.md); does not yet count toward completed_phases."
 ---
 
 # Project State
@@ -25,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 ## Current Position
 
-Phase: 8 (Email Infrastructure) — context gathered, ready for /gsd-plan-phase
-Status: Phase 7 (Data Foundation Rebuild) merged 2026-05-08 via PR #36 squash 05fbf07 after a full review-loop (PR #34 merge → PR #35 revert → PR #36 with 4 fix commits closing 9 review findings). Phase 8 CONTEXT.md captured same day. v1.1 progress: 1 of 5 phases shipped.
-Last activity: 2026-05-08 -- Phase 7 PR #36 merged into main (squash 05fbf07); v1.1 phase 1/5 complete. Phase 8 CONTEXT.md ready (sending domain command.weknowgroup.com, sync-Resend for auth flows, react-email templates, minimal change-pw confirmation).
+Phase: 8 (Email Infrastructure) — code-complete on gsd/phase-08-email-infrastructure; awaiting operator UAT
+Status: Phase 8 code-complete 2026-05-09. 19 commits ahead of origin/main. Verifier returned `human_needed` (16/16 must-haves COVERED). 8 operator-only items tracked in `.planning/phases/08-email-infrastructure/08-HUMAN-UAT.md` (DNS records, Vercel preview env vars, drizzle migration push, real-inbox UAT for invite/forgot-pw/change-pw, Playwright preview-alias runs, throwaway-user cleanup). EMAIL-01/02/04 ticked in REQUIREMENTS.md; EMAIL-03 remains open until UAT closes. v1.1 progress: 1 of 5 phases fully shipped, Phase 8 awaiting UAT.
+Last activity: 2026-05-09 -- Phase 8 wave 1+2+3 executed via parallel gsd-executor subagents (autonomous run); gsd-verifier scored 16/16; HUMAN-UAT.md persisted; awaiting operator UAT day.
 
 ## v1.1 Phase Index
 

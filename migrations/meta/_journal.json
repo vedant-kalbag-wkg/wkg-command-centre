@@ -288,6 +288,20 @@
       "when": 1779400000000,
       "tag": "0040_phase_07_06_drop_locations_outlet_code",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1780400000000,
+      "tag": "0041_phase_08_email_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1780500000000,
+      "tag": "0042_phase_08_email_log_status_check",
+      "breakpoints": true
     }
   ]
 }

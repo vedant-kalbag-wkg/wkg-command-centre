@@ -1103,3 +1103,32 @@ export const eventLog = pgTable(
     byOccurred: index("event_log_occurred_idx").on(t.occurredAt),
   }),
 );
+
+// Phase 8 Plan 08-01 — email_log audit table (EMAIL-04, D-06).
+// One row per send, regardless of transport (sync Resend OR Inngest async).
+// Partial unique idx on (kind, payload_hash) WHERE payload_hash IS NOT NULL
+// enforces digest idempotency at the DB; auth-flow sends pass payload_hash=NULL
+// so they never collide.
+export const emailLog = pgTable(
+  "email_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind").notNull(),
+    recipient: text("recipient").notNull(),
+    resendMessageId: text("resend_message_id"),
+    inngestRunId: text("inngest_run_id"),
+    status: text("status", { enum: ["sent", "failed"] }).notNull(),
+    lastError: text("last_error"),
+    payloadHash: text("payload_hash"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    kindPayloadHashUq: uniqueIndex("email_log_kind_payload_hash_uq")
+      .on(t.kind, t.payloadHash)
+      .where(sql`payload_hash IS NOT NULL`),
+    recipientCreatedAtIdx: index("email_log_recipient_created_at_idx").on(
+      t.recipient,
+      t.createdAt.desc(),
+    ),
+  }),
+);
