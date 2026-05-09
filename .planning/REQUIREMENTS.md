@@ -67,6 +67,15 @@ Turn v1.0's MVP into the day-to-day ops platform the team operates from by:
 - [ ] **DEBT-01** — Bulk action type-safety: Zod-validated patch objects in `src/app/(app)/kiosks/bulk-actions.ts` + `src/app/(app)/locations/bulk-actions.ts`. Replace ad-hoc `Partial<...>` with explicit per-field schema; drop `as any` casts.
 - [ ] **DEBT-02** — Drizzle 0.45.2 patch audit: confirm whether 0.46+ supersedes the hash-based migration detection patch in `patches/drizzle-orm+0.45.2.patch`. If yes, upgrade and drop the patch; if no, document why we're stuck on 0.45.2.
 
+## G. Forex normalisation (cross-currency analytics)
+
+> **Inserted 2026-05-09** — Phase 9.1 (multi-currency analytics, INSERTED) tracks GitHub issue #39, surfaced from PR #38 code review where the cross-currency mis-ranking gap was identified in `classifyEligibleLocations`. CONTEXT.md (D-01..D-17) is the authoritative design contract.
+
+- [ ] **FX-01** — `exchange_rates(currency, rate_date, rate_to_gbp, source, fetched_at)` table + Inngest daily cron `fx-rates.fetch-daily` fetching Bank of England IADB CSV for the supported set of ~25 majors; idempotent upsert via composite PK (currency, rate_date); emits `fx_rate_fetch_failed` email_log row + alert on fetch error.
+- [ ] **FX-02** — `sales_records.net_amount_gbp numeric(12,2)` column; stamped at every ingest site using BoE rate for transaction_date with carry-forward; identity (= net_amount) for currency='GBP'; one-shot historical backfill script; 7-day staleness ceiling enforced per-row stamp; emits `fx_rate_stale` alert when ceiling tripped.
+- [ ] **FX-03** — Analytics audit + swap: every SUM(netAmount) site dual-emits (SUM(net_amount), SUM(net_amount_gbp), currency_key); renderer auto-picks native vs GBP per cohort cardinality. Both Sales mode and Revenue mode dual-emit. Saved-pivot field id `net_amount` preserved.
+- [ ] **FX-04** — `classifyEligibleLocations` ranks on net_amount_gbp; `commission/processor.ts` commission base on net_amount_gbp; `/admin/performance-alerts` always-GBP + stale-rate banner; POC underperformance email continues native via existing `format-currency.ts` (no change).
+
 ## Out of Scope (explicit)
 
 | Feature | Reason |
@@ -116,8 +125,12 @@ Filled by `gsd-roadmapper` 2026-05-03 — every REQ-ID maps to exactly one phase
 | POLISH-02 | Phase 11 | SC4 — calendar empty-state overlay visual distinction shipped per `.planning/debug/calendar-empty-state-overlay.md` |
 | DEBT-01 | Phase 11 | SC5 — Zod-validated patch schemas in kiosk + location `bulk-actions.ts`; `as any` casts removed |
 | DEBT-02 | Phase 11 | SC6 — Drizzle 0.45.2 patch audit complete (upgraded to 0.46+ or documented why stuck) |
+| FX-01 | Phase 9.1 | SC1 — exchange_rates populated daily from BoE; gap-fill / staleness handling defined |
+| FX-02 | Phase 9.1 | SC2 — sales_records.net_amount_gbp populated on ingest using rate for transaction_date; backfill script for historical rows |
+| FX-03 | Phase 9.1 | SC3 — every analytics query audited; aggregations on multi-currency cohorts use GBP-normalised columns; per-kiosk views surface native currency |
+| FX-04 | Phase 9.1 | SC4 — classifyEligibleLocations ranks on GBP-normalised revenue; POC underperformance email continues to render each kiosk's native-currency revenue |
 
-**Total:** 20 REQs across 6 categories → 5 phases. **Coverage: 20/20 ✓** No orphans. (Down from 23 after the 2026-05-09 rescope dropped NOTIF-01, NOTIF-02, REPORT-05, REPORT-06 and added POC-ALERT-01.)
+**Total:** 24 REQs across 7 categories → 6 phases. **Coverage: 24/24 ✓** No orphans. (Phase 9.1 inserted 2026-05-09 from GitHub issue #39, adding FX-01..FX-04. Down from 23 + 4 = 24 after the 2026-05-09 rescope dropped NOTIF-01, NOTIF-02, REPORT-05, REPORT-06 and added POC-ALERT-01 + FX-01..04.)
 
 ---
 *Approved 2026-05-03. Roadmapper next: derive phase structure (continuing from Phase 7), map every REQ-ID to a phase, derive 2-5 success criteria per phase, validate 100% coverage. → DONE 2026-05-03; see `.planning/ROADMAP.md`.*
