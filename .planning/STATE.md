@@ -101,10 +101,30 @@ None at v1.1 scoping start. Three unresolved debug sessions tracked in v1.1 cate
 
 ## Session Continuity
 
-Current session: 2026-05-09 (resumed → completed) — Phase 9 hotel-level refactor code-complete
-Stopped at: Phase 9 PR #38 follow-up rewrite from kiosk-level → hotel-level alerts is code-complete. 5 commits ahead of `origin/gsd/phase-09-poc-underperformance-alerts`: `b3363aa` (wip schema + classifier), `e0ae7fc` (cron + journal), `7188362` (email template + plain-text + UAT screenshot), `8dd9b36` (silencing UI move), `6066d9c` (test refactor). 796/796 vitest pass, `tsc --noEmit` clean. Migration 0045 applied to Neon preview DB via `scripts/migrate-neon-dev.ts --env-file=.env.preview`.
-Resume file: none (HANDOFF.json + .continue-here.md retired — both served their purpose).
-Next action: operator pushes branch to origin, runs Phase 9 Playwright specs (`tests/locations/silence.spec.ts` + integration tests) against the preview alias, plus end-to-end manual UAT against the new hotel-shape email render. PR #38 picks up the new commits automatically. When green: merge phase 9 to main. Then `/gsd-discuss-phase 10` for Access Control Extended (AUTH-06..07).
+Current session: 2026-05-09 — Phase 9.1 context captured
+Stopped at: `/gsd-discuss-phase 9.1` complete. CONTEXT.md + DISCUSSION-LOG.md authored on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep` (cut from main at scaffold commit `0dd054b`). 17 implementation decisions captured (D-01 through D-17) across four gray areas: rate source & ingest (BoE locked), missing-rate gap-fill (carry-forward + 7-day staleness ceiling + email_log alerts), companion column scope (net_amount_gbp only — drop vat/total companions from ROADMAP wording), analytics UX continuity (no user toggle — display follows data: single-currency cohort → native, multi-currency → GBP, ranking always GBP). Phase 9 still awaiting operator UAT; phase 9.1 plan + execute may proceed in parallel where independent of phase 9 merge.
+Resume file: `.planning/phases/09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep/09.1-CONTEXT.md`
+Next action: `/gsd-plan-phase 9.1` to draft FX-01..FX-04 requirements + plan breakdown. Researcher will need to confirm: exact Inngest cron registration site, BoE feed format (XML vs CSV), rate-precision headroom for JPY-class currencies, oldest `transaction_date` in `sales_records`. Phase 10 (Access Control Extended) remains the next downstream item once 9 + 9.1 are merged.
+
+### Phase 9.1 decisions captured 2026-05-09
+
+- **Rate source = Bank of England daily spot** (D-01) — native GBP base, no triangulation. ECB and NetSuite-as-source rejected.
+- **Ingest = Inngest cron `fx-rates.fetch-daily`** (D-02), runs ~06:00 UTC, ordered before existing Azure sales ETL.
+- **Currency coverage = BoE-supported broad set** (D-03) — ~25 majors. Unknown currency in CSV → ETL fails loudly.
+- **Backfill = from earliest `transaction_date` to today** (D-04). GBP rows shortcut to identity (no rate lookup).
+- **Non-publish dates = carry-forward via lookup** (D-05). `exchange_rates` only stores publish-day rows.
+- **BoE fetch failure = ingest with carry-forward fallback + alert** (D-06). Sales keep flowing during outages.
+- **Staleness ceiling = 7 days** (D-07). Beyond 7d carry-forward, ETL hard-fails for the affected blob.
+- **Alert path = Phase 8 `email_log` substrate** (D-08). New kinds `fx_rate_fetch_failed`, `fx_rate_stale`.
+- **GBP companion columns = `net_amount_gbp` only** (D-09). ROADMAP must be edited to drop the vat/total listing — `gross_amount` was dropped 2026-04-24 so total is derived (net+vat); no current consumer for vat-in-GBP.
+- **No user-facing toggle** (D-10). Display follows data: single-currency cohort → native, multi-currency cohort → GBP.
+- **Every aggregate query dual-emits** (D-11) — `SUM(net_amount)` + `SUM(net_amount_gbp)` + `currency` key (single value when COUNT(DISTINCT currency)=1, else NULL).
+- **Sorting/ranking always uses GBP** (D-12). EUR-only and GBP-only regions rank correctly head-to-head.
+- **Per-kiosk drill-down** = native (D-13) — matches existing Phase 9 POC email contract via `format-currency.ts`. Unchanged.
+- **`classifyEligibleLocations` swap to GBP** (D-14) — single-line change at `src/lib/performance-alerts/classify-locations.ts:172`.
+- **`commission/processor.ts` swap to GBP** (D-15) — commission is paid out in GBP regardless of source currency.
+- **`/admin/performance-alerts` always GBP** (D-16) — cross-portfolio surface. Adds stale-rate banner.
+- **`pivot-engine.ts` field name preserved** (D-17) — `net_amount` ID kept for saved-pivot compat; underlying SQL rewritten per D-11.
 
 ### Phase 8 decisions captured 2026-05-08
 
