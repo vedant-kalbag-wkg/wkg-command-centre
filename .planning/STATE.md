@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 ## Current Position
 
 Phase: 09.1
-Status: Ready to execute
-Last activity: 2026-05-09 -- Phase 9.1 planning complete
+Status: Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves; operator UAT in `09.1-HUMAN-UAT.md` pending merge.
+Last activity: 2026-05-09 -- Phase 9.1 code-complete (8/8 plans, awaiting operator UAT against preview alias)
 
 ## v1.1 Phase Index
 
@@ -100,10 +100,10 @@ None at v1.1 scoping start. Three unresolved debug sessions tracked in v1.1 cate
 
 ## Session Continuity
 
-Current session: 2026-05-09 — Phase 9.1 context captured
-Stopped at: `/gsd-discuss-phase 9.1` complete. CONTEXT.md + DISCUSSION-LOG.md authored on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep` (cut from main at scaffold commit `0dd054b`). 17 implementation decisions captured (D-01 through D-17) across four gray areas: rate source & ingest (BoE locked), missing-rate gap-fill (carry-forward + 7-day staleness ceiling + email_log alerts), companion column scope (net_amount_gbp only — drop vat/total companions from ROADMAP wording), analytics UX continuity (no user toggle — display follows data: single-currency cohort → native, multi-currency → GBP, ranking always GBP). Phase 9 still awaiting operator UAT; phase 9.1 plan + execute may proceed in parallel where independent of phase 9 merge.
-Resume file: `.planning/phases/09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep/09.1-CONTEXT.md`
-Next action: `/gsd-plan-phase 9.1` to draft FX-01..FX-04 requirements + plan breakdown. Researcher will need to confirm: exact Inngest cron registration site, BoE feed format (XML vs CSV), rate-precision headroom for JPY-class currencies, oldest `transaction_date` in `sales_records`. Phase 10 (Access Control Extended) remains the next downstream item once 9 + 9.1 are merged.
+Current session: 2026-05-09 — Phase 9.1 code-complete (8/8 plans shipped)
+Stopped at: Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves: 09.1-01 Wave 0 fixtures + RED tests; 09.1-02 schema substrate (exchange_rates table, sales_records.net_amount_gbp NULLABLE, EmailKind extended); 09.1-03 FX library (boe-fetch + rate-lookup + currencies); 09.1-04 Inngest cron `fx-rates.fetch-daily` + serve registration; 09.1-05 ETL stamping + backfill script + migration 0048 NOT NULL flip operator-gated; 09.1-06 analytics SQL audit dual-emit (41 sites / 13 files) with saved-pivot back-compat (D-17); 09.1-07 renderer dispatch + tooltips + classifier/commission swaps + admin stale-rate banner; 09.1-08 doc surgery (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook. Awaiting operator UAT against preview alias per CLAUDE.md gate (`PLAYWRIGHT_BASE_URL=<preview-alias> npx playwright test tests/fx-normalisation/`); list-pass is NOT sufficient evidence.
+Resume file: `.planning/phases/09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep/09.1-HUMAN-UAT.md`
+Next action: Operator runs the 09.1-HUMAN-UAT.md checklist against the preview deploy: confirm `BETTER_AUTH_URL` is the git-branch alias; trigger `fx-rates-fetch-daily` Inngest cron once on preview; apply migration 0048 NOT NULL flip post-backfill; run Playwright suite against preview alias; walk the 3 visual UAT items; confirm `SELECT COUNT(*) FROM sales_records WHERE net_amount_gbp IS NULL` returns 0; confirm zero npm dep drift. Once UAT clears, phase-completion summary commit + PR + merge to main. Phase 10 (Access Control Extended) is the next downstream item once 9 + 9.1 are merged.
 
 ### Phase 9.1 decisions captured 2026-05-09
 
@@ -124,6 +124,22 @@ Next action: `/gsd-plan-phase 9.1` to draft FX-01..FX-04 requirements + plan bre
 - **`commission/processor.ts` swap to GBP** (D-15) — commission is paid out in GBP regardless of source currency.
 - **`/admin/performance-alerts` always GBP** (D-16) — cross-portfolio surface. Adds stale-rate banner.
 - **`pivot-engine.ts` field name preserved** (D-17) — `net_amount` ID kept for saved-pivot compat; underlying SQL rewritten per D-11.
+
+### Phase 9.1 close (post-execution) 2026-05-09
+
+8 plans across 5 waves shipped on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. Headline deliverables (FX-01..FX-04 code-complete):
+
+- **Migration trio (0046 / 0047 / 0048)** — `exchange_rates` table with composite PK `(currency, rate_date)` and `numeric(18,10) rate_to_gbp` precision; `sales_records.net_amount_gbp numeric(12,2)` NULLABLE column; NOT NULL flip operator-gated post-backfill (Pitfall 7 split). EmailKind extended in TS only with `fx_rate_fetch_failed` + `fx_rate_stale` (no DB CHECK on `email_log.kind` per Phase 8 house style).
+- **FX library** (`src/lib/fx/`) — `BOE_SERIES_TO_CCY` (27 IADB series → ISO 4217), `BOE_SUPPORTED_CURRENCIES` (28-entry frozen list incl. GBP identity), `parseBoeCsv` (pure wide-form → long-form melt with zod validation), `buildBoeCsvUrl` + `fetchBoeRatesForDate` (native fetch, no new deps), `getRateForDate` (GBP-identity-shortcut + carry-forward, returns staleDays signal — caller enforces D-07 ceiling).
+- **Inngest cron `fx-rates.fetch-daily`** at `TZ=Europe/London 0 6 * * *` — extracted handler with StepShim type for integration drivability; idempotent bulk upsert via composite PK; fan-out `fx_rate_fetch_failed` event before re-throw (avoids Inngest step-state discard); audit-log writeback every run; registered alongside weekly-poc-alerts in `src/app/api/inngest/route.ts`.
+- **ETL stamping + 7-day staleness gate** — `pipeline.ts` per-chunk batched (currency, date) rate gather + per-row `net_amount_gbp` stamp inside the same transaction (D-03/D-04/D-05/D-07); `azure-etl.ts` defensive per-blob pre-commit stale-FX gate that fans out `fx_rate_stale` and refuses commit. `scripts/backfill-net-amount-gbp.ts` idempotent (`WHERE net_amount_gbp IS NULL`) cursor-restartable backfill with `--dry-run`.
+- **Analytics SQL audit + dual-emit (41 sites / 13 files)** — every `SUM(net_amount)` site dual-emits `(SUM(net_amount), SUM(net_amount_gbp), currency_key)` per D-11. Sales mode and Revenue mode both swap. `currency_key` resolver: `MIN(currency)` when `COUNT(DISTINCT currency)=1`, else `NULL`. Cross-cohort sort/rank/percentile always `net_amount_gbp` per D-12. CTE-level dual-emit propagation in hotel-groups.ts. Pivot-engine `ALLOWED_COLUMNS` preserves field id `net_amount` for saved-pivot back-compat (D-17 / Pitfall 4); GBP companion + currency_key auto-emitted by `buildPivotSQL`.
+- **Renderer dispatch via `pickRevenueDisplay`** (D-10) — RegionDetail / HotelGroupDetail / LocationGroupDetail metric tiles wire native vs GBP per cohort cardinality; pivot-engine `formatCell` extended with optional `currencyKey` arg for per-cell + grand-total dispatch with bucket-level uniformity; back-compat fallback for legacy callers.
+- **FX-04 surgical line swaps** — `classify-locations.ts:172` swapped to `net_amount_gbp` (D-14); `commission/processor.ts:206` cumulative base + per-row engine call swapped to `netAmountGbp` (D-15); ledger `grossAmount` now stores GBP. POC email `format-currency.ts` UNCHANGED (D-13/D-14 — kiosks still see €/¥/$ in their personalised emails).
+- **`/admin/performance-alerts` always-GBP + stale-rate banner** (D-16) — destructive-styled Card above latest-run Card when `MAX(exchange_rates.fetched_at) > 24h`; copy explicitly references both the 24h trigger and the 7-day downstream consequence the admin needs to prevent.
+- **Doc surgery (this plan, 09.1-08)** — ROADMAP Phase 9.1 block corrected (drop vat/total, lock BoE, add 7-day rule, fill plan list); REQUIREMENTS section G with FX-01..04 + 4 traceability rows + totals updated to 24/24; PROJECT.md acknowledges scope under new G section; this STATE.md close entry; `09.1-HUMAN-UAT.md` operator runbook.
+
+Zero new npm dependencies across all 8 plans (verified via empty `git diff package.json package-lock.json`). Operator UAT against preview alias is the merge gate per CLAUDE.md "Playwright specs against preview deploys" rule.
 
 ### Phase 8 decisions captured 2026-05-08
 
