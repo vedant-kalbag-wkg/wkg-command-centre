@@ -30,7 +30,9 @@ export default defineConfig({
           environment: "node",
           include: [
             "src/**/__tests__/**/*.test.ts",
+            "src/**/__tests__/**/*.test.tsx",
             "src/**/*.test.ts",
+            "src/**/*.test.tsx",
             // Pure-unit tests under tests/ (no DB, no Testcontainers).
             // Excluded variants: *.integration.test.ts owned by the integration
             // project, *.spec.ts owned by Playwright.
