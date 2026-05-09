@@ -61,20 +61,21 @@ export async function _handleSendEmail({
   const { kind, to, subject, template, templateProps, payloadHash } =
     event.data;
 
-  const html = await step.run("render-html", async () => {
+  const { html, text } = await step.run("render-html", async () => {
     const Component = TEMPLATES[template as TemplateKey];
     if (!Component) {
       throw new Error(`Unknown email template: ${template}`);
     }
+    const element = Component(templateProps as Parameters<typeof Component>[0]);
     // render() is async in @react-email/render v2+. `await` is harmless
     // even if the resolved value is a string in older versions.
-    return await render(
-      Component(templateProps as Parameters<typeof Component>[0]),
-    );
+    const html = await render(element);
+    const text = await render(element, { plainText: true });
+    return { html, text };
   });
 
   const sendResult = await step.run("resend-send", async () => {
-    return await resend.emails.send({ from: FROM, to, subject, html });
+    return await resend.emails.send({ from: FROM, to, subject, html, text });
   });
 
   await step.run("log", async () => {

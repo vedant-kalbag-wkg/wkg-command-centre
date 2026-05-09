@@ -1,12 +1,12 @@
-import { Button, Heading, Text } from "@react-email/components";
+import { Heading, Text } from "@react-email/components";
 
 import { BRAND } from "./brand";
+import { CTA } from "./_cta";
 import { EmailLayout } from "./_layout";
 
-// Phase 8 Plan 08-01 — External-portal invite template (replaces
-// sendExternalInviteEmail body in src/lib/email.ts:79-98). Prop name is
-// `setPasswordUrl` (NOT `resetUrl`) — locked by email.ts:81-85.
-// Copy verbatim from email.ts:86-95.
+// Phase 8 Plan 08-01 — External-portal invite template. Prop name is
+// `setPasswordUrl` (NOT `resetUrl`) — locked by sendExternalInviteEmail's
+// signature. Refreshed 2026-05-09 to use the bulletproof <CTA> helper.
 export function ExternalInviteEmail({
   setPasswordUrl,
 }: {
@@ -18,9 +18,11 @@ export function ExternalInviteEmail({
         as="h1"
         style={{
           fontSize: "24px",
-          fontWeight: 600,
+          fontWeight: 700,
+          letterSpacing: "-0.01em",
           color: BRAND.graphite,
-          margin: "0 0 16px",
+          margin: "0 0 14px",
+          lineHeight: 1.2,
         }}
       >
         Welcome to WeKnow Analytics
@@ -29,47 +31,36 @@ export function ExternalInviteEmail({
         style={{
           fontSize: "15px",
           lineHeight: 1.6,
-          color: "#333",
+          color: BRAND.textSecondary,
           margin: "0 0 12px",
         }}
       >
-        {"You've been invited to the WeKnow Analytics Portal, where you can view performance analytics for your locations."}
+        You&apos;ve been invited to the WeKnow Analytics Portal, where you
+        can view performance analytics for your locations.
       </Text>
       <Text
         style={{
           fontSize: "15px",
           lineHeight: 1.6,
-          color: "#333",
-          margin: "0 0 24px",
+          color: BRAND.textSecondary,
+          margin: "0 0 22px",
         }}
       >
-        Click below to set your password and access your dashboard:
+        Set your password and you&apos;ll be taken to your dashboard.
       </Text>
-      <div style={{ margin: "24px 0" }}>
-        <Button
-          href={setPasswordUrl}
-          style={{
-            display: "inline-block",
-            padding: "12px 24px",
-            backgroundColor: BRAND.azure,
-            color: BRAND.white,
-            textDecoration: "none",
-            borderRadius: "6px",
-            fontWeight: 500,
-            fontSize: "15px",
-          }}
-        >
-          Set your password
-        </Button>
-      </div>
+
+      <CTA href={setPasswordUrl} label="Set your password" />
+
       <Text
         style={{
           fontSize: "13px",
-          color: "#666",
-          marginTop: "32px",
+          lineHeight: 1.6,
+          color: BRAND.textMuted,
+          margin: "24px 0 0",
         }}
       >
-        {"Once you've set your password, you can sign in at any time to view your analytics."}
+        Once your password is set, you can sign in any time at{" "}
+        {BRAND.prodUrl.replace(/^https:\/\//, "")} to view your analytics.
       </Text>
     </EmailLayout>
   );

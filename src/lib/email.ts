@@ -1,3 +1,4 @@
+import { render } from "@react-email/render";
 import type { ReactElement } from "react";
 import { Resend } from "resend";
 
@@ -17,9 +18,16 @@ import { PasswordResetEmail } from "@/emails/password-reset";
 // payloadHash is null for auth-flow sends (no idempotency dedupe — every
 // reset is intentional). On Resend non-2xx the function throws so Better
 // Auth surfaces the failure to the UI (D-04).
+//
+// 2026-05-09: switched from `react:` field to explicit
+// `await render(...)` + `html` + `text` so HTML rendering happens at
+// our boundary (not Resend's). Some Gmail accounts received the prior
+// react-rendered email with the CTA collapsed to its raw URL — the
+// explicit render path + bulletproof <CTA> helper fix that.
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.EMAIL_FROM ?? "noreply@command.weknowgroup.com";
+const REPLY_TO = process.env.EMAIL_REPLY_TO || undefined;
 
 type Kind = "password_reset" | "invite" | "external_invite";
 
@@ -34,7 +42,17 @@ async function send({
   react: ReactElement;
   kind: Kind;
 }): Promise<void> {
-  const result = await resend.emails.send({ from: FROM, to, subject, react });
+  const html = await render(react);
+  const text = await render(react, { plainText: true });
+
+  const result = await resend.emails.send({
+    from: FROM,
+    to,
+    subject,
+    html,
+    text,
+    ...(REPLY_TO ? { replyTo: REPLY_TO } : {}),
+  });
   const messageId = result.data?.id ?? null;
   // Pitfall 6: store error.message plain text — a text column with full
   // stringified-error blobs is unindexable + breaks queries.

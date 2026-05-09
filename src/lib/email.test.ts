@@ -60,7 +60,10 @@ describe("email transport (EMAIL-01)", () => {
     expect(call.from).toBe("noreply@command.weknowgroup.com");
     expect(call.to).toBe("user@example.com");
     expect(call.subject).toBe("Reset your password — WeKnow");
-    expect(call.react).toBeDefined();
+    expect(typeof call.html).toBe("string");
+    expect(call.html).toContain("Reset your password");
+    expect(typeof call.text).toBe("string");
+    expect(call.react).toBeUndefined();
     expect(insertMock).toHaveBeenCalledTimes(1);
     const inserted = insertMock.mock.results[0].value.values.mock.calls[0][0];
     expect(inserted.kind).toBe("password_reset");
