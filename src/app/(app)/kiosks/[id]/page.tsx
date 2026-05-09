@@ -15,6 +15,8 @@ import {
   listPipelineStages,
   listLocationsForSelect,
 } from "@/app/(app)/kiosks/actions";
+import { getSessionOrThrow } from "@/lib/rbac";
+import { KioskAdminPanel } from "./kiosk-admin-panel";
 
 interface KioskDetailPageProps {
   params: Promise<{ id: string }>;
@@ -23,10 +25,11 @@ interface KioskDetailPageProps {
 export default async function KioskDetailPage({ params }: KioskDetailPageProps) {
   const { id } = await params;
 
-  const [kioskResult, stages, locations] = await Promise.all([
+  const [kioskResult, stages, locations, session] = await Promise.all([
     getKiosk(id),
     listPipelineStages(),
     listLocationsForSelect(),
+    getSessionOrThrow(),
   ]);
 
   if ("error" in kioskResult) {
@@ -61,12 +64,19 @@ export default async function KioskDetailPage({ params }: KioskDetailPageProps) 
         actions={<KioskDetailActions kioskId={kiosk.id} />}
       />
       <div className="flex-1 overflow-auto p-4 md:p-6">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-3xl space-y-6">
           <KioskDetailForm
             kiosk={kiosk}
             pipelineStages={stages}
             locations={locations}
           />
+          {session.user.role === "admin" && (
+            <KioskAdminPanel
+              kioskId={kiosk.id}
+              isSilenced={kiosk.alertSilencedAt !== null}
+              currentReason={kiosk.alertSilencedReason ?? null}
+            />
+          )}
         </div>
       </div>
     </div>
