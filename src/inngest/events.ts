@@ -8,8 +8,16 @@
 // this catches typos at the call-site. Phase 9 extends each union as it
 // adds digest / kiosk_offline / report templates; the matching entry must
 // also appear in send-email.ts's TEMPLATES dispatch table.
-export type EmailKind = "password_changed" | "digest_daily" | "kiosk_offline";
-export type EmailTemplate = "password-changed";
+//
+// Phase 9 Plan 09-04 (BLOCKER-3): added "underperforming_poc" / "poc-underperformance"
+// for the weekly POC digest email. The TEMPLATES dispatch and plain-text
+// branch in send-email.ts are extended in the same plan commit.
+export type EmailKind =
+  | "password_changed"
+  | "digest_daily"
+  | "kiosk_offline"
+  | "underperforming_poc";
+export type EmailTemplate = "password-changed" | "poc-underperformance";
 
 export type EmailSendRequested = {
   name: "email/send.requested";

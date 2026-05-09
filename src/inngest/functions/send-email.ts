@@ -5,7 +5,11 @@ import { Resend } from "resend";
 import { db } from "@/db";
 import { emailLog } from "@/db/schema";
 import { PasswordChangedEmail } from "@/emails/password-changed";
-import { passwordChangedText } from "@/emails/text-versions";
+import { PocUnderperformanceEmail } from "@/emails/poc-underperformance";
+import {
+  passwordChangedText,
+  pocUnderperformanceText,
+} from "@/emails/text-versions";
 
 import { inngest } from "../client";
 
@@ -20,6 +24,10 @@ import { inngest } from "../client";
 //      partial unique idx (kind, payload_hash) — D-06 + Pitfall 1
 //
 // retries: 5 — Inngest's exponential backoff handles transient Resend 5xx.
+//
+// Phase 9 Plan 09-04: added "poc-underperformance" to TEMPLATES dispatch
+// and plain-text branch (BLOCKER-3 — must live in this plan alongside the
+// events.ts union extension).
 
 // Lazy-init: matches src/lib/email.ts — Resend constructor throws when
 // RESEND_API_KEY is unset, which broke unrelated unit tests on import.
@@ -30,9 +38,10 @@ function getResend(): Resend {
 }
 const FROM = process.env.EMAIL_FROM ?? "noreply@command.weknowgroup.com";
 
-// Template dispatch — Phase 9 will extend with digest_*, kiosk_offline, etc.
+// Template dispatch — extended in Phase 9 Plan 09-04 with poc-underperformance.
 const TEMPLATES = {
   "password-changed": PasswordChangedEmail,
+  "poc-underperformance": PocUnderperformanceEmail,
 } as const;
 
 type TemplateKey = keyof typeof TEMPLATES;
@@ -73,7 +82,13 @@ export async function _handleSendEmail({
     if (!Component) {
       throw new Error(`Unknown email template: ${template}`);
     }
-    const element = Component(templateProps as Parameters<typeof Component>[0]);
+    // Cast Component to a common callable signature: TEMPLATES maps each key to the
+    // correct component, so the props shape is guaranteed correct at runtime.
+    // TS resolves the union of function types to an intersection for Parameters<>,
+    // which is too narrow for the generic cast — casting the component itself avoids it.
+    const element = (Component as (props: Record<string, unknown>) => React.ReactElement)(
+      templateProps,
+    );
     // render() is async in @react-email/render v2+.
     const html = await render(element);
     // Hand-crafted plain text per template (not the auto-generated
@@ -86,6 +101,9 @@ export async function _handleSendEmail({
         changedAt: props.changedAt,
         contactAdminEmail: props.contactAdminUrl.replace(/^mailto:/, ""),
       });
+    } else if (template === "poc-underperformance") {
+      const props = templateProps as Parameters<typeof pocUnderperformanceText>[0];
+      text = pocUnderperformanceText(props);
     } else {
       // Future Inngest-served templates (digests / notifications) should
       // add their own hand-crafted text branch above.
