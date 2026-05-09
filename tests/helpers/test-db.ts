@@ -35,8 +35,11 @@ export async function setupTestDb(): Promise<TestDbContext> {
     const pool = new Pool({ connectionString: container.getConnectionUri() });
     try {
       const db = drizzle(pool);
+      // Use __dirname-relative path so the worktree's own migrations folder is
+      // used even when vitest is invoked from a different cwd (e.g. the main
+      // repo root when running via --root pointing to the worktree).
       await migrate(db, {
-        migrationsFolder: path.join(process.cwd(), "migrations"),
+        migrationsFolder: path.join(__dirname, "../../migrations"),
       });
       return { db, pool, container };
     } catch (err) {

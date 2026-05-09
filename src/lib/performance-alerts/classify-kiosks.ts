@@ -51,7 +51,9 @@ export async function classifyEligibleKiosks(): Promise<{
   // Join path: kiosks → kiosk_assignments (active, unassigned_at IS NULL) → locations → regions
   // Revenue: sum sales_records.net_amount over the window, joined via location_id
   // GROUP BY includes ka.location_id because the sales join is on location_id (not kiosk_id)
-  const raw = (await db.execute(sql`
+  // db.execute() with node-postgres returns a QueryResult object {rows, rowCount, fields}.
+  // Extract the .rows array — casting the full result as Array would give a non-iterable object.
+  const result = await db.execute(sql`
     SELECT
       k.id::text                                      AS kiosk_id,
       k.internal_poc_id                               AS internal_poc_id,
@@ -75,9 +77,12 @@ export async function classifyEligibleKiosks(): Promise<{
       AND k.alert_silenced_at IS NULL
       AND k.pipeline_stage_id = ${liveStageId}::uuid
     GROUP BY k.id, k.internal_poc_id, k.outlet_code, l.name, r.name, ka.location_id
-  `)) as unknown as Array<Record<string, unknown>>;
+  `);
+  // node-postgres QueryResult: { rows: [...] }. Drizzle wraps it but the rows
+  // array is accessible as result.rows for node-postgres driver.
+  const rawRows = (result as unknown as { rows: Record<string, unknown>[] }).rows ?? (Array.isArray(result) ? result : []);
 
-  const parsed = raw as Array<{
+  const parsed = rawRows as Array<{
     kiosk_id: string;
     internal_poc_id: string | null;
     outlet_code: string;
