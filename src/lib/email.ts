@@ -30,7 +30,15 @@ import {
 // duplicated the footer link — clients that surface the text/plain part
 // (some Outlook desktop configurations) saw a noisy [URL]Label dump.
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy-init: the Resend constructor throws if RESEND_API_KEY is unset,
+// which broke unrelated unit tests (rbac, etc.) that transitively import
+// auth.ts → email.ts. Defer construction to first send so module-load is
+// side-effect-free and only code paths that actually send mail need the key.
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
 const FROM = process.env.EMAIL_FROM ?? "noreply@command.weknowgroup.com";
 const REPLY_TO = process.env.EMAIL_REPLY_TO || undefined;
 
@@ -51,7 +59,7 @@ async function send({
 }): Promise<void> {
   const html = await render(react);
 
-  const result = await resend.emails.send({
+  const result = await getResend().emails.send({
     from: FROM,
     to,
     subject,

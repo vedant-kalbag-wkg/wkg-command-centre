@@ -21,7 +21,13 @@ import { inngest } from "../client";
 //
 // retries: 5 — Inngest's exponential backoff handles transient Resend 5xx.
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy-init: matches src/lib/email.ts — Resend constructor throws when
+// RESEND_API_KEY is unset, which broke unrelated unit tests on import.
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
 const FROM = process.env.EMAIL_FROM ?? "noreply@command.weknowgroup.com";
 
 // Template dispatch — Phase 9 will extend with digest_*, kiosk_offline, etc.
@@ -89,7 +95,7 @@ export async function _handleSendEmail({
   });
 
   const sendResult = await step.run("resend-send", async () => {
-    return await resend.emails.send({ from: FROM, to, subject, html, text });
+    return await getResend().emails.send({ from: FROM, to, subject, html, text });
   });
 
   await step.run("log", async () => {
