@@ -337,6 +337,13 @@
       "when": 1781000000000,
       "tag": "0047_phase_09_1_sales_records_net_amount_gbp",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1781100000000,
+      "tag": "0048_phase_09_1_net_amount_gbp_not_null",
+      "breakpoints": true
     }
   ]
 }
