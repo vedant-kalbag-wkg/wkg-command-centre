@@ -33,7 +33,9 @@ export async function writeAuditLog(
       | "set_location_type"
       | "set_primary_region"
       | "monday_import_triggered"
-      | "trigger";
+      | "trigger"
+      | "silence_alerts"
+      | "unsilence_alerts";
     field?: string;
     oldValue?: string;
     newValue?: string;
