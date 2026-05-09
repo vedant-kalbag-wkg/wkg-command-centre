@@ -66,6 +66,9 @@ describe("updateFeeCodeFallback (integration)", () => {
     fallbackId = fallback.id;
 
     // Seed 3 salesRecords pointing at the product w/ the fallback code.
+    // Phase 9.1 plan 09.1-05 (FX-02): salesRecords.net_amount_gbp is now
+    // NOT NULL (migration 0048). These seed rows are all GBP, so identity
+    // (netAmountGbp = netAmount) is the correct backfill-equivalent stamp.
     for (let i = 0; i < 3; i++) {
       await ctx.db.insert(salesRecords).values({
         regionId,
@@ -75,6 +78,7 @@ describe("updateFeeCodeFallback (integration)", () => {
         locationId,
         productId,
         netAmount: "10.00",
+        netAmountGbp: "10.00",
         vatAmount: "2.00",
         isWeknowFee: true,
         netsuiteCode: "9991",

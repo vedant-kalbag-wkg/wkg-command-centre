@@ -21,7 +21,7 @@
 
 import { and, desc, eq, lte } from "drizzle-orm";
 
-import { db } from "@/db";
+import { db as defaultDb } from "@/db";
 import { exchangeRates } from "@/db/schema";
 
 export type RateLookupResult = {
@@ -29,6 +29,13 @@ export type RateLookupResult = {
   rateDate: string;
   staleDays: number;
 };
+
+// Minimal shape getRateForDate uses — accepts both the production drizzle `db`
+// and a Testcontainers drizzle context. Plan 09.1-05 Task 1 needs a per-call
+// db override so the integration test (real Postgres in a container) doesn't
+// route through the singleton (which points at the prod-shape pool).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDb = typeof defaultDb | any;
 
 const MS_PER_DAY = 86_400_000;
 
@@ -39,6 +46,10 @@ const MS_PER_DAY = 86_400_000;
  *   {@link import("./currencies").BOE_SUPPORTED_CURRENCIES} for non-null
  *   results outside GBP — this function does not validate, the caller does).
  * @param isoDate `YYYY-MM-DD` (the row's `transaction_date` for ETL stamping).
+ * @param dbOverride optional drizzle db instance — defaults to the singleton
+ *   from `@/db`. Plan 09.1-05 callers (pipeline.ts, azure-etl.ts) pass through
+ *   the same `db` they received so transactions and Testcontainers contexts
+ *   are honoured.
  * @returns
  *   - GBP: `{ rate: 1.0, rateDate: isoDate, staleDays: 0 }` without DB call (D-04).
  *   - Non-GBP, rate found: `{ rate, rateDate, staleDays }` where `staleDays`
@@ -48,16 +59,18 @@ const MS_PER_DAY = 86_400_000;
 export async function getRateForDate(
   currency: string,
   isoDate: string,
+  dbOverride?: AnyDb,
 ): Promise<RateLookupResult | null> {
   if (currency === "GBP") {
     return { rate: 1.0, rateDate: isoDate, staleDays: 0 };
   }
 
+  const conn: AnyDb = dbOverride ?? defaultDb;
   // Plain `.select()` (no projection map) returns all columns under their
   // drizzle property names — `rateToGbp`, `rateDate`, etc. Avoids a column-
   // aliasing mismatch with the unit-test mock (which returns SEED rows
   // verbatim) while remaining a single carry-forward query in production.
-  const [row] = await db
+  const [row] = await conn
     .select()
     .from(exchangeRates)
     .where(and(eq(exchangeRates.currency, currency), lte(exchangeRates.rateDate, isoDate)))

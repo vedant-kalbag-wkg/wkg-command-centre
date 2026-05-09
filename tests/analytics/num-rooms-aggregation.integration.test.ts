@@ -134,6 +134,7 @@ describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {
         locationId: loc.id,
         productId: product.id,
         netAmount: "10.00",
+        netAmountGbp: "10.00",
         vatAmount: "0.00",
         netsuiteCode: "TT-1",
       })),
@@ -195,6 +196,7 @@ describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {
       locationId: active.id,
       productId: product.id,
       netAmount: "10.00",
+      netAmountGbp: "10.00",
       vatAmount: "0.00",
       netsuiteCode: "TT-2",
     });
@@ -258,6 +260,7 @@ describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {
         locationId: loc.id,
         productId: product.id,
         netAmount: "10.00",
+        netAmountGbp: "10.00",
         vatAmount: "0.00",
         netsuiteCode: "TT-3",
       })),
@@ -324,6 +327,7 @@ describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {
       locationId: active.id,
       productId: product.id,
       netAmount: "10.00",
+      netAmountGbp: "10.00",
       vatAmount: "0.00",
       netsuiteCode: "TT-4",
     });

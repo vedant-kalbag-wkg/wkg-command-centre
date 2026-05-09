@@ -114,6 +114,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "100.00",
+        netAmountGbp: "100.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
         vatAmount: "20.00",
         isWeknowFee: true,
         netsuiteCode: "9991",
@@ -130,6 +131,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "500.00",
+        netAmountGbp: "500.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
         vatAmount: "100.00",
         isWeknowFee: false,
         netsuiteCode: "P-001",
@@ -193,6 +195,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
       locationId,
       productId,
       netAmount: "999999.00",
+      netAmountGbp: "999999.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
       vatAmount: "0.00",
       isWeknowFee: false,
       netsuiteCode: "P-PRE",
@@ -208,6 +211,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "100.00",
+        netAmountGbp: "100.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
         vatAmount: "20.00",
         isWeknowFee: true,
         netsuiteCode: "9991",
@@ -238,6 +242,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
   it("recalculateCommissions only recalculates booking-fee rows", async () => {
     // Seed one fee row + one principal row in the same month. Principal must
     // not produce a ledger entry on recalc.
+    // Phase 9.1 FX-02 NOT NULL — GBP identity stamps for all rows.
     await ctx.db.insert(salesRecords).values([
       {
         regionId,
@@ -247,6 +252,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "200.00",
+        netAmountGbp: "200.00",
         vatAmount: "40.00",
         isWeknowFee: true,
         netsuiteCode: "9991",
@@ -259,6 +265,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "700.00",
+        netAmountGbp: "700.00",
         vatAmount: "140.00",
         isWeknowFee: false,
         netsuiteCode: "P-003",

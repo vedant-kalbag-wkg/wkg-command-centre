@@ -166,6 +166,7 @@ describe("applyBulkMerge integration", () => {
         locationId: defunctA.id,
         productId,
         netAmount: "10.00",
+        netAmountGbp: "10.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
         vatAmount: "2.00",
         netsuiteCode: "1001",
       });
@@ -180,6 +181,7 @@ describe("applyBulkMerge integration", () => {
         locationId: defunctB.id,
         productId,
         netAmount: "20.00",
+        netAmountGbp: "20.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
         vatAmount: "4.00",
         netsuiteCode: "1001",
       });
@@ -378,6 +380,7 @@ describe("applyBulkMerge integration", () => {
       locationId: defunctA.id,
       productId,
       netAmount: "1.00",
+      netAmountGbp: "1.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
       vatAmount: "0.20",
       netsuiteCode: "1001",
     });

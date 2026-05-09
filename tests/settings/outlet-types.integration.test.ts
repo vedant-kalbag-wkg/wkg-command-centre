@@ -174,6 +174,7 @@ describe("outlet-types server actions (pipeline)", () => {
 
     const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
 
+    // Phase 9.1 FX-02 NOT NULL — GBP identity stamps for all rows.
     await ctx.db.insert(salesRecords).values([
       {
         regionId,
@@ -183,6 +184,7 @@ describe("outlet-types server actions (pipeline)", () => {
         locationId: loc.id,
         productId,
         netAmount: "100.00",
+        netAmountGbp: "100.00",
         vatAmount: "0.00",
         netsuiteCode: "1001",
       },
@@ -194,6 +196,7 @@ describe("outlet-types server actions (pipeline)", () => {
         locationId: loc.id,
         productId,
         netAmount: "250.50",
+        netAmountGbp: "250.50",
         vatAmount: "0.00",
         netsuiteCode: "1001",
       },
@@ -205,6 +208,7 @@ describe("outlet-types server actions (pipeline)", () => {
         locationId: loc.id,
         productId,
         netAmount: "9999.99",
+        netAmountGbp: "9999.99",
         vatAmount: "0.00",
         netsuiteCode: "1001",
       },

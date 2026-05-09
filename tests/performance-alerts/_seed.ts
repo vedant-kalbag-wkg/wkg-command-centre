@@ -209,6 +209,9 @@ export async function seedFixtures(pool: Pool): Promise<void> {
       locationId: LOCATION_IDS[i - 1],
       productId: PRODUCT_ID,
       netAmount: REVENUES[i].toFixed(2),
+      // Phase 9.1 plan 09.1-05 (FX-02): net_amount_gbp is NOT NULL after
+      // migration 0048. GBP rows take the identity stamp.
+      netAmountGbp: REVENUES[i].toFixed(2),
       vatAmount: "0.00",
       currency: "GBP",
       netsuiteCode: `NS-H${i}`,
