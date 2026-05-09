@@ -280,7 +280,19 @@ export type HotelGroupData = {
 }
 
 export type HotelGroupDetail = {
-  metrics: { revenue: number; transactions: number; hotelCount: number; avgRevenuePerHotel: number }
+  // Phase 9.1 / D-10 — `revenue` binds to GBP arm internally per D-12; renderer
+  // (group-metrics.tsx) reads `revenueNative` + `currencyKey` to flip native at
+  // the cell level for single-currency cohorts (currencyKey set) and falls back
+  // to GBP for multi-currency cohorts (currencyKey null).
+  metrics: {
+    revenue: number
+    revenueNative: number
+    currencyKey: string | null
+    transactions: number
+    hotelCount: number
+    avgRevenuePerHotel: number
+    avgRevenuePerHotelNative: number
+  }
   hotels: HotelInGroup[]
   trends: DailyTrendRow[]
   previousMetrics: { revenue: number; transactions: number } | null
@@ -310,7 +322,18 @@ export type RegionData = {
 }
 
 export type RegionDetail = {
-  metrics: { revenue: number; transactions: number; hotelGroupCount: number; locationGroupCount: number }
+  // Phase 9.1 / D-10 — `revenue` binds to GBP arm internally per D-12; renderer
+  // (region-metrics.tsx) reads `revenueNative` + `currencyKey` to flip native
+  // at the cell level for single-currency regions (currencyKey set) and falls
+  // back to GBP for multi-currency rollups (currencyKey null).
+  metrics: {
+    revenue: number
+    revenueNative: number
+    currencyKey: string | null
+    transactions: number
+    hotelGroupCount: number
+    locationGroupCount: number
+  }
   hotelGroupBreakdown: { name: string; revenue: number; transactions: number; hotelCount: number; avgRevenuePerHotel: number }[]
   locationGroupBreakdown: { name: string; revenue: number; transactions: number; outletCount: number; totalRooms: number | null }[]
   previousMetrics: { revenue: number; transactions: number } | null
@@ -329,7 +352,18 @@ export type LocationGroupData = {
 }
 
 export type LocationGroupDetail = {
-  metrics: { revenue: number; transactions: number; hotelCount: number; totalRooms: number | null }
+  // Phase 9.1 / D-10 — `revenue` binds to GBP arm internally per D-12; renderer
+  // (location-metrics.tsx) reads `revenueNative` + `currencyKey` to flip native
+  // at the cell level for single-currency cohorts (currencyKey set) and falls
+  // back to GBP for multi-currency rollups (currencyKey null).
+  metrics: {
+    revenue: number
+    revenueNative: number
+    currencyKey: string | null
+    transactions: number
+    hotelCount: number
+    totalRooms: number | null
+  }
   capacityMetrics: { revenuePerRoom: number | null; txnPerRoom: number | null; txnPerKiosk: number | null; avgBasketValue: number; totalRooms: number | null; totalKiosks: number | null }
   peerAnalysis: { metric: string; value: number; percentile: number }[]
   hotelBreakdown: HotelInGroup[]

@@ -204,9 +204,12 @@ export async function getRegionDetail(
   `);
 
   const summary = summaryRows[0]!;
-  // D-12 — bind public `revenue` to GBP side; renderer dispatch (09.1-07) will
-  // surface revenue_native + currency_key when the cohort is single-currency.
+  // D-12 — bind public `revenue` to GBP side; renderer (09.1-07) reads
+  // revenueNative + currencyKey to flip native at the cell level for
+  // single-currency cohorts.
   const revenue = Number(summary.revenue_gbp);
+  const revenueNative = Number(summary.revenue_native);
+  const currencyKey = summary.currency_key;
   const transactions = Number(summary.transactions);
 
   // Get location IDs in this region for sub-queries
@@ -352,6 +355,8 @@ export async function getRegionDetail(
   return {
     metrics: {
       revenue,
+      revenueNative,
+      currencyKey,
       transactions,
       hotelGroupCount: hotelGroupBreakdown.length,
       locationGroupCount: locationGroupBreakdown.length,
