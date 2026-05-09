@@ -90,7 +90,17 @@ Plans:
   2. `sales_records.{net_amount_gbp, vat_amount_gbp, total_amount_gbp}` populated on ingest using the rate for `transaction_date`; backfill script for historical rows
   3. Every analytics query audited; aggregations on multi-currency cohorts use GBP-normalised columns; per-kiosk views can still surface native currency
   4. `classifyEligibleLocations` ranks on GBP-normalised revenue; POC underperformance email continues to render each kiosk's native-currency revenue
-**Plans**: TBD (run `/gsd-discuss-phase 9.1` then `/gsd-plan-phase 9.1`)
+**Plans**: 8 plans
+
+Plans:
+- [ ] 09.1-01-PLAN.md — Wave 0: Test fixtures + RED-stage scaffolds (FX-01..04)
+- [ ] 09.1-02-PLAN.md — Wave 1: Schema + EmailKind + drizzle push (FX-01/FX-02)
+- [ ] 09.1-03-PLAN.md — Wave 1: FX library — boe-fetch + rate-lookup + currencies (FX-01/FX-02)
+- [ ] 09.1-04-PLAN.md — Wave 2: Inngest cron fx-rates.fetch-daily + serve registration (FX-01)
+- [ ] 09.1-05-PLAN.md — Wave 3: ETL stamping + backfill script + 0048 NOT-NULL flip operator-gated (FX-02)
+- [ ] 09.1-06-PLAN.md — Wave 3: Analytics SQL audit dual-emit (41 sites / 13 files) (FX-03a)
+- [ ] 09.1-07-PLAN.md — Wave 4: Renderer dispatch + tooltips + classifier/commission swaps + admin stale banner (FX-03b/FX-04)
+- [ ] 09.1-08-PLAN.md — Wave 5: Doc edits (ROADMAP/REQUIREMENTS/STATE) + operator UAT
 
 ### Phase 10: Access Control Extended
 **Goal**: Migrate RBAC onto CASL (`@casl/ability` + `@casl/react`). Tier rules stored as JSON in DB, editable from an admin UI without deploy; `redactSensitiveFields` becomes `permittedFieldsOf(ability, 'read', subject)`. Custom granular roles authorable in admin UI per-role rule set (subjects × actions × fields × conditions).

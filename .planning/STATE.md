@@ -1,18 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1
-milestone_name: data-foundation-and-email
-status: verifying
-stopped_at: "Phase 9 (POC Underperformance Alerts) code-complete + reviewed via /gsd-execute-phase 9. 7 plans / ~30 commits across 5 waves. gsd-code-reviewer initial verdict BLOCK (CR-01/CR-02/CR-03 + WR-03) — all four resolved in commit 3570cbe. gsd-verifier verdict human_needed: 7/7 plans + 15/15 code truths COVERED; 8 operator UAT items in 09-HUMAN-UAT.md (push, preview deploy, BETTER_AUTH_URL pin, migrations 0043+0044, Playwright admin+silencing specs against preview alias, manual visual UAT, end-to-end Inngest event trigger). Phase 8 also still awaiting operator UAT (08-HUMAN-UAT.md)."
-last_updated: "2026-05-09T22:35:00.000Z"
-last_activity: 2026-05-09 -- Phase 9 close: code review fixes committed (CR-01/02/03 + WR-03), gsd-tools phase complete called, awaiting operator UAT before merge.
+milestone_name: milestone
+status: executing
+stopped_at: "`/gsd-discuss-phase 9.1` complete. CONTEXT.md + DISCUSSION-LOG.md authored on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep` (cut from main at scaffold commit `0dd054b`). 17 implementation decisions captured (D-01 through D-17) across four gray areas: rate source & ingest (BoE locked), missing-rate gap-fill (carry-forward + 7-day staleness ceiling + email_log alerts), companion column scope (net_amount_gbp only — drop vat/total companions from ROADMAP wording), analytics UX continuity (no user toggle — display follows data: single-currency cohort → native, multi-currency → GBP, ranking always GBP). Phase 9 still awaiting operator UAT; phase 9.1 plan + execute may proceed in parallel where independent of phase 9 merge."
+last_updated: "2026-05-09T17:29:38.129Z"
+last_activity: 2026-05-09 -- Phase 9.1 planning complete
 progress:
-  total_phases: 5
-  completed_phases: 1
-  total_plans: 15
-  completed_plans: 15
-  percent: 20
-  notes: "Phase 7 fully shipped. Phase 8 + Phase 9 both code-complete pending operator UAT (08-HUMAN-UAT.md, 09-HUMAN-UAT.md). Neither yet counts toward completed_phases. completed_plans counts every plan with a committed SUMMARY across the 3 planned-and-executed phases (5 + 3 + 7 = 15)."
+  total_phases: 6
+  completed_phases: 2
+  total_plans: 24
+  completed_plans: 14
+  percent: 58
 ---
 
 # Project State
@@ -27,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 ## Current Position
 
 Phase: 09.1
-Status: Phase 9.1 inserted 2026-05-09 to address cross-currency mis-ranking surfaced from PR #38 code review. Phase directory created at `.planning/phases/09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. ROADMAP.md created and updated. Next: `/gsd-discuss-phase 9.1` to surface assumptions (rate source choice, historical backfill policy, staleness tolerance, query-audit count) before planning.
-Last activity: 2026-05-09
+Status: Ready to execute
+Last activity: 2026-05-09 -- Phase 9.1 planning complete
 
 ## v1.1 Phase Index
 
