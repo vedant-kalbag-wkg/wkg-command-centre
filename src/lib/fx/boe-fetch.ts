@@ -35,7 +35,7 @@ export type ParsedRate = {
 
 const ParsedRateSchema = z.object({
   currency: z.string().refine(
-    (c) => Object.values(BOE_SERIES_TO_CCY).includes(c),
+    (c) => (Object.values(BOE_SERIES_TO_CCY) as readonly string[]).includes(c),
     { message: "currency not in BOE_SERIES_TO_CCY" },
   ),
   rateDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "rateDate must be ISO YYYY-MM-DD"),
