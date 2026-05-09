@@ -754,6 +754,7 @@ export const salesRecords = pgTable(
     productId: uuid("product_id").notNull().references(() => products.id),
     providerId: uuid("provider_id").references(() => providers.id),
     netAmount: numeric("net_amount", { precision: 12, scale: 2 }).notNull(),
+    netAmountGbp: numeric("net_amount_gbp", { precision: 12, scale: 2 }), // Phase 9.1 plan 09.1-02 — nullable until 0048 NOT NULL flip in plan 09.1-05
     vatAmount: numeric("vat_amount", { precision: 12, scale: 2 }).notNull(),
     vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
     currency: text("currency").notNull().default("GBP"),
@@ -1164,5 +1165,26 @@ export const locationPerformanceAlertState = pgTable(
   },
   (t) => ({
     tierIdx: index("location_performance_alert_state_tier_idx").on(t.tier),
+  }),
+);
+
+// Phase 9.1 plan 09.1-02 — Multi-currency analytics, FX-01.
+// Daily Bank of England spot rates per currency. PK on (currency, rate_date)
+// so the daily Inngest cron can ON CONFLICT DO NOTHING idempotently. rate_to_gbp
+// uses numeric(18,10) to retain JPY-class precision (BoE publishes XUDLJYS at
+// ~6 decimals; 10 is future-headroom for KRW/IDR-style very-low-value
+// currencies). source defaults 'boe' so a future NetSuite-as-source phase can
+// coexist without a schema change.
+export const exchangeRates = pgTable(
+  "exchange_rates",
+  {
+    currency: text("currency").notNull(),
+    rateDate: date("rate_date").notNull(),
+    rateToGbp: numeric("rate_to_gbp", { precision: 18, scale: 10 }).notNull(),
+    source: text("source").notNull().default("boe"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.currency, t.rateDate] }),
   }),
 );
