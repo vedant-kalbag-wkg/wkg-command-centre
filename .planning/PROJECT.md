@@ -135,6 +135,12 @@ Full design in `.planning/notes/v2-data-reset-decision.md`; phase strawman in `.
 - [ ] Analytics dashboards `useEffect → loadData()` migration off `react-hooks/set-state-in-effect` (`REF-01`)
 - [ ] GitHub auto-delete-merged-branches toggle (`INFRA-01`)
 
+#### G. Forex normalisation (cross-currency analytics)
+
+> **Inserted 2026-05-09** as Phase 9.1 (INSERTED) tracking GitHub issue #39, surfaced from PR #38 code review where the cross-currency mis-ranking gap was identified in `classifyEligibleLocations`. Cross-currency analytics now in scope: Bank of England daily spot rates ingested via Inngest cron; `sales_records.net_amount_gbp` denormalised at ingest with carry-forward + 7-day staleness ceiling; analytics aggregates dual-emit native + GBP + currency-key for renderer auto-pick; classifier + commission processor rank on GBP; per-kiosk POC email continues native via existing `format-currency.ts`.
+
+- [x] Cross-currency analytics: Bank of England daily spot rates ingested via Inngest; sales_records.net_amount_gbp denormalised at ingest; analytics aggregates dual-emit native + GBP + currency-key; classifier + commission rank on GBP. **Code-complete 2026-05-09 (Phase 9.1, 8 plans across 5 waves); awaiting Playwright UAT against preview alias per CLAUDE.md gate.** (`FX-01`, `FX-02`, `FX-03`, `FX-04`)
+
 #### F. Polish + tech debt
 
 - [ ] Tab hover state + loading indicator for heavy view-switches (`POLISH-01`) — resolves `.planning/debug/tab-hover-loading-state.md`
