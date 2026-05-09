@@ -117,6 +117,13 @@ describe("send-email Inngest function (EMAIL-04)", () => {
   });
 
   it("two events with same (kind, payloadHash) -> only one row inserted (idempotency)", async () => {
+    // NOTE: `kind: "digest_daily"` paired with `template: "password-changed"`
+    // is a TEST-ONLY shape — semantically invalid (no `digest_daily` template
+    // is registered yet). Acceptable here because we drive `_handleSendEmail`
+    // through a step shim and only exercise the `(kind, payload_hash)`
+    // partial-unique-index path. Phase 9 will register a real digest template
+    // (and add equivalent idempotency tests pinned to it); when that lands,
+    // swap this fixture to `template: "digest-daily"` and drop the comment.
     sendMock.mockResolvedValueOnce({ data: { id: "msg-1" }, error: null });
     sendMock.mockResolvedValueOnce({ data: { id: "msg-2" }, error: null });
 
@@ -125,7 +132,7 @@ describe("send-email Inngest function (EMAIL-04)", () => {
         kind: "digest_daily",
         to: "ops@weknow.co",
         subject: "Daily digest",
-        template: "password-changed", // reuse the only registered template
+        template: "password-changed", // see NOTE above — test convenience only
         templateProps: {
           changedAt: "n/a",
           contactAdminUrl: "mailto:admin@weknow.co",

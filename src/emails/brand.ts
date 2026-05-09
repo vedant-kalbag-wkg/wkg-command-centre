@@ -25,7 +25,11 @@ export const BRAND = {
   fontStack:
     'Circular, "CircularXX", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   productName: "WeKnow Command Centre",
+  // Footer link for every transactional template. Always points at the prod
+  // alias — preview-sent emails carry the production-branded footer by
+  // design (recipients see one canonical surface, regardless of which
+  // deploy issued the email). Switch to a per-environment value here only
+  // if a future template starts deep-linking to environment-specific URLs.
   prodUrl: "https://wkg-command-centre.vercel.app",
-  supportEmail: "support@weknowgroup.com",
   legalLine: "© WeKnow Group · Confidential, internal use only",
 } as const;

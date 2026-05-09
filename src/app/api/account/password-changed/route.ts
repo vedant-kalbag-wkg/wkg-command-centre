@@ -42,6 +42,14 @@ const ADMIN_SUPPORT_EMAIL =
 // already written by the Inngest send-email step. 30s is long enough to
 // catch double-clicks and replay loops, short enough that a legitimate
 // rotate-then-rotate-again sequence isn't blocked.
+//
+// Race note: the email_log row is written by Inngest's `log` step, which
+// runs AFTER this handler returns 200. A user submitting twice within ~1s
+// (before Inngest catches up) can defeat the cooldown — both queries find
+// no row, both events enqueue. Acceptable trade-off: the password rotation
+// has already succeeded, so the worst case is two confirmation emails
+// instead of one. Tightening this would need an in-Inngest rate-limit
+// middleware OR a synchronous "in-flight" marker table.
 const PASSWORD_CHANGED_COOLDOWN_MS = 30_000;
 
 export async function POST() {

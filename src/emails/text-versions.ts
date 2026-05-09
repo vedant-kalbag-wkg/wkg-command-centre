@@ -10,6 +10,8 @@
 // that surfaces text/plain. Keep them short, single-CTA, and never
 // include the URL twice.
 
+import { BRAND } from "./brand";
+
 const FOOTER = "—\nWeKnow Group · Confidential, internal use only";
 
 export function passwordResetText(resetUrl: string): string {
@@ -51,7 +53,7 @@ export function externalInviteText(setPasswordUrl: string): string {
     "Set your password to access your dashboard:",
     setPasswordUrl,
     "",
-    "Once your password is set, you can sign in any time at wkg-command-centre.vercel.app.",
+    `Once your password is set, you can sign in any time at ${BRAND.prodUrl}`,
     "",
     FOOTER,
   ].join("\n");
