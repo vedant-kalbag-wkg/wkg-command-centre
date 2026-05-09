@@ -13,6 +13,13 @@ export type ClassifiedKioskRow = {
   locationName: string;
   region: string;
   revenue: number;
+  /**
+   * ISO 4217 code (e.g. "GBP", "EUR") of the modal currency on the kiosk's
+   * sales_records over the trailing window. Falls back to "GBP" when the
+   * kiosk has zero transactions in the window. Cross-currency forex
+   * normalisation is NOT applied here — see follow-up issue.
+   */
+  currency: string;
   percentile: number;
   tier: Tier;
 };
@@ -48,9 +55,23 @@ export async function classifyEligibleKiosks(): Promise<{
     throw new Error("app_settings.pipeline_stage_id_live is missing — run migration 0043 first.");
   }
 
-  // Join path: kiosks → kiosk_assignments (active, unassigned_at IS NULL) → locations → regions
+  // Join path: kiosks → (most-recent active kiosk_assignment) → locations → regions
   // Revenue: sum sales_records.net_amount over the window, joined via location_id
-  // GROUP BY includes ka.location_id because the sales join is on location_id (not kiosk_id)
+  //
+  // The lateral subquery picks a SINGLE active assignment per kiosk (ordered by
+  // assigned_at DESC) — without this, a kiosk that simultaneously has two active
+  // assignments (data invariant violation) would emit two rows here, double-count
+  // in the email, and write two skip rows. The application layer enforces the
+  // single-active-assignment rule, but no DB-level constraint guards it; the
+  // LATERAL subquery makes the classifier safe by construction.
+  //
+  // Currency: the modal ISO-4217 code on the kiosk's sales_records over the same
+  // window. Falls back to 'GBP' when the kiosk has 0 transactions (no rows to
+  // aggregate). The percentile classifier compares raw revenue across currencies
+  // — fine for the current GBP-only fixture, but a real correctness bug for
+  // multi-currency portfolios. Forex normalisation to a base reporting currency
+  // is tracked in https://github.com/vedant-kalbag-wkg/wkg-command-centre/issues/39.
+  //
   // db.execute() with node-postgres returns a QueryResult object {rows, rowCount, fields}.
   // Extract the .rows array — casting the full result as Array would give a non-iterable object.
   const result = await db.execute(sql`
@@ -60,11 +81,25 @@ export async function classifyEligibleKiosks(): Promise<{
       k.outlet_code                                   AS outlet_code,
       l.name                                          AS location_name,
       r.name                                          AS region,
-      COALESCE(SUM(s.net_amount::numeric), 0)::float  AS revenue
+      COALESCE(SUM(s.net_amount::numeric), 0)::float  AS revenue,
+      COALESCE((
+        SELECT s2.currency
+        FROM sales_records s2
+        WHERE s2.location_id = ka.location_id
+          AND s2.transaction_date >= NOW() - (${windowDays} || ' days')::interval
+        GROUP BY s2.currency
+        ORDER BY COUNT(*) DESC, s2.currency
+        LIMIT 1
+      ), 'GBP')                                       AS currency
     FROM kiosks k
-    LEFT JOIN kiosk_assignments ka
-      ON ka.kiosk_id = k.id
-     AND ka.unassigned_at IS NULL
+    LEFT JOIN LATERAL (
+      SELECT ka_inner.location_id, ka_inner.assigned_at
+      FROM kiosk_assignments ka_inner
+      WHERE ka_inner.kiosk_id = k.id
+        AND ka_inner.unassigned_at IS NULL
+      ORDER BY ka_inner.assigned_at DESC
+      LIMIT 1
+    ) ka ON TRUE
     LEFT JOIN locations l
       ON l.id = ka.location_id
     LEFT JOIN regions r
@@ -89,6 +124,7 @@ export async function classifyEligibleKiosks(): Promise<{
     location_name: string | null;
     region: string | null;
     revenue: number;
+    currency: string;
   }>;
 
   // Binary-search percentile rank: fraction of values strictly less than current value.
@@ -113,6 +149,7 @@ export async function classifyEligibleKiosks(): Promise<{
       locationName: r.location_name ?? "(no location)",
       region: r.region ?? "(no region)",
       revenue: r.revenue,
+      currency: r.currency,
       percentile,
       tier,
     };

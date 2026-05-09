@@ -14,11 +14,15 @@ import { RunNowButton } from "./run-now-button";
 export default async function AdminPerformanceAlertsPage() {
   await requireRole("admin");
 
-  // Latest run timestamp = MAX(last_run_at) from state table.
-  // (If the table is empty, latestRunAt is null — render "No runs yet".)
+  // Latest run timestamp = MAX(created_at) on the performance_alert_run audit
+  // log row. Reading from `kiosk_performance_alert_state.last_run_at` would
+  // miss zero-kiosk runs (empty fleet, all-silenced fleet) — those still
+  // write an audit_logs row but no state rows, so the dashboard would render
+  // "—" for "Last run" while the recent-runs list below contradicted it.
   const [latestRow] = await db
-    .select({ ts: sql<Date | null>`MAX(${kioskPerformanceAlertState.lastRunAt})` })
-    .from(kioskPerformanceAlertState);
+    .select({ ts: sql<Date | null>`MAX(${auditLogs.createdAt})` })
+    .from(auditLogs)
+    .where(eq(auditLogs.entityType, "performance_alert_run"));
   const latestRunAt = latestRow?.ts ?? null;
 
   // Counts grouped by tier (for the latest run — tier reflects most-recent classification).
@@ -90,7 +94,7 @@ export default async function AdminPerformanceAlertsPage() {
           <CardHeader>
             <CardTitle>Latest run</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
+          <CardContent className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
             <Stat
               label="Last run"
               value={latestRunAt ? latestRunAt.toLocaleString("en-GB") : "—"}

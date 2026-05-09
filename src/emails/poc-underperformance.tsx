@@ -21,9 +21,11 @@ import { EmailLayout } from "./_layout";
 //     per-POC cross-location view); detail URLs per row link directly to
 //     the individual kiosk
 //
-// Revenue formatting: caller-side (cron) already formats as GBP string; we
-// render whatever string arrives. Tests exercise numeric values since the
-// integration will pass pre-formatted strings in production.
+// Revenue formatting: the caller (cron / `weekly-poc-alerts.ts`) pre-formats
+// revenue using the kiosk's OWN currency code (`Intl.NumberFormat('en-GB',
+// { style: 'currency', currency: <ISO 4217> })`). The template renders
+// whatever string arrives verbatim. Snapshot tests intentionally pass raw
+// numerics to assert the rendered table layout regardless of locale.
 
 export interface KioskRow {
   kioskId: string;
@@ -40,6 +42,13 @@ export interface PocUnderperformanceEmailProps {
   moreCount: number;
   windowDays: number;
   runIsoWeek: string;
+  /**
+   * Optional override for the "View portfolio" CTA. Falls back to
+   * `${BRAND.prodUrl}/analytics/portfolio` when omitted. Mirrored on the
+   * plain-text companion (`pocUnderperformanceText`) so HTML and text
+   * variants always agree on the CTA target.
+   */
+  portfolioUrl?: string;
 }
 
 export function PocUnderperformanceEmail({
@@ -48,8 +57,9 @@ export function PocUnderperformanceEmail({
   moreCount,
   windowDays,
   runIsoWeek,
+  portfolioUrl,
 }: PocUnderperformanceEmailProps) {
-  const portfolioUrl = `${BRAND.prodUrl}/analytics/portfolio`;
+  const resolvedPortfolioUrl = portfolioUrl ?? `${BRAND.prodUrl}/analytics/portfolio`;
 
   return (
     <EmailLayout
@@ -257,7 +267,7 @@ export function PocUnderperformanceEmail({
         Review your portfolio to investigate and take action.
       </Text>
 
-      <CTA href={portfolioUrl} label="View portfolio" />
+      <CTA href={resolvedPortfolioUrl} label="View portfolio" />
     </EmailLayout>
   );
 }

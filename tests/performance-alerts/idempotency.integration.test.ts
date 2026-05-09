@@ -109,10 +109,7 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
     }
 
     // Every POC group that triggered alerts should have a sent row in email_log
-    const sentRows = await ctx.db
-      .select()
-      .from(emailLog)
-      .where(emailLog.status ? undefined : undefined);
+    const sentRows = await ctx.db.select().from(emailLog);
 
     const nonSkipRows = sentRows.filter((r) => r.status !== "skipped");
     expect(nonSkipRows.length).toBeGreaterThanOrEqual(emailEvents.length);

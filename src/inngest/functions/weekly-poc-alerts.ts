@@ -32,6 +32,7 @@ import {
 import { groupByPoc } from "@/lib/performance-alerts/poc-batching";
 import { isoWeekKey } from "@/lib/performance-alerts/iso-week";
 import { sha256 } from "@/lib/performance-alerts/hash";
+import { formatRevenueForKiosk } from "@/lib/performance-alerts/format-currency";
 import { writeAuditLog } from "@/lib/audit";
 import { BRAND } from "@/emails/brand";
 
@@ -205,7 +206,10 @@ export async function _handleWeeklyPocAlerts({
                   kioskId: kr.outletCode,
                   locationName: kr.locationName,
                   region: kr.region,
-                  revenue: kr.revenue,
+                  // Pre-format with the kiosk's own currency. The template
+                  // renders this string verbatim — see comment in
+                  // src/emails/poc-underperformance.tsx.
+                  revenue: formatRevenueForKiosk(kr.revenue, kr.currency),
                   percentile: kr.percentile,
                   detailUrl: `${BRAND.prodUrl}/kiosks/${kr.kioskId}`,
                 };
@@ -232,22 +236,28 @@ export async function _handleWeeklyPocAlerts({
   // ── Step 6: emit-skip-rows ──────────────────────────────────────────────────
   // Same fix as CR-03: return the count from step.run instead of mutating
   // an outer `let`.
+  //
+  // No `.onConflictDoNothing()` here — skip rows write `payloadHash: null`,
+  // which is excluded from the partial unique index
+  // `(kind, payload_hash) WHERE payload_hash IS NOT NULL` (migration 0041).
+  // There is no other unique key on this table that would fire, so a conflict
+  // clause without an explicit target is a no-op guard. Inngest's per-step
+  // memoisation usually prevents duplicate inserts on retry; if the step
+  // partially fails after one INSERT, replay would write a second row and the
+  // skipped count on the admin dashboard would be inflated. Acceptable
+  // imprecision for metrics-only data.
   const skippedCount = await step.run("emit-skip-rows", async () => {
     const skipKiosks = effectiveDecisions.filter(
       (d) => d.decision !== "no-alert" && d.internalPocId === null,
     );
-    for (const k of skipKiosks) {
-      void k;
-      await db
-        .insert(emailLog)
-        .values({
-          kind: "underperforming_poc",
-          recipient: "[skip:no-poc]",
-          inngestRunId: runId,
-          status: "skipped",
-          payloadHash: null,
-        })
-        .onConflictDoNothing();
+    for (let i = 0; i < skipKiosks.length; i++) {
+      await db.insert(emailLog).values({
+        kind: "underperforming_poc",
+        recipient: "[skip:no-poc]",
+        inngestRunId: runId,
+        status: "skipped",
+        payloadHash: null,
+      });
     }
     return skipKiosks.length;
   });
