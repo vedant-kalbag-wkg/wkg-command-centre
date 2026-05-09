@@ -9,7 +9,7 @@
 
 Turn v1.0's MVP into the day-to-day ops platform the team operates from by:
 1. Establishing Monday as the authoritative source of truth for hotel/location identity via wipe-and-rebuild
-2. Shipping transactional email + per-user notifications + scheduled reports on a single async substrate
+2. Shipping transactional email (Phase 8) + a single weekly POC underperformance alert (Phase 9 — scope cut from broader notifications/reports on 2026-05-09)
 3. Extending access control to configurable role tiers + custom granular roles
 4. Resolving v1.0 carryover tech debt and UX polish
 
@@ -20,7 +20,7 @@ Turn v1.0's MVP into the day-to-day ops platform the team operates from by:
 | Email provider | **Resend** primary, Brevo documented fallback | Best Next.js/Vercel DX, EU region for GDPR, free tier covers volume; locked at v1.0 close 2026-04-29 |
 | Async + scheduled jobs | **Inngest** (`inngest@4.2.6`) for email queue + cron triggers | Skips bespoke `email_jobs` table + manual cron; built-in retries, dedupe, idempotency keys; replaces "queue + cron worker" idea wholesale. Keep thin `email_log` audit table with `payloadHash` unique idx for digest idempotency. |
 | RBAC model | **CASL** (`@casl/ability@6.8.1` + `@casl/react@6.0.0`) | Native `fields` (with `*`/`**` wildcards) + `conditions` map directly to "Ops sees pipelineStage but not bankingDetails". Rules JSON → DB-storable → admin-UI authorable without deploy. `redactSensitiveFields` becomes `permittedFieldsOf(ability, 'read', subject)` — drop-in replacement. Pure post-session derivation in `get-user-ctx.ts`; no Better Auth plugin conflict. `userScopes` preserved (feeds CASL `conditions`). |
-| Notifications delivery | **Email + deep-link only**; no in-app bell in v1.1 | 3-4 days vs 8-10 for hybrid. Subscriptions: per-kiosk star + per-region checkboxes; admin offline alerts implicit for `role='admin'`. Throttling: 5-min Inngest schedule drains `audit_logs` filtered to status/pipeline_stage changes, grouped by `(userId, entityType)`. Schema: `notification_subscriptions` + singleton `notification_cursor` row. |
+| Notifications delivery | **Single weekly bottom-tier POC alert email; no in-app bell, no per-user prefs, no broader notifications** | Rescoped 2026-05-09. The original Email + deep-link / per-kiosk star / per-region prefs / admin offline alerts / scheduled digests design was dropped from v1.1 (no v2 carry) in favour of a single Inngest weekly cron that emails kiosk POCs when their `Live` kiosks fall into the bottom outlet-tier classification. Silencing is admin-only per-kiosk (`kiosks.alert_silenced_at` + `alert_silenced_reason`). State tracked in `kiosk_performance_alert_state`. |
 | Data reset | **Wipe-and-rebuild from Monday**, not surgical pair-wise merge | Codified in `.planning/notes/v2-data-reset-decision.md`. Monday is authoritative SoT for hotel/location identity; CSVs in `seed_data/` (Jan/Feb/Mar 2026) seed sales; 2024-onwards backfill deferred (`.planning/seeds/v2-sales-corpus-backfill.md`). |
 | No manual SQL for ops | **Recurring destructive operator ops are admin UI features, not scripts** | Locked 2026-05-03. `scripts/multi-pos-merge.ts` becomes legacy when location-merge UI ships in DATA-02. |
 
@@ -39,12 +39,14 @@ Turn v1.0's MVP into the day-to-day ops platform the team operates from by:
 - [ ] **EMAIL-03** — Forgot-password end-to-end deliverability UAT against prod once EMAIL-01 lands (invite throwaway user, click link, set password, sign in). Bundles with EMAIL-01. **Operator-driven by design (D-14); runbook in `08-03-SUMMARY.md`, items tracked in `08-HUMAN-UAT.md`.**
 - [x] **EMAIL-04** — Transactional alerts substrate: Inngest functions for send + retry, branded WeKnow templates, thin `email_log` audit table with `payloadHash` unique idx for digest idempotency. No bespoke `email_jobs` queue table — Inngest is the queue. Scheduled triggers via Inngest schedules (no `vercel.json` cron entries). Substrate for category C. **Code-complete in Phase 8 (2026-05-09); first consumer (password-changed) wired in plan 08-02.**
 
-## C. Notifications & scheduled reports
+## C. POC underperformance alerts
 
-- [ ] **NOTIF-01** — Per-user notifications for status changes on managed kiosks. Subscriptions via per-kiosk star UI + per-region checkboxes in `/account/notifications`. Throttling: 5-min Inngest schedule drains `audit_logs` filtered to `status` / `pipeline_stage_id` changes, grouped by `(userId, entityType)`. Email + deep-link to the changed kiosk; no in-app bell. Depends on EMAIL-04.
-- [ ] **NOTIF-02** — Admin alerts for kiosks going offline. Implicit subscription for users with `role='admin'`; same Inngest drain as NOTIF-01 but filtered to offline transitions. Depends on EMAIL-04.
-- [ ] **REPORT-05** — Scheduled / automated email reports: admin-configurable digest (daily / weekly fleet-health snapshot) emailed to a recipient list. Inngest schedule per recipient list; idempotency via `payloadHash` so re-runs don't double-send. Depends on EMAIL-04.
-- [ ] **REPORT-06** — Custom report templates: admin-authorable digest content (which KPIs to include, region/group filters baked in). Stored in DB; rendered into REPORT-05 emails.
+> **Rescoped 2026-05-09 — original NOTIF/REPORT scope dropped (no v2 carry).**
+> See `.planning/phases/09-poc-underperformance-alerts/09-CONTEXT.md` § Phase Boundary for the full rescope rationale.
+> Dropped (no v2 carry): ~~NOTIF-01~~ per-user kiosk-status emails, ~~NOTIF-02~~ admin offline alerts, ~~REPORT-05~~ scheduled fleet-health digests, ~~REPORT-06~~ custom report templates.
+> The user judged the broader notification apparatus to be infrastructure without validated demand; if reopened later, it is a fresh case rather than a v2 backlog item.
+
+- [ ] **POC-ALERT-01** — Weekly bottom-tier POC email alert. Inngest cron (Mondays 09:00 Europe/London) classifies `Live` kiosks against the existing percentile cutoffs (`appSettings: threshold_outlet_tier_top|mid|bottom`) over a trailing window (admin-configurable `appSettings: underperformance_window_days`, default 30). Kiosks that flipped INTO bottom tier this run, or remained bottom and were last alerted ≥30 days ago, are batched per-POC (`kiosks.internal_poc_id`) and emailed via the EMAIL-04 substrate (`kind='underperforming_poc'`, `payloadHash` keyed on `(poc_user_id, run_iso_week)`). Email lists each kiosk with location, region, total sales over window, percentile rank + per-kiosk deep link to `/kiosks/[id]` and a footer CTA to `/analytics/portfolio`. NULL POC → silent skip with `email_log` row. Admin per-kiosk silencing via new `kiosks.alert_silenced_at` + `alert_silenced_reason` columns. Admin read-only `/admin/performance-alerts` page surfaces last-run metadata + a manual "Run now" trigger button. New `kiosk_performance_alert_state` table tracks prior tier + `last_alerted_at` for the flip-in + monthly cap. Depends on EMAIL-04.
 
 ## D. Access control extended
 
@@ -70,7 +72,9 @@ Turn v1.0's MVP into the day-to-day ops platform the team operates from by:
 | Feature | Reason |
 |---------|--------|
 | Map view / geographic visualisation | Server-side geocoding (`/settings/geocoding`, shipped v1.0) is sufficient; operators don't need kiosks plotted on a map. v1.1 research preserved at `.planning/research/v1.1-map-library.md` if the call ever reverses. |
-| In-app notification centre / bell | Defer to v1.2. Email + deep-link covers the immediate use case at 3-4 days vs 8-10 for hybrid. |
+| In-app notification centre / bell | Dropped 2026-05-09 with the broader notification rescope. Original v1.2 deferral is no longer tracked — there is nothing for the bell to display. |
+| Per-user kiosk-status notifications, admin offline alerts, scheduled fleet-health digests, custom report templates (originally NOTIF-01/02 + REPORT-05/06) | Dropped 2026-05-09; no v2 carry. The single weekly POC underperformance alert (POC-ALERT-01) is the only outbound operational alert in v1.1. If broader notifications become valuable, the case is re-opened from scratch — not as a backlog item. |
+| Per-user notification preferences page (`/account/notifications`) | Not built. POC-ALERT-01 is operational, not a preference; silencing is admin-only per-kiosk. |
 
 ## Future Requirements (deferred beyond v1.1)
 
@@ -82,7 +86,7 @@ Turn v1.0's MVP into the day-to-day ops platform the team operates from by:
 ## Dependencies + Sequencing
 
 - **A (Data foundation) is the keystone.** DATA-01 must ship before DATA-02 (merge UI is destructive against rebuilt data). DATA-04 + DATA-05 are part of the DATA-01 runbook.
-- **B (Email) must precede C (Notifications + Reports).** EMAIL-04 is the substrate; NOTIF-01, NOTIF-02, REPORT-05 all `depends_on: EMAIL-04`. EMAIL-01 must ship before EMAIL-03 (deliverability UAT requires Resend live).
+- **B (Email) must precede C (POC underperformance alert).** EMAIL-04 is the substrate; POC-ALERT-01 `depends_on: EMAIL-04`. EMAIL-01 must ship before EMAIL-03 (deliverability UAT requires Resend live).
 - **D (RBAC) is independent** of A/B/C — can land in parallel. CASL migration is in-place (`redactSensitiveFields` becomes `permittedFieldsOf`); no schema change required for AUTH-06 beyond rules JSON storage.
 - **E + F (test coverage, polish, debt)** are independent and can be batched into a single closing phase.
 
@@ -101,10 +105,7 @@ Filled by `gsd-roadmapper` 2026-05-03 — every REQ-ID maps to exactly one phase
 | EMAIL-02 | Phase 8 | SC2 — `/account/security` self-serve change-password via Better Auth `authClient.changePassword` + confirmation email |
 | EMAIL-03 | Phase 8 | SC3 — end-to-end forgot-password UAT against prod passes via git-branch-aliased `BETTER_AUTH_URL` |
 | EMAIL-04 | Phase 8 | SC4 — Inngest send + retry functions, branded templates, `email_log` audit table with `payloadHash` unique index for digest idempotency |
-| NOTIF-01 | Phase 9 | SC1 — per-kiosk star + per-region subscription UI; 5-min Inngest drain of `audit_logs` filtered to status / pipeline_stage_id changes; grouped digest emails with deep-links |
-| NOTIF-02 | Phase 9 | SC2 — implicit subscription for `role='admin'`; same Inngest drain filtered to offline transitions; opt-out via prefs page |
-| REPORT-05 | Phase 9 | SC3 — admin-configurable recipient lists for daily/weekly fleet-health digest; per-list Inngest schedule; `payloadHash` idempotency prevents double-sends |
-| REPORT-06 | Phase 9 | SC4 — admin-authorable custom report templates stored in DB; rendered into REPORT-05 emails |
+| POC-ALERT-01 | Phase 9 | SC1 — weekly Inngest cron classifies `Live` kiosks via existing percentile cutoffs over admin-tunable trailing window; emails batched per `kiosks.internal_poc_id` for flip-in + monthly cadence; admin per-kiosk silencing + read-only `/admin/performance-alerts` page with manual "Run now" trigger |
 | AUTH-06 | Phase 10 | SC1+SC2+SC4+SC5 — CASL `Ability` built in `get-user-ctx`; configurable Ops/IT/Read-only tier rules in DB JSON; admin UI for tier editing without deploy; `userScopes` continues to drive `conditions` |
 | AUTH-07 | Phase 10 | SC3 — admin UI for creating/editing/cloning custom granular roles (subjects × actions × fields × conditions) with per-user assignment |
 | TEST-01 | Phase 11 | SC1 — staging orphan-rate baseline measurement + CI invariant assertion when threshold exceeded |
@@ -116,7 +117,7 @@ Filled by `gsd-roadmapper` 2026-05-03 — every REQ-ID maps to exactly one phase
 | DEBT-01 | Phase 11 | SC5 — Zod-validated patch schemas in kiosk + location `bulk-actions.ts`; `as any` casts removed |
 | DEBT-02 | Phase 11 | SC6 — Drizzle 0.45.2 patch audit complete (upgraded to 0.46+ or documented why stuck) |
 
-**Total:** 23 REQs across 6 categories → 5 phases. **Coverage: 23/23 ✓** No orphans.
+**Total:** 20 REQs across 6 categories → 5 phases. **Coverage: 20/20 ✓** No orphans. (Down from 23 after the 2026-05-09 rescope dropped NOTIF-01, NOTIF-02, REPORT-05, REPORT-06 and added POC-ALERT-01.)
 
 ---
 *Approved 2026-05-03. Roadmapper next: derive phase structure (continuing from Phase 7), map every REQ-ID to a phase, derive 2-5 success criteria per phase, validate 100% coverage. → DONE 2026-05-03; see `.planning/ROADMAP.md`.*

@@ -1,18 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: data-foundation-and-email
+milestone: v1.0
+milestone_name: milestone
 status: executing
-stopped_at: Phase 8 code-complete on gsd/phase-08-email-infrastructure — operator UAT pending in 08-HUMAN-UAT.md
-last_updated: "2026-05-09T12:30:00.000Z"
-last_activity: 2026-05-09 -- Phase 8 (Email Infrastructure) code-complete. 3 plans / 19 commits on gsd/phase-08-email-infrastructure. Verifier returned status=human_needed (16/16 must-haves COVERED, 8 operator items deferred to UAT day per D-14). EMAIL-01/02/04 marked validated; EMAIL-03 stays open until operator UAT closes the loop.
+stopped_at: Phase 9 rescoped from "Notifications & Scheduled Reports" → "POC Underperformance Alerts". Original NOTIF-01/02 + REPORT-05/06 dropped (no v2 carry); replaced by POC-ALERT-01. CONTEXT.md + DISCUSSION-LOG.md written; REQUIREMENTS.md + STATE.md updated to reflect rescope. Phase 8 still code-complete awaiting operator UAT (`08-HUMAN-UAT.md`).
+last_updated: "2026-05-09T10:58:18.047Z"
+last_activity: 2026-05-09 -- Phase 09 execution started
 progress:
-  total_phases: 5
+  total_phases: 3
   completed_phases: 1
-  total_plans: 8
-  completed_plans: 8
-  percent: 20
-  notes: "Phase 8 code-complete (3 plans), pending operator UAT (08-HUMAN-UAT.md); does not yet count toward completed_phases."
+  total_plans: 16
+  completed_plans: 7
+  percent: 44
 ---
 
 # Project State
@@ -22,19 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 **Core value:** Operations and IT teams can accurately track, plan, and report on every kiosk deployment across all regions from a single tool that models the business's actual data structure — with analytics that Monday.com cannot produce.
-**Current focus:** Phase 8 — Email Infrastructure (next to plan/execute; Phase 7 merged into main).
+**Current focus:** Phase 09 — poc-underperformance-alerts
 
 ## Current Position
 
-Phase: 8 (Email Infrastructure) — code-complete on gsd/phase-08-email-infrastructure; awaiting operator UAT
-Status: Phase 8 code-complete 2026-05-09. 19 commits ahead of origin/main. Verifier returned `human_needed` (16/16 must-haves COVERED). 8 operator-only items tracked in `.planning/phases/08-email-infrastructure/08-HUMAN-UAT.md` (DNS records, Vercel preview env vars, drizzle migration push, real-inbox UAT for invite/forgot-pw/change-pw, Playwright preview-alias runs, throwaway-user cleanup). EMAIL-01/02/04 ticked in REQUIREMENTS.md; EMAIL-03 remains open until UAT closes. v1.1 progress: 1 of 5 phases fully shipped, Phase 8 awaiting UAT.
-Last activity: 2026-05-09 -- Phase 8 wave 1+2+3 executed via parallel gsd-executor subagents (autonomous run); gsd-verifier scored 16/16; HUMAN-UAT.md persisted; awaiting operator UAT day.
+Phase: 09 (poc-underperformance-alerts) — EXECUTING
+Plan: 1 of 7
+Status: Executing Phase 09
+Last activity: 2026-05-09 -- Phase 09 execution started
 
 ## v1.1 Phase Index
 
 - ✓ Phase 7: Data Foundation Rebuild — DATA-01..05 — **MERGED 2026-05-08** (PR #36, squash `05fbf07`; full review loop: PR #34 merge → PR #35 revert → PR #36 with 4 fix commits)
-- → Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (next; CONTEXT.md ready)
-- Phase 9: Notifications & Scheduled Reports — NOTIF-01..02, REPORT-05..06 — branch `gsd/phase-09-notifications-and-reports`
+- → Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (code-complete; awaiting operator UAT)
+- Phase 9: POC Underperformance Alerts — POC-ALERT-01 — branch `gsd/phase-09-poc-underperformance-alerts` (CONTEXT.md ready 2026-05-09; rescoped from "Notifications & Scheduled Reports" — NOTIF-01/02 + REPORT-05/06 dropped, no v2 carry)
 - Phase 10: Access Control Extended — AUTH-06..07 — branch `gsd/phase-10-access-control-extended`
 - Phase 11: Tooling, Polish & Tech-Debt Close-out — TEST-01, MONDAY-01, REF-01, INFRA-01, POLISH-01..02, DEBT-01..02 — branch `gsd/phase-11-tooling-polish-debt`
 
@@ -66,7 +66,7 @@ v1.1 scoping decisions (locked 2026-05-03):
 
 - **Inngest** (`inngest@4.2.6`) for email queue + cron triggers — replaces bespoke `email_jobs` table + manual cron; thin `email_log` audit table with `payloadHash` unique idx for digest idempotency
 - **CASL** (`@casl/ability@6.8.1` + `@casl/react@6.0.0`) for RBAC — DB-storable JSON rules, admin-UI authorable, `redactSensitiveFields` → `permittedFieldsOf` drop-in
-- **Email + deep-link only** for notifications in v1.1 — no in-app bell; subscriptions per-kiosk star + per-region; throttling = 5-min Inngest drain keyed by `(userId, entityType)`
+- ~~**Email + deep-link only** for notifications in v1.1 — no in-app bell; subscriptions per-kiosk star + per-region; throttling = 5-min Inngest drain keyed by `(userId, entityType)`~~ — **superseded 2026-05-09**: NOTIF-01/02 + REPORT-05/06 dropped, no v2 carry; replaced by single Inngest weekly cron emailing kiosk POCs when their `Live` kiosks fall into the bottom outlet-tier (POC-ALERT-01); silencing is admin-only per-kiosk; no in-app bell, no per-user prefs page
 
 Phase 7 Plan 06 decisions (locked 2026-05-06 during Plan 06 execution):
 
@@ -96,10 +96,10 @@ None at v1.1 scoping start. Three unresolved debug sessions tracked in v1.1 cate
 
 ## Session Continuity
 
-Current session: 2026-05-08 — Phase 7 PR #36 merged + Phase 8 context gathered
-Stopped at: Phase 7 (DATA-01..05) merged into main via PR #36 (squash `05fbf07`). Full review loop closed (9 findings across 3 review passes). Phase 8 CONTEXT.md written, ready to plan.
-Resume file: `.planning/phases/08-email-infrastructure/08-CONTEXT.md`
-Next action: `/gsd-plan-phase 8`
+Current session: 2026-05-09 — Phase 9 rescoped + CONTEXT.md captured
+Stopped at: Phase 9 rescoped from "Notifications & Scheduled Reports" → "POC Underperformance Alerts". Original NOTIF-01/02 + REPORT-05/06 dropped (no v2 carry); replaced by POC-ALERT-01. CONTEXT.md + DISCUSSION-LOG.md written; REQUIREMENTS.md + STATE.md updated to reflect rescope. Phase 8 still code-complete awaiting operator UAT (`08-HUMAN-UAT.md`).
+Resume file: `.planning/phases/09-poc-underperformance-alerts/09-CONTEXT.md`
+Next action: `/gsd-plan-phase 9` (after Phase 8 UAT closes, or in parallel since Phase 9 only consumes EMAIL-04 substrate which is already merged into Phase 8 code-complete)
 
 ### Phase 8 decisions captured 2026-05-08
 
@@ -111,4 +111,19 @@ Next action: `/gsd-plan-phase 8`
 
 ### Phase 8 housekeeping flagged
 
-- `.planning/ROADMAP.md` lives only on `docs/architecture-and-azure-hosting` (commit `1a0d6a7`); port to phase-branch line before v1.1 close-out merge.
+- `.planning/ROADMAP.md` lives only on `docs/architecture-and-azure-hosting` (commit `1a0d6a7`); port to phase-branch line before v1.1 close-out merge. The port must reflect the 2026-05-09 phase 9 rescope (POC-ALERT-01 replaces NOTIF-01/02 + REPORT-05/06).
+
+### Phase 9 decisions captured 2026-05-09
+
+- **Scope cut** — NOTIF-01/02 + REPORT-05/06 dropped from v1.1, no v2 carry; replaced by POC-ALERT-01
+- **Underperformance** = outlet tier 'bottom' (existing percentile cutoffs in `appSettings`, admin-tunable via thresholds editor)
+- **Aggregation** — per-kiosk classification, batched per-POC (one email per POC per run)
+- **POC routing** — strict `kiosks.internal_poc_id`; NULL → silent skip with `email_log` row
+- **Eligibility** — `pipeline_stage='Live'` AND not archived AND `outlet_code IS NOT NULL`
+- **Cadence** — flip-into-bottom always alerts; chronic bottom alerts monthly; weekly cron (Mondays 09:00 Europe/London)
+- **Window** — admin-configurable via new `appSettings.underperformance_window_days` (default 30)
+- **Email content** — list of bottom-tier kiosks (kioskId, location, region, sales-over-window, percentile rank); per-row deep link to `/kiosks/[id]`; footer CTA → `/analytics/portfolio`
+- **Silencing** — admin-only per-kiosk via new `kiosks.alert_silenced_at` + `alert_silenced_reason`; no per-user opt-out
+- **Admin UI** — new `/admin/performance-alerts` (admin-RBAC) read-only metadata page + manual "Run now" trigger button
+- **Schema** — new table `kiosk_performance_alert_state`; new columns on `kiosks`; new appSettings seed; reuses Phase 8 `email_log` partial unique idx for idempotency
+- **Resolving "Live"** (Claude's discretion / planner) — UUID-pin via `appSettings` vs. seeded-position fallback vs. denormalised flag on `pipeline_stages`; brittle name match explicitly forbidden
