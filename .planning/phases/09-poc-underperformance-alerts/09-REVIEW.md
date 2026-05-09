@@ -1,12 +1,15 @@
 ---
 phase: '09-poc-underperformance-alerts'
-status: blocking
+status: issues
 findings_total: 9
-findings_critical: 3
-findings_high: 3
+findings_critical: 0
+findings_high: 2
 findings_medium: 0
 findings_low: 3
+findings_resolved: 4
 reviewed_at: '2026-05-09T19:00:00Z'
+remediated_at: '2026-05-09T22:30:00Z'
+remediation_commit: 3570cbe
 depth: deep
 files_reviewed: 18
 files_reviewed_list:
@@ -37,6 +40,17 @@ files_reviewed_list:
 **Files Reviewed:** 18
 **Status:** BLOCK — 3 critical bugs found
 
+## Remediation Status (2026-05-09T22:30:00Z)
+
+**All three critical issues + WR-03 RESOLVED in commit `3570cbe`** — `fix(phase-09): address gsd-code-review CR-01/CR-02/CR-03 + WR-03`. Status downgraded from `blocking` → `issues`. Remaining open: WR-01 (TOCTOU in `triggerRunNow` rate limiter) and WR-02 (`GROUP BY ka.location_id` over-counts kiosks with multiple active assignments) — both real but lower-risk; tracked for follow-up. Info-level findings unchanged.
+
+Verification of remediation:
+- `npx tsc --noEmit`: no errors
+- `npx vitest run --project unit src/lib/performance-alerts/ src/emails/__tests__/`: PASS (35) FAIL (0)
+- BST boundary unit test (`iso-week.test.ts`) now uses `2026-05-31T23:30:00Z` — actually exercises the UTC-Sunday/London-Monday crossing.
+
+---
+
 ## Summary
 
 Phase 9 implements the weekly POC underperformance alert pipeline: kiosk classification,
@@ -45,7 +59,10 @@ libraries (`classify-dispatch`, `poc-batching`, `iso-week`, `hash`) are correct 
 well-tested. The migration SQL is idempotent. RBAC is correctly applied across all server
 actions.
 
-However, three critical defects in the Inngest function layer will cause production failures:
+The original review found three critical defects in the Inngest function layer that would
+have caused production failures. **All three are now resolved in commit `3570cbe`.** The
+detail below reflects the original findings; the remediation strategy used is documented
+inline in `src/inngest/functions/weekly-poc-alerts.ts`.
 
 1. **Plain-text email CTA will render `undefined`** — `portfolioUrl` is required by
    `pocUnderperformanceText` but is not included in the `templateProps` emitted by
