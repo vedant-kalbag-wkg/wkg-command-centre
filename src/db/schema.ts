@@ -141,6 +141,11 @@ export const kiosks = pgTable("kiosks", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
+  // Phase 9 Plan 09-01 — POC alert silence controls (D-19).
+  // When set, the weekly alert job skips this kiosk. Reason is a free-text
+  // note for the admin UI ("hotel asked for 4-week reprieve", etc.).
+  alertSilencedAt: timestamp("alert_silenced_at", { withTimezone: true }),
+  alertSilencedReason: text("alert_silenced_reason"),
 });
 
 // Locations
@@ -1130,5 +1135,28 @@ export const emailLog = pgTable(
       t.recipient,
       t.createdAt.desc(),
     ),
+  }),
+);
+
+// Phase 9 Plan 09-01 — POC underperformance alert state (POC-ALERT-01, D-11).
+// One row per kiosk — upserted each time the weekly Inngest job runs for that
+// kiosk. Tracks the current outlet tier classification (used to detect
+// transitions into "Emerging") and when the last alert email was sent (used to
+// enforce the 7-day minimum re-alert window, D-05).
+export const kioskPerformanceAlertState = pgTable(
+  "kiosk_performance_alert_state",
+  {
+    kioskId: uuid("kiosk_id")
+      .primaryKey()
+      .references(() => kiosks.id, { onDelete: "cascade" }),
+    tier: text("tier", {
+      enum: ["Premium", "Standard", "Developing", "Emerging"],
+    }).notNull(),
+    classifiedAt: timestamp("classified_at", { withTimezone: true }).notNull(),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }).notNull(),
+    lastAlertedAt: timestamp("last_alerted_at", { withTimezone: true }),
+  },
+  (t) => ({
+    tierIdx: index("kiosk_performance_alert_state_tier_idx").on(t.tier),
   }),
 );
