@@ -1,7 +1,7 @@
-// Phase 9 Plan 09-04 — Render-assertion tests for PocUnderperformanceEmail.
+// Phase 9 (hotel-level rewrite, post PR #38) — Render-assertion tests for
+// PocUnderperformanceEmail.
 //
-// TDD RED phase: these tests are written before the component exists.
-// Run with: npx vitest run --project unit src/emails/__tests__/poc-underperformance.test.ts
+// Run with: npx vitest run --project unit src/emails/__tests__/poc-underperformance.test.tsx
 
 import { render } from "@react-email/render";
 import { describe, it, expect } from "vitest";
@@ -9,16 +9,28 @@ import { describe, it, expect } from "vitest";
 import { BRAND } from "../brand";
 import { PocUnderperformanceEmail } from "../poc-underperformance";
 
-const ONE_KIOSK_PROPS = {
+const ONE_HOTEL_PROPS = {
   pocName: "Alex",
-  kiosks: [
+  hotels: [
     {
-      kioskId: "K001",
-      locationName: "Hilton Mayfair",
+      locationId: "loc-001",
+      hotelName: "Hilton Mayfair",
       region: "London",
-      revenue: 123.45,
-      percentile: 8,
-      detailUrl: `${BRAND.prodUrl}/kiosks/abc-123`,
+      currency: "GBP",
+      totalRevenue: 123.45,
+      totalTransactions: 42,
+      kioskCount: 2,
+      numRooms: 120,
+      salesPerRoom: "£1.03",
+      compositeScore: 8,
+      subMetricPercentiles: {
+        revenue: 5,
+        transactions: 12,
+        revenuePerRoom: 4,
+        txnPerKiosk: 18,
+        basketValue: 22,
+      },
+      detailUrl: `${BRAND.prodUrl}/locations/loc-001`,
     },
   ],
   moreCount: 0,
@@ -26,32 +38,68 @@ const ONE_KIOSK_PROPS = {
   runIsoWeek: "2026-W19",
 };
 
-const THREE_KIOSK_PROPS = {
+const THREE_HOTEL_PROPS = {
   pocName: "Sam",
-  kiosks: [
+  hotels: [
     {
-      kioskId: "K010",
-      locationName: "Marriott Canary Wharf",
+      locationId: "loc-010",
+      hotelName: "Marriott Canary Wharf",
       region: "London",
-      revenue: 200.0,
-      percentile: 5,
-      detailUrl: `${BRAND.prodUrl}/kiosks/k010`,
+      currency: "GBP",
+      totalRevenue: 200.0,
+      totalTransactions: 80,
+      kioskCount: 3,
+      numRooms: 220,
+      salesPerRoom: "£0.91",
+      compositeScore: 5,
+      subMetricPercentiles: {
+        revenue: 3,
+        transactions: 7,
+        revenuePerRoom: 2,
+        txnPerKiosk: 12,
+        basketValue: 9,
+      },
+      detailUrl: `${BRAND.prodUrl}/locations/loc-010`,
     },
     {
-      kioskId: "K011",
-      locationName: "Premier Inn Bristol",
+      locationId: "loc-011",
+      hotelName: "Premier Inn Bristol",
       region: "South West",
-      revenue: 150.75,
-      percentile: 12,
-      detailUrl: `${BRAND.prodUrl}/kiosks/k011`,
+      currency: "GBP",
+      totalRevenue: 150.75,
+      totalTransactions: 60,
+      kioskCount: 1,
+      numRooms: null,
+      salesPerRoom: null,
+      compositeScore: 12,
+      subMetricPercentiles: {
+        revenue: 8,
+        transactions: 15,
+        revenuePerRoom: null,
+        txnPerKiosk: 14,
+        basketValue: 19,
+      },
+      detailUrl: `${BRAND.prodUrl}/locations/loc-011`,
     },
     {
-      kioskId: "K012",
-      locationName: "Ibis Manchester",
+      locationId: "loc-012",
+      hotelName: "Ibis Manchester",
       region: "North West",
-      revenue: 99.0,
-      percentile: 3,
-      detailUrl: `${BRAND.prodUrl}/kiosks/k012`,
+      currency: "GBP",
+      totalRevenue: 99.0,
+      totalTransactions: 30,
+      kioskCount: 1,
+      numRooms: 90,
+      salesPerRoom: "£1.10",
+      compositeScore: 3,
+      subMetricPercentiles: {
+        revenue: 2,
+        transactions: 5,
+        revenuePerRoom: 1,
+        txnPerKiosk: 8,
+        basketValue: 6,
+      },
+      detailUrl: `${BRAND.prodUrl}/locations/loc-012`,
     },
   ],
   moreCount: 0,
@@ -59,24 +107,48 @@ const THREE_KIOSK_PROPS = {
   runIsoWeek: "2026-W20",
 };
 
-const TWO_KIOSK_SNAPSHOT_PROPS = {
+const TWO_HOTEL_SNAPSHOT_PROPS = {
   pocName: "Jordan",
-  kiosks: [
+  hotels: [
     {
-      kioskId: "K100",
-      locationName: "Hilton Leeds",
+      locationId: "loc-100",
+      hotelName: "Hilton Leeds",
       region: "Yorkshire",
-      revenue: 345.67,
-      percentile: 7,
-      detailUrl: `${BRAND.prodUrl}/kiosks/k100`,
+      currency: "GBP",
+      totalRevenue: 345.67,
+      totalTransactions: 110,
+      kioskCount: 2,
+      numRooms: 150,
+      salesPerRoom: "£2.30",
+      compositeScore: 7,
+      subMetricPercentiles: {
+        revenue: 4,
+        transactions: 9,
+        revenuePerRoom: 3,
+        txnPerKiosk: 11,
+        basketValue: 14,
+      },
+      detailUrl: `${BRAND.prodUrl}/locations/loc-100`,
     },
     {
-      kioskId: "K101",
-      locationName: "Travelodge Edinburgh",
+      locationId: "loc-101",
+      hotelName: "Travelodge Edinburgh",
       region: "Scotland",
-      revenue: 88.0,
-      percentile: 4,
-      detailUrl: `${BRAND.prodUrl}/kiosks/k101`,
+      currency: "GBP",
+      totalRevenue: 88.0,
+      totalTransactions: 25,
+      kioskCount: 1,
+      numRooms: 60,
+      salesPerRoom: "£1.47",
+      compositeScore: 4,
+      subMetricPercentiles: {
+        revenue: 2,
+        transactions: 6,
+        revenuePerRoom: 3,
+        txnPerKiosk: 7,
+        basketValue: 10,
+      },
+      detailUrl: `${BRAND.prodUrl}/locations/loc-101`,
     },
   ],
   moreCount: 0,
@@ -85,18 +157,21 @@ const TWO_KIOSK_SNAPSHOT_PROPS = {
 };
 
 describe("PocUnderperformanceEmail", () => {
-  it("Test 1: renders kiosk row with location, region, revenue, percentile, detailUrl", async () => {
-    const html = await render(<PocUnderperformanceEmail {...ONE_KIOSK_PROPS} />);
+  it("Test 1: renders hotel card with name, region, sales, composite, percentiles, detailUrl", async () => {
+    const html = await render(<PocUnderperformanceEmail {...ONE_HOTEL_PROPS} />);
     expect(html).toContain("Hilton Mayfair");
     expect(html).toContain("London");
     expect(html).toContain("123.45");
+    // composite score (rendered as a number)
     expect(html).toContain("8");
-    expect(html).toContain(`${BRAND.prodUrl}/kiosks/abc-123`);
+    // percentile rendering uses pNN
+    expect(html).toContain("p5");
+    expect(html).toContain(`${BRAND.prodUrl}/locations/loc-001`);
   });
 
-  it("Test 2: renders all 3 kiosk locationNames in document order", async () => {
+  it("Test 2: renders all 3 hotelNames in document order", async () => {
     const html = await render(
-      <PocUnderperformanceEmail {...THREE_KIOSK_PROPS} />,
+      <PocUnderperformanceEmail {...THREE_HOTEL_PROPS} />,
     );
     const idxMarriott = html.indexOf("Marriott Canary Wharf");
     const idxPremier = html.indexOf("Premier Inn Bristol");
@@ -111,7 +186,7 @@ describe("PocUnderperformanceEmail", () => {
   it("Test 3: renders '12 more' copy when moreCount=12", async () => {
     const html = await render(
       <PocUnderperformanceEmail
-        {...ONE_KIOSK_PROPS}
+        {...ONE_HOTEL_PROPS}
         moreCount={12}
       />,
     );
@@ -120,39 +195,61 @@ describe("PocUnderperformanceEmail", () => {
   });
 
   it("Test 4: does NOT render 'more' copy when moreCount=0", async () => {
-    const html = await render(<PocUnderperformanceEmail {...ONE_KIOSK_PROPS} />);
-    // should not contain "more kiosk" — the "+ N more kiosks" conditional
-    expect(html).not.toContain("more kiosk");
+    const html = await render(<PocUnderperformanceEmail {...ONE_HOTEL_PROPS} />);
+    expect(html).not.toContain("more hotel");
   });
 
   it("Test 5: renders CTA href pointing at /analytics/portfolio", async () => {
-    const html = await render(<PocUnderperformanceEmail {...ONE_KIOSK_PROPS} />);
+    const html = await render(<PocUnderperformanceEmail {...ONE_HOTEL_PROPS} />);
     expect(html).toContain(`${BRAND.prodUrl}/analytics/portfolio`);
   });
 
   it("Test 6: renders recipient name from pocName", async () => {
-    const html = await render(<PocUnderperformanceEmail {...ONE_KIOSK_PROPS} />);
+    const html = await render(<PocUnderperformanceEmail {...ONE_HOTEL_PROPS} />);
     expect(html).toContain("Alex");
   });
 
   it("Test 7: renders brand color #00A6D3 (Azure CTA) somewhere", async () => {
-    const html = await render(<PocUnderperformanceEmail {...ONE_KIOSK_PROPS} />);
+    const html = await render(<PocUnderperformanceEmail {...ONE_HOTEL_PROPS} />);
     expect(html).toContain("#00A6D3");
   });
 
   it("Test 8: renders brand color #121212 (Graphite heading) somewhere", async () => {
-    const html = await render(<PocUnderperformanceEmail {...ONE_KIOSK_PROPS} />);
+    const html = await render(<PocUnderperformanceEmail {...ONE_HOTEL_PROPS} />);
     expect(html).toContain("#121212");
   });
 
   it("Test 9: renders windowDays as number in body copy", async () => {
-    const html = await render(<PocUnderperformanceEmail {...ONE_KIOSK_PROPS} />);
+    const html = await render(<PocUnderperformanceEmail {...ONE_HOTEL_PROPS} />);
     expect(html).toContain("30");
   });
 
-  it("Test 10: snapshot for canonical 2-kiosk render", async () => {
+  it("Test 10: renders weights footnote with default weights", async () => {
+    const html = await render(<PocUnderperformanceEmail {...ONE_HOTEL_PROPS} />);
+    // @react-email/render inserts <!-- --> markers between adjacent text
+    // nodes. Strip HTML comments before substring assertions so the literal
+    // weights line is matchable.
+    const stripped = html.replace(/<!--.*?-->/g, "");
+    expect(stripped).toContain("revenue 30%");
+    expect(stripped).toContain("transactions 20%");
+    expect(stripped).toContain("revenue/room 25%");
+    expect(stripped).toContain("txn/kiosk 15%");
+    expect(stripped).toContain("basket value 10%");
+  });
+
+  it("Test 11: renders '—' for null salesPerRoom and null sub-metric percentile", async () => {
     const html = await render(
-      <PocUnderperformanceEmail {...TWO_KIOSK_SNAPSHOT_PROPS} />,
+      <PocUnderperformanceEmail {...THREE_HOTEL_PROPS} />,
+    );
+    // Premier Inn Bristol has numRooms=null and revenuePerRoom percentile=null
+    expect(html).toContain("rooms unknown");
+    // /room cell + /room percentile both render an em-dash
+    expect(html).toContain("—");
+  });
+
+  it("Test 12: snapshot for canonical 2-hotel render", async () => {
+    const html = await render(
+      <PocUnderperformanceEmail {...TWO_HOTEL_SNAPSHOT_PROPS} />,
     );
     expect(html).toMatchSnapshot();
   });

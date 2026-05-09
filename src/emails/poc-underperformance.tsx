@@ -4,74 +4,114 @@ import { BRAND } from "./brand";
 import { CTA } from "./_cta";
 import { EmailLayout } from "./_layout";
 
-// Phase 9 Plan 09-04 — Weekly digest email for POCs with underperforming
-// kiosks.
+// Phase 9 (hotel-level rewrite, post PR #38) — Weekly digest email for POCs
+// with underperforming hotels.
 //
-// Prop shape mirrors the event payload in events.ts `email/send.requested`
-// for kind="underperforming_poc" (BLOCKER-3).
+// Prop shape mirrors the templateProps emitted by the weekly-poc-alerts cron
+// in src/inngest/functions/weekly-poc-alerts.ts.
 //
-// Design decisions (09-PATTERNS.md § D-16):
-//   - Kiosk rows rendered as table rows — more scannable than flat text
-//     blocks, Outlook-safe via role="presentation" pattern from _cta.tsx
-//   - moreCount conditional: when > 0, append a "… and N more kiosks"
-//     line below the table (soft-truncation; cron keeps top-10 in payload)
-//   - windowDays in subject preheader AND body intro sentence — POC needs
-//     context about the review window without opening the portal
-//   - CTA points at /analytics/portfolio (the portfolio view gives a
-//     per-POC cross-location view); detail URLs per row link directly to
-//     the individual kiosk
+// Layout decisions:
+//   - One "card" per hotel as a stacked Section block (cleaner than a
+//     5-7-column flat table at 560px width). Each card surfaces hotel name +
+//     composite score on top, region/scale meta on a second line, sales meta
+//     on a third, and the 5 sub-metric percentiles inline on a fourth.
+//   - moreCount: when > 0, append a "… and N more hotels" line below the
+//     final card.
+//   - Sticky weights footnote: renders the composite formula and a one-liner
+//     explaining percentile ranking. Sourced from the cron (live values), so
+//     a future migration of weights → app_settings flows through automatically.
+//   - CTA points at /analytics/portfolio for cross-portfolio review;
+//     per-hotel detail link goes to /locations/<id>.
 //
-// Revenue formatting: the caller (cron / `weekly-poc-alerts.ts`) pre-formats
-// revenue using the kiosk's OWN currency code (`Intl.NumberFormat('en-GB',
-// { style: 'currency', currency: <ISO 4217> })`). The template renders
-// whatever string arrives verbatim. Snapshot tests intentionally pass raw
-// numerics to assert the rendered table layout regardless of locale.
+// Currency formatting: the caller (cron) pre-formats `totalRevenue` and
+// `salesPerRoom` using the hotel's modal currency. The template renders the
+// strings verbatim. Snapshot tests intentionally pass raw numerics to assert
+// the rendered card layout regardless of locale.
 
-export interface KioskRow {
-  kioskId: string;
-  locationName: string;
+export interface HotelRow {
+  locationId: string;
+  hotelName: string;
   region: string;
-  revenue: number | string;
-  percentile: number | string;
+  currency: string;
+  totalRevenue: number | string;
+  totalTransactions: number;
+  kioskCount: number;
+  numRooms: number | null;
+  /** Pre-formatted by cron; null when numRooms is unknown. */
+  salesPerRoom: string | null;
+  /** Composite score 0-100, rounded to whole. */
+  compositeScore: number;
+  subMetricPercentiles: {
+    revenue: number;
+    transactions: number;
+    /** null when numRooms is unknown (revenuePerRoom not computable). */
+    revenuePerRoom: number | null;
+    txnPerKiosk: number;
+    basketValue: number;
+  };
   detailUrl: string;
 }
 
 export interface PocUnderperformanceEmailProps {
   pocName: string;
-  kiosks: KioskRow[];
+  hotels: HotelRow[];
   moreCount: number;
   windowDays: number;
   runIsoWeek: string;
   /**
    * Optional override for the "View portfolio" CTA. Falls back to
-   * `${BRAND.prodUrl}/analytics/portfolio` when omitted. Mirrored on the
-   * plain-text companion (`pocUnderperformanceText`) so HTML and text
-   * variants always agree on the CTA target.
+   * `${BRAND.prodUrl}/analytics/portfolio` when omitted.
    */
   portfolioUrl?: string;
   /**
-   * Emerging-tier cutoff in percentile points (e.g. 20 means kiosks
-   * below the 20th percentile). Defaults to 10 only if the prop is
-   * omitted — production callers always pass `tierConfig.bottom` so the
-   * body copy stays aligned with the live admin-configured threshold.
+   * Bottom-tier composite-score cutoff (0-100). Defaults to 20 — the
+   * OutletTierConfig default — only when the prop is omitted; production
+   * callers always pass `tierConfig.bottom` so the body copy stays aligned
+   * with the live admin-configured threshold.
    */
   bottomPercentile?: number;
+  /**
+   * Composite-score weights, sourced from the classifier. Defaults match
+   * `DEFAULT_COMPOSITE_WEIGHTS` in classify-locations.ts.
+   */
+  weights?: {
+    revenue: number;
+    transactions: number;
+    revenuePerRoom: number;
+    txnPerKiosk: number;
+    basketValue: number;
+  };
+}
+
+const DEFAULT_WEIGHTS = {
+  revenue: 0.3,
+  transactions: 0.2,
+  revenuePerRoom: 0.25,
+  txnPerKiosk: 0.15,
+  basketValue: 0.1,
+} as const;
+
+function pct(n: number | null): string {
+  return n === null ? "—" : `p${n}`;
 }
 
 export function PocUnderperformanceEmail({
   pocName,
-  kiosks,
+  hotels,
   moreCount,
   windowDays,
   runIsoWeek,
   portfolioUrl,
-  bottomPercentile = 10,
+  bottomPercentile = 20,
+  weights = DEFAULT_WEIGHTS,
 }: PocUnderperformanceEmailProps) {
   const resolvedPortfolioUrl = portfolioUrl ?? `${BRAND.prodUrl}/analytics/portfolio`;
+  const total = hotels.length + moreCount;
+  const noun = total === 1 ? "hotel" : "hotels";
 
   return (
     <EmailLayout
-      preheader={`${kiosks.length + moreCount} kiosk${kiosks.length + moreCount !== 1 ? "s" : ""} underperforming in the last ${windowDays} days — ${runIsoWeek}`}
+      preheader={`${total} ${noun} flagged as underperforming in the last ${windowDays} days — ${runIsoWeek}`}
     >
       <Heading
         as="h1"
@@ -84,7 +124,7 @@ export function PocUnderperformanceEmail({
           lineHeight: 1.2,
         }}
       >
-        Underperforming kiosks — {runIsoWeek}
+        Underperforming hotels — {runIsoWeek}
       </Heading>
 
       <Text
@@ -95,152 +135,140 @@ export function PocUnderperformanceEmail({
           margin: "0 0 18px",
         }}
       >
-        Hi {pocName}, the following kiosks in your portfolio fell below the
-        {" "}{bottomPercentile}th percentile over the last {windowDays} days.
+        Hi {pocName}, the following hotels in your portfolio scored at or below{" "}
+        {bottomPercentile}/100 on the composite performance score over the last{" "}
+        {windowDays} days.
       </Text>
 
-      {/* Kiosk table */}
-      <Section style={{ margin: "0 0 20px" }}>
-        <table
-          role="presentation"
-          cellPadding={0}
-          cellSpacing={0}
-          border={0}
-          width="100%"
-          style={{ width: "100%", borderCollapse: "collapse" }}
+      {/* Per-hotel cards */}
+      {hotels.map((h, i) => (
+        <Section
+          key={h.locationId}
+          style={{
+            padding: "14px 0",
+            borderTop: i === 0 ? `1px solid ${BRAND.divider}` : undefined,
+            borderBottom: `1px solid ${BRAND.divider}`,
+          }}
         >
-          <thead>
-            <tr>
-              <th
-                align="left"
-                style={{
-                  fontFamily: BRAND.fontStack,
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  color: BRAND.textMuted,
-                  padding: "0 8px 8px 0",
-                  borderBottom: `2px solid ${BRAND.divider}`,
-                }}
-              >
-                Location
-              </th>
-              <th
-                align="left"
-                style={{
-                  fontFamily: BRAND.fontStack,
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  color: BRAND.textMuted,
-                  padding: "0 8px 8px",
-                  borderBottom: `2px solid ${BRAND.divider}`,
-                }}
-              >
-                Region
-              </th>
-              <th
-                align="right"
-                style={{
-                  fontFamily: BRAND.fontStack,
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  color: BRAND.textMuted,
-                  padding: "0 8px 8px",
-                  borderBottom: `2px solid ${BRAND.divider}`,
-                }}
-              >
-                Revenue
-              </th>
-              <th
-                align="right"
-                style={{
-                  fontFamily: BRAND.fontStack,
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  color: BRAND.textMuted,
-                  padding: "0 0 8px 8px",
-                  borderBottom: `2px solid ${BRAND.divider}`,
-                }}
-              >
-                Percentile
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {kiosks.map((k, i) => (
-              <tr key={k.kioskId}>
+          <table
+            role="presentation"
+            cellPadding={0}
+            cellSpacing={0}
+            border={0}
+            width="100%"
+            style={{ width: "100%", borderCollapse: "collapse" }}
+          >
+            <tbody>
+              {/* Row 1: hotel name (link) ←→ composite score */}
+              <tr>
                 <td
                   style={{
                     fontFamily: BRAND.fontStack,
-                    fontSize: "14px",
+                    fontSize: "15px",
                     color: BRAND.graphite,
-                    padding: `${i === 0 ? "12px" : "10px"} 8px 10px 0`,
-                    borderBottom: `1px solid ${BRAND.divider}`,
-                    lineHeight: 1.4,
+                    lineHeight: 1.3,
+                    padding: "0 8px 4px 0",
                   }}
                 >
                   <Link
-                    href={k.detailUrl}
+                    href={h.detailUrl}
                     style={{
                       color: BRAND.azure,
                       textDecoration: "none",
-                      fontWeight: 500,
+                      fontWeight: 600,
                     }}
                   >
-                    {k.locationName}
+                    {h.hotelName}
                   </Link>
                 </td>
                 <td
-                  style={{
-                    fontFamily: BRAND.fontStack,
-                    fontSize: "14px",
-                    color: BRAND.textSecondary,
-                    padding: `${i === 0 ? "12px" : "10px"} 8px`,
-                    borderBottom: `1px solid ${BRAND.divider}`,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {k.region}
-                </td>
-                <td
                   align="right"
                   style={{
                     fontFamily: BRAND.fontStack,
-                    fontSize: "14px",
+                    fontSize: "20px",
+                    fontWeight: 700,
                     color: BRAND.graphite,
-                    padding: `${i === 0 ? "12px" : "10px"} 8px`,
-                    borderBottom: `1px solid ${BRAND.divider}`,
-                    lineHeight: 1.4,
                     fontVariantNumeric: "tabular-nums",
+                    padding: "0 0 4px 8px",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {k.revenue}
-                </td>
-                <td
-                  align="right"
-                  style={{
-                    fontFamily: BRAND.fontStack,
-                    fontSize: "14px",
-                    color: BRAND.textSecondary,
-                    padding: `${i === 0 ? "12px" : "10px"} 0 10px 8px`,
-                    borderBottom: `1px solid ${BRAND.divider}`,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  p{k.percentile}
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      color: BRAND.textMuted,
+                      marginRight: "6px",
+                    }}
+                  >
+                    Composite
+                  </span>
+                  {h.compositeScore}
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
+
+              {/* Row 2: region · kiosks · rooms */}
+              <tr>
+                <td
+                  colSpan={2}
+                  style={{
+                    fontFamily: BRAND.fontStack,
+                    fontSize: "13px",
+                    color: BRAND.textSecondary,
+                    lineHeight: 1.5,
+                    padding: "0 0 6px",
+                  }}
+                >
+                  {h.region} · {h.kioskCount} kiosk{h.kioskCount === 1 ? "" : "s"} ·{" "}
+                  {h.numRooms === null ? "rooms unknown" : `${h.numRooms} rooms`}
+                </td>
+              </tr>
+
+              {/* Row 3: sales · sales/room · transactions */}
+              <tr>
+                <td
+                  colSpan={2}
+                  style={{
+                    fontFamily: BRAND.fontStack,
+                    fontSize: "13px",
+                    color: BRAND.graphite,
+                    lineHeight: 1.5,
+                    fontVariantNumeric: "tabular-nums",
+                    padding: "0 0 6px",
+                  }}
+                >
+                  {h.totalRevenue} sales ·{" "}
+                  {h.salesPerRoom === null ? "—" : `${h.salesPerRoom}/room`} ·{" "}
+                  {h.totalTransactions} txn{h.totalTransactions === 1 ? "" : "s"}
+                </td>
+              </tr>
+
+              {/* Row 4: sub-metric percentiles */}
+              <tr>
+                <td
+                  colSpan={2}
+                  style={{
+                    fontFamily: BRAND.fontStack,
+                    fontSize: "12px",
+                    color: BRAND.textMuted,
+                    lineHeight: 1.5,
+                    fontVariantNumeric: "tabular-nums",
+                    padding: 0,
+                  }}
+                >
+                  rev {pct(h.subMetricPercentiles.revenue)} · txn{" "}
+                  {pct(h.subMetricPercentiles.transactions)} · /room{" "}
+                  {pct(h.subMetricPercentiles.revenuePerRoom)} · /kiosk{" "}
+                  {pct(h.subMetricPercentiles.txnPerKiosk)} · basket{" "}
+                  {pct(h.subMetricPercentiles.basketValue)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </Section>
+      ))}
 
       {moreCount > 0 ? (
         <Text
@@ -248,14 +276,41 @@ export function PocUnderperformanceEmail({
             fontSize: "13px",
             lineHeight: 1.5,
             color: BRAND.textMuted,
-            margin: "-12px 0 20px",
+            margin: "12px 0 16px",
             fontStyle: "italic",
           }}
         >
-          … and {moreCount} more kiosks below the {bottomPercentile}th percentile —
-          see full list in your portfolio.
+          … and {moreCount} more hotel{moreCount === 1 ? "" : "s"} flagged below the
+          {" "}{bottomPercentile}/100 cutoff — see full list in your portfolio.
         </Text>
       ) : null}
+
+      {/* Sticky composite-weights footnote */}
+      <Text
+        style={{
+          fontSize: "12px",
+          lineHeight: 1.5,
+          color: BRAND.textMuted,
+          margin: "16px 0 4px",
+        }}
+      >
+        Composite score = revenue {Math.round(weights.revenue * 100)}% · transactions{" "}
+        {Math.round(weights.transactions * 100)}% · revenue/room{" "}
+        {Math.round(weights.revenuePerRoom * 100)}% · txn/kiosk{" "}
+        {Math.round(weights.txnPerKiosk * 100)}% · basket value{" "}
+        {Math.round(weights.basketValue * 100)}%.
+      </Text>
+      <Text
+        style={{
+          fontSize: "12px",
+          lineHeight: 1.5,
+          color: BRAND.textMuted,
+          margin: "0 0 18px",
+          fontStyle: "italic",
+        }}
+      >
+        Each metric is ranked by percentile across all WeKnow hotels in this window.
+      </Text>
 
       <Hr
         style={{
