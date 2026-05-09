@@ -112,7 +112,7 @@ export default function LocationGroupsPage() {
   }, [loadDetail]);
 
   const emptyDetail: LocationGroupDetail = {
-    metrics: { revenue: 0, transactions: 0, hotelCount: 0, totalRooms: null },
+    metrics: { revenue: 0, revenueNative: 0, currencyKey: null, transactions: 0, hotelCount: 0, totalRooms: null },
     capacityMetrics: {
       revenuePerRoom: null,
       txnPerRoom: null,

@@ -130,7 +130,7 @@ export default function RegionsPage() {
   }, [loadDetail]);
 
   const emptyDetail: RegionDetail = {
-    metrics: { revenue: 0, transactions: 0, hotelGroupCount: 0, locationGroupCount: 0 },
+    metrics: { revenue: 0, revenueNative: 0, currencyKey: null, transactions: 0, hotelGroupCount: 0, locationGroupCount: 0 },
     hotelGroupBreakdown: [],
     locationGroupBreakdown: [],
     previousMetrics: null,

@@ -265,8 +265,12 @@ export async function getHotelGroupDetail(
   `);
 
   const summary = summaryRows[0]!;
-  // D-12 — group-detail summary: GBP-bound public revenue.
+  // D-12 — group-detail summary: GBP-bound public revenue. D-10 — also
+  // surface native + currency_key so the renderer (09.1-07) can flip cells
+  // for single-currency cohorts.
   const revenue = Number(summary.revenue_gbp);
+  const revenueNative = Number(summary.revenue_native);
+  const currencyKey = summary.currency_key;
   const transactions = Number(summary.transactions);
   const hotelCount = Number(summary.hotel_count);
 
@@ -390,9 +394,12 @@ export async function getHotelGroupDetail(
   return {
     metrics: {
       revenue,
+      revenueNative,
+      currencyKey,
       transactions,
       hotelCount,
       avgRevenuePerHotel: hotelCount > 0 ? revenue / hotelCount : 0,
+      avgRevenuePerHotelNative: hotelCount > 0 ? revenueNative / hotelCount : 0,
     },
     hotels,
     trends,

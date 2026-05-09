@@ -110,7 +110,7 @@ export default function HotelGroupsPage() {
   }, [loadDetail]);
 
   const emptyDetail: HotelGroupDetail = {
-    metrics: { revenue: 0, transactions: 0, hotelCount: 0, avgRevenuePerHotel: 0 },
+    metrics: { revenue: 0, revenueNative: 0, currencyKey: null, transactions: 0, hotelCount: 0, avgRevenuePerHotel: 0, avgRevenuePerHotelNative: 0 },
     hotels: [],
     trends: [],
     previousMetrics: null,

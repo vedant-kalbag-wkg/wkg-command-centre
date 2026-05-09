@@ -199,8 +199,12 @@ export async function getLocationGroupDetail(
   `);
 
   const summary = summaryRows[0]!;
-  // D-12 — location-group detail summary: GBP-bound public revenue.
+  // D-12 — location-group detail summary: GBP-bound public revenue. D-10 —
+  // also surface native + currency_key so the renderer (09.1-07) can flip
+  // cells for single-currency cohorts.
   const revenue = Number(summary.revenue_gbp);
+  const revenueNative = Number(summary.revenue_native);
+  const currencyKey = summary.currency_key;
   const transactions = Number(summary.transactions);
   const hotelCount = Number(summary.hotel_count);
   const totalRooms = summary.total_rooms ? Number(summary.total_rooms) : null;
@@ -332,7 +336,7 @@ export async function getLocationGroupDetail(
   }
 
   return {
-    metrics: { revenue, transactions, hotelCount, totalRooms },
+    metrics: { revenue, revenueNative, currencyKey, transactions, hotelCount, totalRooms },
     capacityMetrics: {
       revenuePerRoom,
       txnPerRoom,

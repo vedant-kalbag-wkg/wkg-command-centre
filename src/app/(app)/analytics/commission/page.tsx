@@ -150,11 +150,15 @@ export default function CommissionPage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {/* Tooltip text authored 2026-04-28 — values derive from
                 fetchCommissionSummary (./actions.ts) which sums sales_records.commission_amount
-                under buildCommissionWhere (PR-15). No D-decision applies directly to
-                commission math; tooltips reflect the commission dashboard's own definitions. */}
+                under buildCommissionWhere (PR-15). Phase 9.1 / D-15: this view
+                is always GBP-normalised. Commission is paid out in GBP
+                regardless of source-sale currency, so the page pins to GBP
+                via formatCurrency rather than auto-picking native vs GBP per
+                D-10 (which is the rule for cross-portfolio analytics tiles
+                like /regions, /hotel-groups, /location-groups). */}
             <KpiCard
               title="Total Commission"
-              tooltip="SUM(commission_amount) across sales_records in scope. The commission paid out (or owed) to operators based on their tier configuration. Region/location filters apply via the standard scoped-sales predicate (PR-15)."
+              tooltip="SUM(commission_amount) across sales_records in scope. The commission paid out (or owed) to operators based on their tier configuration. Region/location filters apply via the standard scoped-sales predicate (PR-15). Always GBP per D-15: commission is paid out in GBP regardless of source-sale currency, so this view is always GBP-normalised (uses commission_ledger amounts which are GBP-denominated post the FX-04 commission base swap)."
               value={formatCurrency(d.summary.totalCommission)}
               change={
                 d.summary.commissionDelta !== null
@@ -166,7 +170,7 @@ export default function CommissionPage() {
             />
             <KpiCard
               title="Commissionable Revenue"
-              tooltip="SUM(netAmount) over sales_records that have a non-null commission_amount — i.e. the share of revenue that actually drove a commission payment. Excludes records where commission was zero or unconfigured."
+              tooltip="SUM(netAmount_gbp) over sales_records that have a non-null commission_amount — i.e. the share of revenue that actually drove a commission payment. Excludes records where commission was zero or unconfigured. Always GBP per D-15 — commission tiers are GBP-denominated, so the cumulative base for tier-bracket lookup is GBP-normalised at sale-time BoE rates."
               value={formatCurrency(d.summary.totalCommissionable)}
               change={
                 d.summary.commissionableDelta !== null

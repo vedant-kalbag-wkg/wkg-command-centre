@@ -72,8 +72,13 @@ export async function calculateCommissionsForRecords(
     return { processed: 0, calculated: 0, skipped: 0 };
   }
 
-  // 1. Fetch the sales records (netAmount + isWeknowFee — grossAmount and
-  //    bookingFee columns were dropped in the NetSuite ETL rewrite).
+  // 1. Fetch the sales records (netAmount + netAmountGbp + isWeknowFee —
+  //    grossAmount and bookingFee columns were dropped in the NetSuite ETL
+  //    rewrite). Phase 9.1 / D-15: pull netAmountGbp alongside netAmount so
+  //    the per-row engine call uses the GBP value (consistent with the
+  //    cumulative GBP base at line 211). Tier brackets are GBP-denominated;
+  //    feeding the engine a native EUR amount against a GBP cumulative
+  //    cursor would mis-calculate the tier-bracket boundary crossing.
   //
   // Chunked because Postgres's bind-parameter ceiling is 65,535 — a full-month
   // import (~95k rows) would blow it as one IN-list. 10k per chunk leaves
@@ -85,6 +90,12 @@ export async function calculateCommissionsForRecords(
     productId: string;
     transactionDate: string;
     netAmount: string;
+    // Phase 9.1 — net_amount_gbp is nullable on the schema (rows ingested
+    // before the BoE fetch was wired carry NULL until backfilled). The
+    // commission processor only runs against current-month fee rows, all of
+    // which post-date the FX rollout, so this should never be NULL in
+    // practice — but the type acknowledges the schema reality.
+    netAmountGbp: string | null;
     isWeknowFee: boolean;
     netsuiteCode: string | null;
   };
@@ -98,6 +109,7 @@ export async function calculateCommissionsForRecords(
         productId: salesRecords.productId,
         transactionDate: salesRecords.transactionDate,
         netAmount: salesRecords.netAmount,
+        netAmountGbp: salesRecords.netAmountGbp,
         isWeknowFee: salesRecords.isWeknowFee,
         netsuiteCode: salesRecords.netsuiteCode,
       })
@@ -199,11 +211,16 @@ export async function calculateCommissionsForRecords(
     const mEnd = monthEnd(ym);
 
     // Query cumulative revenue for this location x product x month.
-    // Commission base is SUM(netAmount) WHERE isWeknowFee = true, EXCLUDING
+    // Commission base is SUM(netAmount_gbp) WHERE isWeknowFee = true, EXCLUDING
     // the records we're about to process (to avoid double-counting the batch).
+    // Phase 9.1 / D-15: commission is paid out in GBP regardless of source-sale
+    // currency, so the cumulative base for tier-bracket lookup MUST be GBP-
+    // normalised at sale-time BoE rates. Pre-FX, a EUR-paying kiosk would
+    // hit the £10k tier at €11.5k of native sales; post-fix the boundary is
+    // crossed at £10k of GBP-equivalent sales.
     const [cumRow] = await db
       .select({
-        total: sql<string>`coalesce(sum(${salesRecords.netAmount}), 0)`,
+        total: sql<string>`coalesce(sum(${salesRecords.netAmountGbp}), 0)`,
       })
       .from(salesRecords)
       .where(
@@ -231,16 +248,22 @@ export async function calculateCommissionsForRecords(
     });
 
     for (const rec of groupRecords) {
-      const net = Number(rec.netAmount);
+      // D-15 — feed the engine the GBP value so the tier-bracket boundary
+      // crossing matches the GBP cumulative cursor seeded at line 211.
+      // Defensive null fallback: if a row sneaks through pre-FX-backfill
+      // (e.g. an old replay), fall back to native — better to commission on
+      // raw native than to skip the row outright.
+      const netGbp = rec.netAmountGbp !== null ? Number(rec.netAmountGbp) : Number(rec.netAmount);
       const txDate =
         typeof rec.transactionDate === "string"
           ? rec.transactionDate
           : (rec.transactionDate as Date).toISOString().slice(0, 10);
 
       // Engine's first param is currently named `grossAmount` but semantically
-      // accepts whatever drives the calc — pass netAmount. Engine untouched.
+      // accepts whatever drives the calc — pass GBP since tier brackets are
+      // GBP-denominated.
       const result = calculateCommission(
-        net,
+        netGbp,
         0,
         cumulative,
         lp.tiers,
@@ -249,7 +272,7 @@ export async function calculateCommissionsForRecords(
 
       if (!result) {
         skipped++;
-        cumulative += net;
+        cumulative += netGbp;
         continue;
       }
 
@@ -257,9 +280,12 @@ export async function calculateCommissionsForRecords(
         salesRecordId: rec.id,
         locationProductId: lp.id,
         // commissionLedger.grossAmount column still exists — store the
-        // commission base (netAmount) there. Not renaming the column this
+        // commission base. Per D-15, the ledger now stores the GBP value so
+        // the dashboard "Total Commission" / "Commissionable Revenue" tiles
+        // (always-GBP per D-15) read directly from this column without an
+        // extra FX conversion at read-time. Not renaming the column this
         // phase (out of scope; would need a migration).
-        grossAmount: net.toFixed(2),
+        grossAmount: netGbp.toFixed(2),
         commissionableAmount: result.commissionableAmount.toFixed(2),
         commissionAmount: result.commissionAmount.toFixed(2),
         tierBreakdown: result.tierBreakdown,
@@ -267,7 +293,7 @@ export async function calculateCommissionsForRecords(
         isReversal: false,
       });
 
-      cumulative += net;
+      cumulative += netGbp;
       calculated++;
     }
   }
