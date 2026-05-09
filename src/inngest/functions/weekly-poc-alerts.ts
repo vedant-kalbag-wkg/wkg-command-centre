@@ -1,0 +1,289 @@
+/**
+ * Weekly POC underperformance alert job.
+ *
+ * Fires every Monday at 09:00 Europe/London, or on demand via the
+ * "performance-alerts/run.requested" event. Classifies all eligible live
+ * kiosks, computes tier changes, and emails each POC whose kiosks are in the
+ * bottom tier.
+ *
+ * Steps:
+ *   1. load-config       — classify kiosks via SQL
+ *   2. diff-state        — compare against kiosk_performance_alert_state
+ *   3. (inline)          — detect first-run; suppress all alerts on cold start
+ *   4. write-state       — upsert kiosk_performance_alert_state rows
+ *   5. emit-poc-emails   — fan-out email/send.requested events per POC
+ *   6. emit-skip-rows    — write email_log skip rows for kiosks with no POC
+ *   7. write-run-audit   — append performance_alert_run audit log row
+ */
+
+import { sql, inArray } from "drizzle-orm";
+import { db } from "@/db";
+import { kioskPerformanceAlertState, emailLog, user } from "@/db/schema";
+import { inngest } from "../client";
+import {
+  classifyEligibleKiosks,
+  type ClassifiedKioskRow,
+} from "@/lib/performance-alerts/classify-kiosks";
+import {
+  decideAlert,
+  type Decision,
+  type Tier,
+} from "@/lib/performance-alerts/classify-dispatch";
+import { groupByPoc } from "@/lib/performance-alerts/poc-batching";
+import { isoWeekKey } from "@/lib/performance-alerts/iso-week";
+import { sha256 } from "@/lib/performance-alerts/hash";
+import { writeAuditLog } from "@/lib/audit";
+import { BRAND } from "@/emails/brand";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const KIOSK_TRUNCATION_CAP = 25;
+
+// ─── Inline event type (D-03: do not add to events.ts) ───────────────────────
+
+type PerformanceAlertsRunRequested = {
+  name: "performance-alerts/run.requested";
+  data: {
+    actorId?: string;
+    actorName?: string;
+  };
+};
+
+// ─── Step / event shims for testability ──────────────────────────────────────
+
+export type StepShim = {
+  run: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+  sendEvent: (id: string, events: unknown[]) => Promise<unknown>;
+};
+
+type EventShim = {
+  name?: string;
+  data?: { actorId?: string; actorName?: string };
+};
+
+// ─── Core handler (exported for integration tests) ───────────────────────────
+
+export async function _handleWeeklyPocAlerts({
+  step,
+  runId,
+  event,
+}: {
+  step: StepShim;
+  runId: string;
+  event?: EventShim;
+}): Promise<{
+  alerted: number;
+  skipped: number;
+  classified: number;
+  firstRun: boolean;
+}> {
+  // ── Step 1: classify ────────────────────────────────────────────────────────
+  const classification = await step.run("load-config", async () => {
+    return await classifyEligibleKiosks();
+  });
+
+  const kioskIds = classification.rows.map((r) => r.kioskId);
+
+  // ── Step 2: diff-state ──────────────────────────────────────────────────────
+  const decisions = await step.run("diff-state", async () => {
+    const now = new Date();
+    const priorRows =
+      kioskIds.length === 0
+        ? []
+        : await db
+            .select()
+            .from(kioskPerformanceAlertState)
+            .where(inArray(kioskPerformanceAlertState.kioskId, kioskIds));
+    const priorByKiosk = new Map(priorRows.map((r) => [r.kioskId, r]));
+
+    return classification.rows.map((row) => {
+      const prior = priorByKiosk.get(row.kioskId);
+      const decision = decideAlert(
+        prior
+          ? { tier: prior.tier as Tier, lastAlertedAt: prior.lastAlertedAt }
+          : null,
+        row.tier,
+        now,
+      );
+      return {
+        ...row,
+        decision,
+        priorTier: (prior?.tier as Tier | undefined) ?? null,
+        lastAlertedAt: prior?.lastAlertedAt ?? null,
+        hadPriorRow: !!prior,
+      };
+    });
+  });
+
+  // ── Step 3: detect first-run ─────────────────────────────────────────────────
+  // Pitfall 8 option a: if every kiosk is new (no prior state rows), suppress
+  // all alerts — this is a cold-start run, not a genuine underperformance event.
+  const firstRun =
+    decisions.length > 0 && decisions.every((d) => !d.hadPriorRow);
+  const effectiveDecisions = firstRun
+    ? decisions.map((d) => ({ ...d, decision: "no-alert" as Decision }))
+    : decisions;
+
+  // ── Step 4: write-state ─────────────────────────────────────────────────────
+  await step.run("write-state", async () => {
+    const now = new Date();
+    for (const d of effectiveDecisions) {
+      await db
+        .insert(kioskPerformanceAlertState)
+        .values({
+          kioskId: d.kioskId,
+          tier: d.tier,
+          classifiedAt: now,
+          lastRunAt: now,
+          lastAlertedAt:
+            d.decision === "flip-in" || d.decision === "chronic"
+              ? now
+              : d.lastAlertedAt,
+        })
+        .onConflictDoUpdate({
+          target: kioskPerformanceAlertState.kioskId,
+          set: {
+            tier: d.tier,
+            classifiedAt: now,
+            lastRunAt: now,
+            lastAlertedAt:
+              d.decision === "flip-in" || d.decision === "chronic"
+                ? now
+                : sql`excluded.last_alerted_at`,
+          },
+        });
+    }
+  });
+
+  const runIsoWeek = isoWeekKey(new Date());
+
+  // ── Step 5: emit-poc-emails ─────────────────────────────────────────────────
+  const alertable = effectiveDecisions.filter((d) => d.decision !== "no-alert");
+  const groups = groupByPoc(alertable);
+  let alertedCount = 0;
+
+  await step.run("emit-poc-emails", async () => {
+    const realPocGroups = groups.filter((g) => g.pocUserId !== null);
+    if (realPocGroups.length === 0) return;
+
+    const pocIds = realPocGroups.map((g) => g.pocUserId!);
+    const userRows = await db
+      .select({ id: user.id, email: user.email, name: user.name })
+      .from(user)
+      .where(inArray(user.id, pocIds));
+    const userById = new Map(userRows.map((u) => [u.id, u]));
+
+    const events = realPocGroups
+      .map((g) => {
+        const u = userById.get(g.pocUserId!);
+        if (!u || !u.email) return null;
+
+        const sortedKiosks = [...g.kiosks].sort(
+          (a, b) => (a as ClassifiedKioskRow).revenue - (b as ClassifiedKioskRow).revenue,
+        );
+        const truncated = sortedKiosks.slice(0, KIOSK_TRUNCATION_CAP);
+        const moreCount = Math.max(0, sortedKiosks.length - KIOSK_TRUNCATION_CAP);
+        const subject = `Performance update — ${sortedKiosks.length} kiosk${sortedKiosks.length === 1 ? "" : "s"} need attention`;
+
+        return {
+          name: "email/send.requested" as const,
+          data: {
+            kind: "underperforming_poc" as const,
+            to: u.email,
+            subject,
+            template: "poc-underperformance" as const,
+            templateProps: {
+              pocName: u.name ?? "there",
+              kiosks: truncated.map((k) => {
+                const kr = k as ClassifiedKioskRow;
+                return {
+                  kioskId: kr.outletCode,
+                  locationName: kr.locationName,
+                  region: kr.region,
+                  revenue: kr.revenue,
+                  percentile: kr.percentile,
+                  detailUrl: `${BRAND.prodUrl}/kiosks/${kr.kioskId}`,
+                };
+              }),
+              moreCount,
+              windowDays: classification.windowDays,
+              runIsoWeek,
+            },
+            payloadHash: sha256(`${g.pocUserId}:${runIsoWeek}`),
+          },
+        };
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+
+    alertedCount = events.length;
+    if (events.length > 0) {
+      await step.sendEvent("emit-poc-emails", events);
+    }
+  });
+
+  // ── Step 6: emit-skip-rows ──────────────────────────────────────────────────
+  let skippedCount = 0;
+
+  await step.run("emit-skip-rows", async () => {
+    const skipKiosks = effectiveDecisions.filter(
+      (d) => d.decision !== "no-alert" && d.internalPocId === null,
+    );
+    skippedCount = skipKiosks.length;
+    for (const k of skipKiosks) {
+      await db
+        .insert(emailLog)
+        .values({
+          kind: "underperforming_poc",
+          recipient: "[skip:no-poc]",
+          inngestRunId: runId,
+          status: "skipped",
+          payloadHash: null,
+        })
+        .onConflictDoNothing();
+    }
+  });
+
+  // ── Step 7: write-run-audit ─────────────────────────────────────────────────
+  await step.run("write-run-audit", async () => {
+    const isManual = event?.name === "performance-alerts/run.requested";
+    await writeAuditLog({
+      actorId: isManual ? (event?.data?.actorId ?? "system") : "system",
+      actorName: isManual
+        ? (event?.data?.actorName ?? "manual trigger")
+        : "weekly-poc-alerts cron",
+      entityType: "performance_alert_run",
+      entityId: runId,
+      entityName: `Run ${runIsoWeek}`,
+      action: "trigger",
+    });
+  });
+
+  return {
+    alerted: alertedCount,
+    skipped: skippedCount,
+    classified: effectiveDecisions.length,
+    firstRun,
+  };
+}
+
+// ─── Inngest function registration ───────────────────────────────────────────
+
+export const weeklyPocAlertsFn = inngest.createFunction(
+  {
+    id: "weekly-poc-alerts",
+    name: "Weekly POC underperformance alerts",
+    triggers: [
+      { cron: "TZ=Europe/London 0 9 * * 1" },
+      { event: "performance-alerts/run.requested" as PerformanceAlertsRunRequested["name"] },
+    ],
+    concurrency: { limit: 1 },
+    retries: 3,
+  },
+  async ({ step, runId, event }) => {
+    return await _handleWeeklyPocAlerts({
+      step: step as unknown as StepShim,
+      runId,
+      event: event as unknown as EventShim,
+    });
+  },
+);
