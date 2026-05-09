@@ -26,12 +26,24 @@ import { auth } from "@/lib/auth";
 // Spelling: "unauthorised" (British) matches the project's existing
 // convention; UI copy and error messages elsewhere in the codebase use
 // British spelling.
+
+// Hardcoded operator deployment — fallback only. Admin contact email is
+// overridable via ADMIN_SUPPORT_EMAIL so a change of address doesn't
+// require a code deploy.
+const ADMIN_SUPPORT_EMAIL =
+  process.env.ADMIN_SUPPORT_EMAIL ?? "vedant.kalbag@weknowgroup.com";
+
 export async function POST() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {
     return NextResponse.json({ error: "unauthorised" }, { status: 401 });
   }
 
+  // TODO (Phase 9 hardening): rate-limit per session/user. An authenticated
+  // session can POST this endpoint repeatedly to spam confirmation emails
+  // (T-08.02-01 informational). The underlying password change has already
+  // succeeded, so this only affects mailbox volume — gated on Phase 9 adding
+  // either Inngest rate-limit middleware or a DB cooldown window.
   await inngest.send({
     name: "email/send.requested",
     data: {
@@ -40,10 +52,14 @@ export async function POST() {
       subject: "Your WeKnow password was changed",
       template: "password-changed",
       templateProps: {
+        // Server-rendered timestamp in Europe/London (ops/admin tz, not the
+        // user's locale) so the same string appears in the audit log and the
+        // email body. If multi-tz support lands later, switch to ISO-8601 and
+        // format client-side.
         changedAt: new Date().toLocaleString("en-GB", {
           timeZone: "Europe/London",
         }),
-        contactAdminUrl: "mailto:vedant.kalbag@weknowgroup.com",
+        contactAdminUrl: `mailto:${ADMIN_SUPPORT_EMAIL}`,
       },
     },
   });

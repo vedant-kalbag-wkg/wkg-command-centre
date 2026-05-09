@@ -1,22 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 
 // Phase 8 Plan 08-02 — Contract test for the change-password form's zod schema
-// (EMAIL-02). The schema is inlined in change-password-form.tsx (it's a private
-// implementation detail of the form) so this test recreates the same shape and
-// asserts the contract. If a future change drifts the form's schema away from
-// this one, this test still asserts that the *acceptance contract* holds; the
-// form's schema is verified inline by acceptance-grep gates in the plan.
-const schema = z
-  .object({
-    currentPassword: z.string().min(1, "Current password is required"),
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
-    confirm: z.string().min(1, "Please confirm your new password"),
-  })
-  .refine((d) => d.newPassword === d.confirm, {
-    message: "Passwords do not match",
-    path: ["confirm"],
-  });
+// (EMAIL-02). Imports THE schema from the form so a future change auto-flows
+// here — no chance of drift between the form's runtime validation and the
+// behaviour this test asserts.
+import { changePasswordSchema as schema } from "./change-password-form";
 
 describe("change-password form schema (EMAIL-02)", () => {
   it("rejects empty currentPassword", () => {

@@ -95,7 +95,17 @@ export async function _handleSendEmail({
   });
 
   const sendResult = await step.run("resend-send", async () => {
-    return await getResend().emails.send({ from: FROM, to, subject, html, text });
+    // Read EMAIL_REPLY_TO lazily (matches src/lib/email.ts) so the Inngest
+    // path doesn't silently drop replyTo while the synchronous path honours it.
+    const replyTo = process.env.EMAIL_REPLY_TO || undefined;
+    return await getResend().emails.send({
+      from: FROM,
+      to,
+      subject,
+      html,
+      text,
+      ...(replyTo ? { replyTo } : {}),
+    });
   });
 
   await step.run("log", async () => {

@@ -1117,7 +1117,7 @@ export const emailLog = pgTable(
     recipient: text("recipient").notNull(),
     resendMessageId: text("resend_message_id"),
     inngestRunId: text("inngest_run_id"),
-    status: text("status").notNull(),
+    status: text("status", { enum: ["sent", "failed"] }).notNull(),
     lastError: text("last_error"),
     payloadHash: text("payload_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

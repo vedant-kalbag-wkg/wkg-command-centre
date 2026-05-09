@@ -26,7 +26,10 @@ import { authClient } from "@/lib/auth-client";
 //
 // Convention: client form uses plain `import { z } from "zod"` (NOT zod/v4 —
 // that's the server-action convention per src/app/(app)/settings/users/actions.ts).
-const schema = z
+//
+// Exported so the contract test in change-password-form.test.ts asserts against
+// THE schema, not a copy that can drift silently.
+export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "Current password is required"),
     newPassword: z.string().min(8, "Password must be at least 8 characters"),
@@ -37,7 +40,7 @@ const schema = z
     path: ["confirm"],
   });
 
-type Values = z.infer<typeof schema>;
+type Values = z.infer<typeof changePasswordSchema>;
 
 export function ChangePasswordForm() {
   const [isLoading, setIsLoading] = useState(false);
@@ -49,7 +52,7 @@ export function ChangePasswordForm() {
     formState: { errors },
     reset,
   } = useForm<Values>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(changePasswordSchema),
     mode: "onBlur",
     reValidateMode: "onChange",
   });
