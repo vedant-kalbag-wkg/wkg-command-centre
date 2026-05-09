@@ -24,11 +24,15 @@ import { BRAND } from "./brand";
 //   - VML `<v:roundrect>` removed — only ever needed when the styled
 //     `<a>` couldn't render the button shape, but the `<td>`-based
 //     pattern below renders consistently in Outlook 2007+ without it.
-//   - Long URL `<a>` fallback line removed — Outlook's HTML parser
-//     choked on the 200+ char Better Auth reset URL appearing twice
-//     in the same email and fell back to text/plain (where the link
-//     rendered as `[URL]Label`). Replaced with a short labelled anchor:
-//     "If the button doesn't work, click here instead."
+//
+// 2026-05-09 round-4: fallback shows the full URL again (operator UX).
+// The "click here instead" label was redundant — both anchors went to
+// the same href, and copying out of the email was impossible. The
+// earlier URL-rendering bug was traced to a literal `\n` suffix on the
+// `BETTER_AUTH_URL` Vercel env var (not URL length); env was cleaned
+// 2026-05-09. With a clean URL the displayed link renders fine in
+// Outlook desktop, and `overflowWrap:anywhere` lets long URLs soft-wrap
+// without inserting visible whitespace at the break point.
 //   - mailto: hrefs use a different fallback prompt: "If the button
 //     doesn't work, email <displayed address> directly." — so the
 //     password-changed template still surfaces the contact address
@@ -54,14 +58,19 @@ export function CTA({
     </>
   ) : (
     <>
-      If the button doesn&apos;t work,{" "}
+      If the button doesn&apos;t work, copy and paste this link into your
+      browser:
+      <br />
       <Link
         href={href}
-        style={{ color: BRAND.azure, textDecoration: "underline" }}
+        style={{
+          color: BRAND.azure,
+          textDecoration: "underline",
+          overflowWrap: "anywhere",
+        }}
       >
-        click here instead
+        {href}
       </Link>
-      .
     </>
   );
 
