@@ -57,6 +57,8 @@ export type KioskWithRelations = {
   createdAt: Date;
   updatedAt: Date;
   archivedAt: Date | null;
+  alertSilencedAt: Date | null;
+  alertSilencedReason: string | null;
   pipelineStage: { id: string; name: string; color: string | null } | null;
   currentAssignment: {
     id: string;
