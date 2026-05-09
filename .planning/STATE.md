@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: data-foundation-and-email
-status: executing
-stopped_at: Phase 9 code-complete on gsd/phase-09-poc-underperformance-alerts — operator Playwright UAT pending (admin perf-alerts page + kiosk silencing UI specs unrun against preview alias).
-last_updated: "2026-05-09T22:00:00.000Z"
-last_activity: 2026-05-09 -- Phase 9 (POC Underperformance Alerts) code-complete via /gsd-execute-phase. 7 plans / ~30 commits across 5 waves. Wave 4 plans (09-05, 09-06) returned at human-verify checkpoints — Playwright specs committed but unrun against the Vercel preview alias (operator-driven per CLAUDE.md). POC-ALERT-01 ticked in REQUIREMENTS.md. Phase 8 still awaiting operator UAT for EMAIL-03.
+status: verifying
+stopped_at: "Phase 9 (POC Underperformance Alerts) code-complete + reviewed via /gsd-execute-phase 9. 7 plans / ~30 commits across 5 waves. gsd-code-reviewer initial verdict BLOCK (CR-01/CR-02/CR-03 + WR-03) — all four resolved in commit 3570cbe. gsd-verifier verdict human_needed: 7/7 plans + 15/15 code truths COVERED; 8 operator UAT items in 09-HUMAN-UAT.md (push, preview deploy, BETTER_AUTH_URL pin, migrations 0043+0044, Playwright admin+silencing specs against preview alias, manual visual UAT, end-to-end Inngest event trigger). Phase 8 also still awaiting operator UAT (08-HUMAN-UAT.md)."
+last_updated: "2026-05-09T22:35:00.000Z"
+last_activity: 2026-05-09 -- Phase 9 close: code review fixes committed (CR-01/02/03 + WR-03), gsd-tools phase complete called, awaiting operator UAT before merge.
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 15
   completed_plans: 15
   percent: 20
-  notes: "Phase 7 fully shipped. Phase 8 + Phase 9 both code-complete pending operator UAT (08-HUMAN-UAT.md, plus the 8-item Phase 9 punch list to roll into 09-HUMAN-UAT.md after verifier runs). Neither yet counts toward completed_phases."
+  notes: "Phase 7 fully shipped. Phase 8 + Phase 9 both code-complete pending operator UAT (08-HUMAN-UAT.md, 09-HUMAN-UAT.md). Neither yet counts toward completed_phases. completed_plans counts every plan with a committed SUMMARY across the 3 planned-and-executed phases (5 + 3 + 7 = 15)."
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 ## Current Position
 
-Phase: 9 (POC Underperformance Alerts) — code-complete on gsd/phase-09-poc-underperformance-alerts; awaiting operator UAT
+Phase: 09
 Status: Phase 9 code-complete 2026-05-09. ~30 commits ahead of origin/main across 5 waves (schema → pure logic → email template → cron + classification → admin UI + kiosk silencing UI → doc close-out). 629 unit tests pass, `tsc --noEmit` clean. 8 operator-only items pending: branch push, Vercel preview deploy, BETTER_AUTH_URL preview env var pinned to git-branch alias, migrations 0043+0044 applied to preview DB, Playwright specs (`tests/admin/performance-alerts.spec.ts` + `tests/kiosks/silence.spec.ts`) run against preview, manual visual UAT, end-to-end weekly cron event verification. POC-ALERT-01 ticked in REQUIREMENTS.md.
-Last activity: 2026-05-09 -- Phase 9 wave 1+2+3+4+5 executed via parallel gsd-executor subagents; checkpoint plans returned at the Playwright-against-preview gate.
+Last activity: 2026-05-09
 
 ## v1.1 Phase Index
 
