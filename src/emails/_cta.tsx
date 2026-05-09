@@ -3,52 +3,67 @@ import type * as React from "react";
 
 import { BRAND } from "./brand";
 
-// Phase 8 Plan 08-01 — Bulletproof CTA component used by every template.
+// Phase 8 Plan 08-01 — Single bulletproof CTA component shared by every
+// transactional template.
 //
-// Two clickable elements per CTA:
-//   1. A styled pill button — `<a>` for modern clients, paired with a
-//      <!--[if mso]> VML rectangle <![endif]--> block so Outlook desktop
-//      (Word's HTML engine) gets a properly-shaped, full-width-padded
-//      brand-azure button instead of stripped padding + bare blue text.
-//   2. A "Or paste this link" fallback line. The displayed text is
-//      friendly: mailto: URLs show as the bare email address, http(s)
-//      URLs show as-is. No `word-break: break-all` — that produced
-//      visible whitespace at wrap points in Outlook desktop. Email
-//      clients now wrap naturally; the URL is still a single clickable
-//      anchor with no leading/trailing whitespace.
+// Structure (Outlook-safe pattern from Litmus / Email on Acid):
+//   <table>
+//     <tr>
+//       <td bgcolor="..." style="padding:13px 28px;border-radius:8px;">
+//         <a href="...">LABEL</a>
+//       </td>
+//     </tr>
+//   </table>
 //
-// Outlook test note: VML must include `arcsize` for rounded corners,
-// and `<v:textbox>` with `mso-fit-shape-to-text:true` so the box hugs
-// the label without manual width arithmetic.
+// The `<td>` carries `bgcolor=` (legacy HTML attribute Outlook honours)
+// AND `style="background-color:...;padding:..."`. The `<a>` is plain
+// white bold text — Outlook ignores `padding` on `<a>` but honours it
+// on `<td>`, so the button shape comes from the cell.
+//
+// 2026-05-09 round-3 fixes after operator UAT in Outlook desktop:
+//   - VML `<v:roundrect>` removed — only ever needed when the styled
+//     `<a>` couldn't render the button shape, but the `<td>`-based
+//     pattern below renders consistently in Outlook 2007+ without it.
+//   - Long URL `<a>` fallback line removed — Outlook's HTML parser
+//     choked on the 200+ char Better Auth reset URL appearing twice
+//     in the same email and fell back to text/plain (where the link
+//     rendered as `[URL]Label`). Replaced with a short labelled anchor:
+//     "If the button doesn't work, click here instead."
+//   - mailto: hrefs use a different fallback prompt: "If the button
+//     doesn't work, email <displayed address> directly." — so the
+//     password-changed template still surfaces the contact address
+//     in text form for any client that strips the styled button.
 export function CTA({
   href,
   label,
-  fallbackPrefix,
 }: {
   href: string;
   label: string;
-  fallbackPrefix?: string;
 }) {
   const isMailto = href.startsWith("mailto:");
-  const displayUrl = isMailto ? href.replace(/^mailto:/, "") : href;
-  const prefix = fallbackPrefix ?? (isMailto ? "Or email:" : "Or paste this link in your browser:");
-
-  // VML markup is raw — react-email passes <!-- comments --> through
-  // unchanged. Width 240/height 46 picks up most CTA labels without
-  // truncation; longer labels can override via wider VML.
-  const vmlOpen =
-    `<!--[if mso]>` +
-    `<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"` +
-    ` href="${href}" style="height:46px;v-text-anchor:middle;width:240px;" arcsize="17%"` +
-    ` stroke="f" fillcolor="${BRAND.azure}">` +
-    `<w:anchorlock/>` +
-    `<center style="color:${BRAND.white};font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;">` +
-    `${label}` +
-    `</center>` +
-    `</v:roundrect>` +
-    `<![endif]-->`;
-  const vmlClose = `<!--[if !mso]><!-->`;
-  const vmlEnd = `<!--<![endif]-->`;
+  const fallback = isMailto ? (
+    <>
+      If the button doesn&apos;t work, email{" "}
+      <Link
+        href={href}
+        style={{ color: BRAND.azure, textDecoration: "underline" }}
+      >
+        {href.replace(/^mailto:/, "")}
+      </Link>{" "}
+      directly.
+    </>
+  ) : (
+    <>
+      If the button doesn&apos;t work,{" "}
+      <Link
+        href={href}
+        style={{ color: BRAND.azure, textDecoration: "underline" }}
+      >
+        click here instead
+      </Link>
+      .
+    </>
+  );
 
   return (
     <Section>
@@ -68,38 +83,28 @@ export function CTA({
       >
         <tbody>
           <tr>
-            <td>
-              {/* Outlook (mso) gets the VML rectangle; everything else
-                  falls through to the styled <a>. */}
-              <span
-                dangerouslySetInnerHTML={{
-                  __html: `${vmlOpen}${vmlClose}`,
-                }}
-              />
+            <td
+              {...({ bgcolor: BRAND.azure } as Record<string, string>)}
+              align="center"
+              style={{
+                backgroundColor: BRAND.azure,
+                borderRadius: "8px",
+                padding: "13px 28px",
+              }}
+            >
               <Link
                 href={href}
-                // `mso-hide:all` keeps the styled <a> hidden in Outlook
-                // desktop (Word) — the VML rectangle above is what Outlook
-                // shows. CSSProperties type doesn't include MSO-prefixed
-                // keys so we cast the partial object.
-                style={
-                  {
-                    backgroundColor: BRAND.azure,
-                    display: "inline-block",
-                    padding: "13px 28px",
-                    color: BRAND.white,
-                    fontSize: "15px",
-                    fontWeight: 600,
-                    letterSpacing: "0.01em",
-                    textDecoration: "none",
-                    borderRadius: "8px",
-                    msoHide: "all",
-                  } as React.CSSProperties
-                }
+                style={{
+                  color: BRAND.white,
+                  fontFamily: BRAND.fontStack,
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  lineHeight: 1,
+                }}
               >
                 {label}
               </Link>
-              <span dangerouslySetInnerHTML={{ __html: vmlEnd }} />
             </td>
           </tr>
         </tbody>
@@ -113,18 +118,7 @@ export function CTA({
           margin: "16px 0 0",
         }}
       >
-        {prefix}
-        <br />
-        <Link
-          href={href}
-          style={{
-            color: BRAND.azure,
-            textDecoration: "underline",
-            overflowWrap: "anywhere",
-          }}
-        >
-          {displayUrl}
-        </Link>
+        {fallback}
       </Text>
     </Section>
   );

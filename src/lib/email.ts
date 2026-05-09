@@ -7,6 +7,11 @@ import { emailLog } from "@/db/schema";
 import { ExternalInviteEmail } from "@/emails/external-invite";
 import { InviteEmail } from "@/emails/invite";
 import { PasswordResetEmail } from "@/emails/password-reset";
+import {
+  externalInviteText,
+  inviteText,
+  passwordResetText,
+} from "@/emails/text-versions";
 
 // Phase 8 Plan 08-01 — Resend HTTP transport replaces the now-deleted SMTP
 // transport (silently failing in prod against localhost:1025). Auth-flow
@@ -14,16 +19,16 @@ import { PasswordResetEmail } from "@/emails/password-reset";
 // queue latency on invite/reset/external-invite. The Inngest substrate is
 // reserved for digests / notifications / reports (D-05).
 //
-// Every send writes one row to email_log (D-06) regardless of outcome;
+// Every send writes one row to email_log (D-06) regardless of outcome.
 // payloadHash is null for auth-flow sends (no idempotency dedupe — every
 // reset is intentional). On Resend non-2xx the function throws so Better
 // Auth surfaces the failure to the UI (D-04).
 //
-// 2026-05-09: switched from `react:` field to explicit
-// `await render(...)` + `html` + `text` so HTML rendering happens at
-// our boundary (not Resend's). Some Gmail accounts received the prior
-// react-rendered email with the CTA collapsed to its raw URL — the
-// explicit render path + bulletproof <CTA> helper fix that.
+// 2026-05-09 round 3: hand-crafted plain-text bodies (text-versions.ts)
+// replace the auto-generated `render(el, { plainText: true })` form. The
+// auto-generated text inlined the long Better Auth reset URL twice and
+// duplicated the footer link — clients that surface the text/plain part
+// (some Outlook desktop configurations) saw a noisy [URL]Label dump.
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.EMAIL_FROM ?? "noreply@command.weknowgroup.com";
@@ -35,15 +40,16 @@ async function send({
   to,
   subject,
   react,
+  text,
   kind,
 }: {
   to: string;
   subject: string;
   react: ReactElement;
+  text: string;
   kind: Kind;
 }): Promise<void> {
   const html = await render(react);
-  const text = await render(react, { plainText: true });
 
   const result = await resend.emails.send({
     from: FROM,
@@ -87,6 +93,7 @@ export async function sendPasswordResetEmail({
     to,
     subject: "Reset your password — WeKnow",
     react: PasswordResetEmail({ resetUrl }),
+    text: passwordResetText(resetUrl),
     kind: "password_reset",
   });
 }
@@ -102,6 +109,7 @@ export async function sendInviteEmail({
     to,
     subject: "You're invited to WeKnow — Set your password",
     react: InviteEmail({ resetUrl }),
+    text: inviteText(resetUrl),
     kind: "invite",
   });
 }
@@ -117,6 +125,7 @@ export async function sendExternalInviteEmail({
     to,
     subject: "Welcome to WeKnow Analytics — Set your password",
     react: ExternalInviteEmail({ setPasswordUrl }),
+    text: externalInviteText(setPasswordUrl),
     kind: "external_invite",
   });
 }

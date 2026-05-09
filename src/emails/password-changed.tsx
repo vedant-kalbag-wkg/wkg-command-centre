@@ -97,11 +97,7 @@ export function PasswordChangedEmail({
         immediately so they can review and lock the account.
       </Text>
 
-      <CTA
-        href={contactAdminUrl}
-        label="Contact admin"
-        fallbackPrefix="Or contact your admin via:"
-      />
+      <CTA href={contactAdminUrl} label="Contact admin" />
     </EmailLayout>
   );
 }

@@ -5,6 +5,7 @@ import { Resend } from "resend";
 import { db } from "@/db";
 import { emailLog } from "@/db/schema";
 import { PasswordChangedEmail } from "@/emails/password-changed";
+import { passwordChangedText } from "@/emails/text-versions";
 
 import { inngest } from "../client";
 
@@ -67,10 +68,23 @@ export async function _handleSendEmail({
       throw new Error(`Unknown email template: ${template}`);
     }
     const element = Component(templateProps as Parameters<typeof Component>[0]);
-    // render() is async in @react-email/render v2+. `await` is harmless
-    // even if the resolved value is a string in older versions.
+    // render() is async in @react-email/render v2+.
     const html = await render(element);
-    const text = await render(element, { plainText: true });
+    // Hand-crafted plain text per template (not the auto-generated
+    // render(_, {plainText:true}) — that produced [URL]Label-style
+    // text that surfaces in plain-text-mode Outlook configurations).
+    let text: string;
+    if (template === "password-changed") {
+      const props = templateProps as { changedAt: string; contactAdminUrl: string };
+      text = passwordChangedText({
+        changedAt: props.changedAt,
+        contactAdminEmail: props.contactAdminUrl.replace(/^mailto:/, ""),
+      });
+    } else {
+      // Future Inngest-served templates (digests / notifications) should
+      // add their own hand-crafted text branch above.
+      text = await render(element, { plainText: true });
+    }
     return { html, text };
   });
 
