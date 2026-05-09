@@ -9,11 +9,11 @@ vi.mock("@/db", () => ({
 }));
 
 import { eq } from "drizzle-orm";
-import { emailLog, kioskPerformanceAlertState } from "@/db/schema";
+import { emailLog, locationPerformanceAlertState } from "@/db/schema";
 import { _handleWeeklyPocAlerts } from "@/inngest/functions/weekly-poc-alerts";
 
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
-import { seedFixtures, KIOSK_IDS } from "./_seed";
+import { seedFixtures, LOCATION_IDS } from "./_seed";
 
 function makeStepShim() {
   const sentEvents: unknown[] = [];
@@ -28,7 +28,7 @@ function makeStepShim() {
   };
 }
 
-describe("weekly-poc-alerts: null POC skip path (PERF-02)", () => {
+describe("weekly-poc-alerts: null POC skip path (PERF-02, hotel-level)", () => {
   let ctx: TestDbContext;
 
   beforeAll(async () => {
@@ -36,14 +36,15 @@ describe("weekly-poc-alerts: null POC skip path (PERF-02)", () => {
     dbRef = ctx.db;
     await seedFixtures(ctx.pool);
 
-    // Seed prior state rows so this is NOT a first run
+    // Seed prior state rows so this is NOT a first run.
     const now = new Date();
-    for (const kioskId of KIOSK_IDS) {
+    for (const locationId of LOCATION_IDS) {
       await ctx.db
-        .insert(kioskPerformanceAlertState)
+        .insert(locationPerformanceAlertState)
         .values({
-          kioskId,
+          locationId,
           tier: "Standard",
+          compositeScore: "50.00",
           classifiedAt: now,
           lastRunAt: now,
           lastAlertedAt: null,
@@ -60,7 +61,7 @@ describe("weekly-poc-alerts: null POC skip path (PERF-02)", () => {
     await ctx.db.delete(emailLog);
   });
 
-  it("K5 has internalPocId=null → skip row written to email_log, no email event emitted for K5", async () => {
+  it("H1 has internalPocId=null on locations → skip row written, no email event for H1", async () => {
     const { shim, sentEvents } = makeStepShim();
     const result = await _handleWeeklyPocAlerts({
       step: shim,
@@ -70,37 +71,33 @@ describe("weekly-poc-alerts: null POC skip path (PERF-02)", () => {
 
     expect(result.firstRun).toBe(false);
 
-    // K5 is Emerging (revenue £400 — lowest of non-K1-K4 group, but given 10 kiosks
-    // with revenues 100-999, K5 at 400 may land in Developing depending on percentile)
-    // The spec guarantees K5 appears in alertable set OR skip happens only when Emerging.
-    // The test only verifies: IF K5 is Emerging (decision != no-alert), its null POC
-    // triggers a skip row. We assert skipped >= 1 when alerted > 0.
-    if (result.skipped > 0) {
-      const skipRows = await ctx.db
-        .select()
-        .from(emailLog)
-        .where(eq(emailLog.recipient, "[skip:no-poc]"));
+    // H1 has the lowest revenue (100) → composite=0 → Emerging tier →
+    // included in alertable set → null POC → skip row written.
+    expect(result.skipped).toBeGreaterThanOrEqual(1);
 
-      // At least one skip row written with kind=underperforming_poc and status=skipped
-      expect(skipRows.length).toBeGreaterThanOrEqual(1);
-      expect(skipRows[0].kind).toBe("underperforming_poc");
-      expect(skipRows[0].status).toBe("skipped");
-      expect(skipRows[0].payloadHash).toBeNull();
+    const skipRows = await ctx.db
+      .select()
+      .from(emailLog)
+      .where(eq(emailLog.recipient, "[skip:no-poc]"));
 
-      // No email/send.requested event emitted for the null-POC kiosk
-      // (events are emitted per POC group, K5 has no POC group)
-      const emailEventsForK5 = sentEvents.filter((e) => {
-        const ev = e as { name: string; data?: { templateProps?: { kiosks?: Array<{ kioskId: string }> } } };
-        if (ev.name !== "email/send.requested") return false;
-        const kiosksInEmail = ev.data?.templateProps?.kiosks ?? [];
-        return kiosksInEmail.some((k) => k.kioskId === "OC-005");
-      });
-      expect(emailEventsForK5).toHaveLength(0);
-    } else {
-      // K5 is not Emerging in this run — tier classification puts it above bottom 20%.
-      // Skip count of 0 is acceptable; the null-poc-skip path is only exercised when
-      // the kiosk is in the alertable set. Mark as intentional.
-      expect(result.skipped).toBe(0);
-    }
+    expect(skipRows.length).toBeGreaterThanOrEqual(1);
+    expect(skipRows[0].kind).toBe("underperforming_poc");
+    expect(skipRows[0].status).toBe("skipped");
+    expect(skipRows[0].payloadHash).toBeNull();
+
+    // No email/send.requested event should reference H1 — it has no POC and
+    // groupByPoc routes it into the null-POC bucket which the cron skips.
+    const emailEventsForH1 = sentEvents.filter((e) => {
+      const ev = e as {
+        name: string;
+        data?: {
+          templateProps?: { hotels?: Array<{ locationId: string }> };
+        };
+      };
+      if (ev.name !== "email/send.requested") return false;
+      const hotelsInEmail = ev.data?.templateProps?.hotels ?? [];
+      return hotelsInEmail.some((h) => h.locationId === LOCATION_IDS[0]);
+    });
+    expect(emailEventsForH1).toHaveLength(0);
   });
 });

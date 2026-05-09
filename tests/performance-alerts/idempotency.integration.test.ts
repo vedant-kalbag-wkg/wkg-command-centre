@@ -16,12 +16,12 @@ vi.mock("@/db", () => ({
   },
 }));
 
-import { emailLog, kioskPerformanceAlertState } from "@/db/schema";
+import { emailLog, locationPerformanceAlertState } from "@/db/schema";
 import { _handleWeeklyPocAlerts } from "@/inngest/functions/weekly-poc-alerts";
 import { _handleSendEmail } from "@/inngest/functions/send-email";
 
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
-import { seedFixtures, KIOSK_IDS, POC_USER_1_ID } from "./_seed";
+import { seedFixtures, LOCATION_IDS } from "./_seed";
 
 // Step shim for weekly-poc-alerts (needs both run + sendEvent)
 function makeWeeklyStepShim() {
@@ -44,7 +44,7 @@ function makeSendStepShim() {
   };
 }
 
-describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
+describe("weekly-poc-alerts: idempotency (PERF-03, hotel-level)", () => {
   let ctx: TestDbContext;
 
   beforeAll(async () => {
@@ -54,14 +54,16 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
     process.env.EMAIL_FROM = "noreply@command.weknowgroup.com";
     await seedFixtures(ctx.pool);
 
-    // Seed prior state rows so this is NOT a first run
+    // Seed prior state for all 10 hotels so the first call below is not a
+    // first-run.
     const now = new Date();
-    for (const kioskId of KIOSK_IDS) {
+    for (const locationId of LOCATION_IDS) {
       await ctx.db
-        .insert(kioskPerformanceAlertState)
+        .insert(locationPerformanceAlertState)
         .values({
-          kioskId,
+          locationId,
           tier: "Standard",
+          compositeScore: "50.00",
           classifiedAt: now,
           lastRunAt: now,
           lastAlertedAt: null,
@@ -80,7 +82,6 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
   });
 
   it("end-to-end W10: classify → emit events → send-email writes email_log rows", async () => {
-    // Resend succeeds for any call
     sendMock.mockResolvedValue({ data: { id: "msg-e2e" }, error: null });
 
     const { shim, sentEvents } = makeWeeklyStepShim();
@@ -93,13 +94,12 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
     expect(result.firstRun).toBe(false);
     expect(result.classified).toBe(10);
 
-    // Collect email/send.requested events emitted by the weekly job
     const emailEvents = sentEvents.filter(
       (e) => (e as { name: string }).name === "email/send.requested",
     );
 
-    // For each email event, drive _handleSendEmail through the step shim
-    // This exercises the full W10 path: classify → emit → email delivery
+    // Drive _handleSendEmail through the step shim for each event — full
+    // W10 path: classify → emit → email delivery.
     for (const ev of emailEvents) {
       await _handleSendEmail({
         event: ev as { data: Parameters<typeof _handleSendEmail>[0]["event"]["data"] },
@@ -108,13 +108,10 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
       });
     }
 
-    // Every POC group that triggered alerts should have a sent row in email_log
     const sentRows = await ctx.db.select().from(emailLog);
-
     const nonSkipRows = sentRows.filter((r) => r.status !== "skipped");
     expect(nonSkipRows.length).toBeGreaterThanOrEqual(emailEvents.length);
 
-    // All non-skip rows should be status=sent
     for (const row of nonSkipRows) {
       expect(row.status).toBe("sent");
       expect(row.kind).toBe("underperforming_poc");
@@ -137,7 +134,6 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
       (e) => (e as { name: string }).name === "email/send.requested",
     );
 
-    // Deliver first-run emails so email_log rows are seeded with payloadHash
     for (const ev of emailEvents1) {
       await _handleSendEmail({
         event: ev as { data: Parameters<typeof _handleSendEmail>[0]["event"]["data"] },
@@ -150,9 +146,9 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
     const sentAfterRun1 = rowsAfterRun1.filter((r) => r.status === "sent").length;
 
     // ── Second run ─────────────────────────────────────────────────────────────
-    // State table now has rows from run 1 with `lastAlertedAt` set for Emerging kiosks.
-    // CHRONIC_CAP_MS = 30 days, so re-alerting the same kiosks in the same week
-    // should produce "no-alert" for them (cooldown not elapsed).
+    // State table now has rows from run 1 with `lastAlertedAt` set for
+    // Emerging hotels. CHRONIC_CAP_MS = 30 days, so re-alerting the same
+    // hotels in the same week produces "no-alert" (cooldown not elapsed).
     const { shim: shim2, sentEvents: sent2 } = makeWeeklyStepShim();
     const result2 = await _handleWeeklyPocAlerts({
       step: shim2,
@@ -162,14 +158,13 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
 
     expect(result2.firstRun).toBe(false);
 
-    // Second run should emit zero or fewer email events than first run
-    // (cooldown active — all already-alerted kiosks produce "no-alert")
     const emailEvents2 = sent2.filter(
       (e) => (e as { name: string }).name === "email/send.requested",
     );
     expect(emailEvents2.length).toBeLessThanOrEqual(emailEvents1.length);
 
-    // Deliver second-run emails (if any) — payloadHash collision → onConflictDoNothing
+    // Deliver second-run emails (if any) — payloadHash collision →
+    // onConflictDoNothing.
     for (const ev of emailEvents2) {
       await _handleSendEmail({
         event: ev as { data: Parameters<typeof _handleSendEmail>[0]["event"]["data"] },
@@ -178,7 +173,6 @@ describe("weekly-poc-alerts: idempotency (PERF-03)", () => {
       });
     }
 
-    // email_log row count must not exceed original count (idempotency via payloadHash index)
     const rowsAfterRun2 = await ctx.db.select().from(emailLog);
     const sentAfterRun2 = rowsAfterRun2.filter((r) => r.status === "sent").length;
     expect(sentAfterRun2).toBeLessThanOrEqual(sentAfterRun1 + emailEvents2.length);
