@@ -1,17 +1,18 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v1.1
+milestone_name: data-foundation-and-email
 status: executing
-stopped_at: Phase 9 rescoped from "Notifications & Scheduled Reports" → "POC Underperformance Alerts". Original NOTIF-01/02 + REPORT-05/06 dropped (no v2 carry); replaced by POC-ALERT-01. CONTEXT.md + DISCUSSION-LOG.md written; REQUIREMENTS.md + STATE.md updated to reflect rescope. Phase 8 still code-complete awaiting operator UAT (`08-HUMAN-UAT.md`).
-last_updated: "2026-05-09T10:58:18.047Z"
-last_activity: 2026-05-09 -- Phase 09 execution started
+stopped_at: Phase 9 code-complete on gsd/phase-09-poc-underperformance-alerts — operator Playwright UAT pending (admin perf-alerts page + kiosk silencing UI specs unrun against preview alias).
+last_updated: "2026-05-09T22:00:00.000Z"
+last_activity: 2026-05-09 -- Phase 9 (POC Underperformance Alerts) code-complete via /gsd-execute-phase. 7 plans / ~30 commits across 5 waves. Wave 4 plans (09-05, 09-06) returned at human-verify checkpoints — Playwright specs committed but unrun against the Vercel preview alias (operator-driven per CLAUDE.md). POC-ALERT-01 ticked in REQUIREMENTS.md. Phase 8 still awaiting operator UAT for EMAIL-03.
 progress:
-  total_phases: 3
+  total_phases: 5
   completed_phases: 1
-  total_plans: 16
-  completed_plans: 7
-  percent: 44
+  total_plans: 15
+  completed_plans: 15
+  percent: 20
+  notes: "Phase 7 fully shipped. Phase 8 + Phase 9 both code-complete pending operator UAT (08-HUMAN-UAT.md, plus the 8-item Phase 9 punch list to roll into 09-HUMAN-UAT.md after verifier runs). Neither yet counts toward completed_phases."
 ---
 
 # Project State
@@ -21,20 +22,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 **Core value:** Operations and IT teams can accurately track, plan, and report on every kiosk deployment across all regions from a single tool that models the business's actual data structure — with analytics that Monday.com cannot produce.
-**Current focus:** Phase 09 — poc-underperformance-alerts
+**Current focus:** Phase 9 code-complete; awaiting operator UAT before merging. Phase 10 (Access Control Extended) is the next planning target.
 
 ## Current Position
 
-Phase: 09 (poc-underperformance-alerts) — EXECUTING
-Plan: 1 of 7
-Status: Executing Phase 09
-Last activity: 2026-05-09 -- Phase 09 execution started
+Phase: 9 (POC Underperformance Alerts) — code-complete on gsd/phase-09-poc-underperformance-alerts; awaiting operator UAT
+Status: Phase 9 code-complete 2026-05-09. ~30 commits ahead of origin/main across 5 waves (schema → pure logic → email template → cron + classification → admin UI + kiosk silencing UI → doc close-out). 629 unit tests pass, `tsc --noEmit` clean. 8 operator-only items pending: branch push, Vercel preview deploy, BETTER_AUTH_URL preview env var pinned to git-branch alias, migrations 0043+0044 applied to preview DB, Playwright specs (`tests/admin/performance-alerts.spec.ts` + `tests/kiosks/silence.spec.ts`) run against preview, manual visual UAT, end-to-end weekly cron event verification. POC-ALERT-01 ticked in REQUIREMENTS.md.
+Last activity: 2026-05-09 -- Phase 9 wave 1+2+3+4+5 executed via parallel gsd-executor subagents; checkpoint plans returned at the Playwright-against-preview gate.
 
 ## v1.1 Phase Index
 
 - ✓ Phase 7: Data Foundation Rebuild — DATA-01..05 — **MERGED 2026-05-08** (PR #36, squash `05fbf07`; full review loop: PR #34 merge → PR #35 revert → PR #36 with 4 fix commits)
 - → Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (code-complete; awaiting operator UAT)
-- Phase 9: POC Underperformance Alerts — POC-ALERT-01 — branch `gsd/phase-09-poc-underperformance-alerts` (CONTEXT.md ready 2026-05-09; rescoped from "Notifications & Scheduled Reports" — NOTIF-01/02 + REPORT-05/06 dropped, no v2 carry)
+- → Phase 9: POC Underperformance Alerts — POC-ALERT-01 — branch `gsd/phase-09-poc-underperformance-alerts` (code-complete 2026-05-09; awaiting operator Playwright + manual UAT against Vercel preview alias)
 - Phase 10: Access Control Extended — AUTH-06..07 — branch `gsd/phase-10-access-control-extended`
 - Phase 11: Tooling, Polish & Tech-Debt Close-out — TEST-01, MONDAY-01, REF-01, INFRA-01, POLISH-01..02, DEBT-01..02 — branch `gsd/phase-11-tooling-polish-debt`
 
@@ -96,10 +96,10 @@ None at v1.1 scoping start. Three unresolved debug sessions tracked in v1.1 cate
 
 ## Session Continuity
 
-Current session: 2026-05-09 — Phase 9 rescoped + CONTEXT.md captured
-Stopped at: Phase 9 rescoped from "Notifications & Scheduled Reports" → "POC Underperformance Alerts". Original NOTIF-01/02 + REPORT-05/06 dropped (no v2 carry); replaced by POC-ALERT-01. CONTEXT.md + DISCUSSION-LOG.md written; REQUIREMENTS.md + STATE.md updated to reflect rescope. Phase 8 still code-complete awaiting operator UAT (`08-HUMAN-UAT.md`).
-Resume file: `.planning/phases/09-poc-underperformance-alerts/09-CONTEXT.md`
-Next action: `/gsd-plan-phase 9` (after Phase 8 UAT closes, or in parallel since Phase 9 only consumes EMAIL-04 substrate which is already merged into Phase 8 code-complete)
+Current session: 2026-05-09 — Phase 9 close-out
+Stopped at: Phase 9 (POC Underperformance Alerts) code-complete via /gsd-execute-phase 9. 7 plans / ~30 commits across 5 waves. Code-complete: schema (0043 + 0044 migrations), pure-logic library (decideAlert / isoWeekKey / groupByPoc / sha256), POC underperformance email template + plain-text companion, weekly Inngest cron + classify-kiosks bridge, admin /admin/performance-alerts page + Run-now trigger, kiosk silencing UI on /kiosks/[id]. Operator UAT punch list (8 items) tracked in `09-HUMAN-UAT.md` (to be persisted by verifier). Phase 8 also still awaiting operator UAT (`08-HUMAN-UAT.md`).
+Resume file: `.planning/phases/09-poc-underperformance-alerts/09-07-SUMMARY.md`
+Next action: operator runs Phase 9 Playwright specs against preview alias (per CLAUDE.md "Playwright specs against preview deploys"); when both green, merge phase 9 to main. Then `/gsd-discuss-phase 10` for Access Control Extended (AUTH-06..07).
 
 ### Phase 8 decisions captured 2026-05-08
 
