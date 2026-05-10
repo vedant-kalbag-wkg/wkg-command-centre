@@ -353,7 +353,7 @@ Output: 4 Playwright specs PASSING against preview; 5 doc files updated/created.
     - Wave 0 RED tests (10-01)
     - Schema + migrations + audit-extension + lockfile (10-02)
     - CASL ability builder + provider (10-03)
-    - rbac.ts shim + 4 redactSensitiveFields call sites (10-04)
+    - rbac.ts shim + 3 redactSensitiveFields call sites (locations actions / [id]/page / new/page) (10-04)
     - /settings/roles admin UI (10-05)
     - User-role assignment UI + removeUser lock-out wrap (10-06)
     - <Can> client gates + AbilityProvider in layout (10-07)
@@ -416,7 +416,7 @@ Output: 4 Playwright specs PASSING against preview; 5 doc files updated/created.
        - [x] 10-01-wave-0-test-scaffolds-PLAN.md — RED test scaffolds (16 files)
        - [x] 10-02-schema-migrations-and-audit-extension-PLAN.md — schema + 3 migrations + audit union widen + CASL deps
        - [x] 10-03-casl-core-ability-builder-PLAN.md — buildAbility + types/subjects/fields/external-invariant/seed/role-mirror/lockout-guard/ability-context
-       - [x] 10-04-rbac-shim-and-call-site-cutover-PLAN.md — rbac.ts shim + 4 redactSensitiveFields call sites
+       - [x] 10-04-rbac-shim-and-call-site-cutover-PLAN.md — rbac.ts shim + 3 redactSensitiveFields call sites (locations actions / [id]/page / new/page)
        - [x] 10-05-settings-roles-admin-ui-PLAN.md — /settings/roles list + drill-in + diff-preview
        - [x] 10-06-user-role-assignment-ui-and-removeuser-wrap-PLAN.md — /settings/users/[id]/page.tsx + role-actions + deleteUser lockout wrap
        - [x] 10-07-client-can-gates-and-ability-provider-PLAN.md — layout AbilityProvider + 3 <Can> gates
