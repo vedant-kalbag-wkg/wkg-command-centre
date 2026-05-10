@@ -90,7 +90,7 @@ Plans:
   2. `sales_records.net_amount_gbp` populated on ingest using the BoE rate for `transaction_date` (identity for `currency='GBP'` — no rate lookup); one-shot historical backfill script populates pre-existing rows; migration 0048 flips the column to NOT NULL after backfill completes
   3. Every analytics query audited; cross-cohort aggregations rank/sort on `net_amount_gbp` (always GBP per D-12) while dual-emitting `(SUM(net_amount), SUM(net_amount_gbp), currency_key)` so the renderer auto-picks native for single-currency cohorts and GBP for mixed cohorts (D-10/D-11). Pivot-engine field id `net_amount` preserved for saved-pivot back-compat (D-17). Sales mode and Revenue mode both swap.
   4. `classifyEligibleLocations` ranks on `net_amount_gbp`; `commission/processor.ts` commission base on `net_amount_gbp`; `/admin/performance-alerts` always-GBP + stale-rate banner when MAX(`exchange_rates.fetched_at`) > 24h; POC underperformance email continues to render each kiosk's native-currency revenue via the existing `formatRevenueForKiosk` helper
-**Plans**: 10 plans (8 original + 2 gap closure)
+**Plans**: 11 plans (8 original + 3 gap closure)
 
 Plans:
 - [x] 09.1-01-PLAN.md — Wave 0: Test fixtures + RED-stage scaffolds (FX-01..04)
@@ -103,6 +103,7 @@ Plans:
 - [x] 09.1-08-PLAN.md — Wave 5: Doc edits (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook
 - [ ] 09.1-09-PLAN.md — Wave 1 (gap closure): plain-text dispatch + UUID-shape validator + inArray IN-list + FX_ALERT_TO env-required + hotel-groups buildActiveLocationCondition migration (closes Gaps 1-4 + WR-04)
 - [ ] 09.1-10-PLAN.md — Wave 1 (gap closure): daysBetweenIso shared helper + backfill cursor uuid-typed + commission processor uuid[] bind (no 65k ceiling) + pivot-engine WR-09 currency_key symmetry test (closes CR-04 + CR-05 + WR-05 + WR-09)
+- [ ] 09.1-11-PLAN.md — Wave 2 (gap closure 2): recipient lifted to run-start in fx cron + azure-etl (NEW CR-01) + EmailTemplate union extended with "plain-text" sentinel (NEW CR-02) + num-rooms-subquery regex updated post-CR-01 inArray + FX cron integration FX_ALERT_TO stub + run-start throw spec (closes 3 gaps from re-verification)
 
 ### Phase 10: Access Control Extended
 **Goal**: Migrate RBAC onto CASL (`@casl/ability` + `@casl/react`). Tier rules stored as JSON in DB, editable from an admin UI without deploy; `redactSensitiveFields` becomes `permittedFieldsOf(ability, 'read', subject)`. Custom granular roles authorable in admin UI per-role rule set (subjects × actions × fields × conditions).
@@ -139,7 +140,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 7. Data Foundation Rebuild | 6/6 | Complete (PR #36 merged) | 2026-05-08 |
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
-| 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 8/10 | Gap closure planned (09.1-09 + 09.1-10 — closes 9 verification/review items); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
+| 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
 | 10. Access Control Extended | 0/0 | Not planned | — |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 
