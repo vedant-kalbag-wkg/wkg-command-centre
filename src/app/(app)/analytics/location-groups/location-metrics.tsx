@@ -8,7 +8,7 @@ import {
   formatNullValue,
   formatChangeIndicator,
 } from "@/lib/analytics/formatters";
-import { pickRevenueDisplay } from "@/lib/analytics/queries/shared";
+import { pickRevenueDisplay } from "@/lib/analytics/revenue-display";
 import { calculatePeriodChange } from "@/lib/analytics/metrics";
 import { useMetricLabel } from "@/lib/analytics/metric-label";
 import type { LocationGroupDetail } from "@/lib/analytics/types";
