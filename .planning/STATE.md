@@ -4,8 +4,8 @@ milestone: v1.1
 milestone_name: milestone
 status: executing
 stopped_at: "Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves: 09.1-01 Wave 0 fixtures + RED tests; 09.1-02 schema substrate (exchange_rates table, sales_records.net_amount_gbp NULLABLE, EmailKind extended); 09.1-03 FX library (boe-fetch + rate-lookup + currencies); 09.1-04 Inngest cron `fx-rates.fetch-daily` + serve registration; 09.1-05 ETL stamping + backfill script + migration 0048 NOT NULL flip operator-gated; 09.1-06 analytics SQL audit dual-emit (41 sites / 13 files) with saved-pivot back-compat (D-17); 09.1-07 renderer dispatch + tooltips + classifier/commission swaps + admin stale-rate banner; 09.1-08 doc surgery (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook. Awaiting operator UAT against preview alias per CLAUDE.md gate (`PLAYWRIGHT_BASE_URL=<preview-alias> npx playwright test tests/fx-normalisation/`); list-pass is NOT sufficient evidence."
-last_updated: "2026-05-10T09:09:03.129Z"
-last_activity: 2026-05-10
+last_updated: "2026-05-10T15:40:00.000Z"
+last_activity: "2026-05-10 — Phase 9.1 UAT complete; 2 production defects found + fixed on branch (BoE series codes shipped wrong rates for 21/26 currencies; admin/performance-alerts SSR crash on aggregate timestamp). FX scope reduced 26 → 16 currencies (all probed live). Ready to merge after operator review of scope reduction."
 progress:
   total_phases: 6
   completed_phases: 3
