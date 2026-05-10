@@ -31,8 +31,6 @@ must_haves:
       provides: "Migrated redactSensitiveFields call site"
     - path: "src/app/(app)/locations/new/page.tsx"
       provides: "Migrated redactSensitiveFields call site"
-    - path: "src/app/(app)/locations/[id]/products/location-products-client.tsx"
-      provides: "Migrated redactSensitiveFields call site (server-side region only — the 'use client' top stays)"
   key_links:
     - from: "src/lib/rbac.ts requireRole"
       to: "src/lib/auth/get-user-ctx.ts getUserCtx"
@@ -42,18 +40,18 @@ must_haves:
       to: "src/lib/casl/fields.ts readableFields"
       via: "shim delegates to readableFields(ability, 'Location') and pickFields helper"
       pattern: "readableFields\\(.*Location"
-    - from: "4 redactSensitiveFields call sites"
+    - from: "3 redactSensitiveFields call sites (locations actions / [id]/page / new/page)"
       to: "src/lib/rbac.ts redactSensitiveFields shim"
       via: "no import changes — shim signature preserved"
       pattern: "import.*redactSensitiveFields.*rbac"
 ---
 
 <objective>
-Rewrite `src/lib/rbac.ts` so that `requireRole`, `canAccessSensitiveFields`, and `redactSensitiveFields` continue to behave identically to v1.0 BUT internally delegate to `getUserCtx().ability`. Then migrate the 4 `redactSensitiveFields` call sites to consume the CASL pathway directly (per RESEARCH §Wave 3 sequencing). Every other `requireRole(...)` call site continues to work UNCHANGED through this plan and Plan 10-05/06 — the cutover is gradual, the shim is the bridge.
+Rewrite `src/lib/rbac.ts` so that `requireRole`, `canAccessSensitiveFields`, and `redactSensitiveFields` continue to behave identically to v1.0 BUT internally delegate to `getUserCtx().ability`. Then migrate the 3 `redactSensitiveFields` call sites in `src/app/(app)/locations/{actions.ts,[id]/page.tsx,new/page.tsx}` to consume the CASL pathway directly (per RESEARCH §Wave 3 sequencing). Note: `location-products-client.tsx` has zero `redactSensitiveFields` references and is owned by Plan 10-07 for the `<Can>` migration of its `session?.user?.role === 'admin'` branch. Every other `requireRole(...)` call site continues to work UNCHANGED through this plan and Plan 10-05/06 — the cutover is gradual, the shim is the bridge.
 
 Purpose: RESEARCH §Q3 "One PR, three migration files, one merge" relies on signature-preserving shims to avoid a flag-day cutover of all 59 RBAC sites. The shim collapses to a one-line passthrough once Plan 10-05/06 ship admin UIs that consume `ability.can(...)` directly; until then, it's the contract that keeps `merge.ts`, `cache-scope.ts`, `geocoding/pipeline.ts`, every `settings/*/actions.ts`, and `locations/*` working without per-file edits.
 
-Output: `src/lib/rbac.ts` rewritten as a delegating shim. 4 call-site files updated for `redactSensitiveFields` migration. `src/lib/rbac.test.ts` UNCHANGED (it's the regression bar — every assertion must continue to pass via the shim). All previously-passing tests remain GREEN.
+Output: `src/lib/rbac.ts` rewritten as a delegating shim. 3 call-site files updated for `redactSensitiveFields` migration. `src/lib/rbac.test.ts` UNCHANGED (it's the regression bar — every assertion must continue to pass via the shim). All previously-passing tests remain GREEN.
 </objective>
 
 <execution_context>
@@ -355,7 +353,7 @@ Output: `src/lib/rbac.ts` rewritten as a delegating shim. 4 call-site files upda
 <output>
 After completion, create `.planning/phases/10-access-control-extended/10-04-SUMMARY.md` documenting:
 - The new src/lib/rbac.ts shape (dual-path explanation)
-- Which of the 4 redactSensitiveFields call sites used Pattern A vs Pattern B (the table)
+- Which of the 3 redactSensitiveFields call sites (locations actions / [id]/page / new/page) used Pattern A vs Pattern B (the table). Note: `location-products-client.tsx` is OUT OF SCOPE for this plan — owned by Plan 10-07 for the `<Can>` migration.
 - Confirmation src/lib/rbac.test.ts is unchanged + GREEN
 - Confirmation the SAME sensitive-keys constants drive both legacy and CASL paths (single source of truth)
 - The deferred work: tightening requireRole to ctx.ability.can(...) in v1.2 / when admin UI fully covers role-assignment paths

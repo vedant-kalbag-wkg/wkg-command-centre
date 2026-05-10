@@ -937,8 +937,8 @@ Output: 5 files (4 new + 1 augmented). Plan 10-01's `tests/access-control/user-r
 
 <output>
 After completion, create `.planning/phases/10-access-control-extended/10-06-SUMMARY.md` documenting:
-- 5 files shipped (4 new + 1 augmented)
+- 8 files shipped (4 new + 4 augmented — including the iter-1 revision additions: ManageScopesDialog roleId/assignmentLabel, scopes-actions/internal roleId arg, role-assignment-client Edit-scopes affordance)
 - The deleteUser augmentation closing RESEARCH §Q6 last-paragraph gap
-- The deferred work: per-(user, role) scope-edit UI in ManageScopesDialog (deferred to v1.2 polish — DB + audit + RPC support is in place; only the dialog UI needs the roleId picker)
-- Status of Plan 10-01 RED tests: better-auth-admin-plugin GREEN; user-role-assignment.spec.ts list-clean
+- Per-(user, role) scope-edit UI shipped in this plan (Task 4 — ManageScopesDialog roleId picker + scopes-actions/internal roleId arg + role-assignment-client wiring). AUTH-07 SC4 fully delivered in v1.1; not a v1.2 carry.
+- Status of Plan 10-01 RED tests: better-auth-admin-plugin GREEN; casl-ability GREEN; user-role-assignment.spec.ts list-clean
 </output>

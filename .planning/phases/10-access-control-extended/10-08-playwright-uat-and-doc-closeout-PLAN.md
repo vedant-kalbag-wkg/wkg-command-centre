@@ -19,7 +19,7 @@ must_haves:
     - "ROADMAP.md Phase 10 entry updated — phase marked complete, plans listed, success criteria all checked."
     - "REQUIREMENTS.md AUTH-06 + AUTH-07 boxes ticked + traceability table updated."
     - "STATE.md Phase 10 close entry written — locked decisions recapped (esp. Q1 reversal: user.role text PRESERVED), deferred items documented."
-    - "deferred-items.md captures: (a) v1.2 polish — per-(user, role) scope-edit UI in ManageScopesDialog; (b) v1.2 — drop user.role text column once Better Auth admin plugin no longer needs it; (c) any UAT-discovered gaps."
+    - "deferred-items.md captures: (a) v1.2 — drop user.role text column once Better Auth admin plugin no longer needs it (DEFERRED-10-01); (b) any UAT-discovered gaps (DEFERRED-10-02)."
   artifacts:
     - path: ".planning/phases/10-access-control-extended/10-HUMAN-UAT.md"
       provides: "Operator runbook — Vercel preview setup, migration ops, Playwright runs, manual UAT checklist, post-merge close-out"
@@ -448,7 +448,7 @@ Output: 4 Playwright specs PASSING against preview; 5 doc files updated/created.
       - Audit log: 5 new metadata kinds (role.create, role.permissions.replace, role.delete, user.roles.assign, user.roles.revoke)
     - Decisions captured during execution (any deviations from CONTEXT/RESEARCH)
     - Operator UAT against preview alias clean (per 10-HUMAN-UAT.md)
-    - Two deferred items: scope-edit UI in v1.2; user.role text DROP in v1.2 once Better Auth admin plugin no longer reads it (e.g. v1.6+)
+    - One deferred item: user.role text DROP in v1.2 once Better Auth admin plugin no longer reads it (e.g. v1.6+ release notes show role-resolver hook OR project writes a customSession plugin). Per-(user, role) scope-edit UI ships in v1.1 via Plan 10-06 Task 4 (NOT deferred).
 
     Update STATE.md frontmatter:
     - `progress.completed_phases: 4` (was 3)
@@ -465,18 +465,7 @@ Output: 4 Playwright specs PASSING against preview; 5 doc files updated/created.
     ```markdown
     # Phase 10 — Deferred Items
 
-    ## DEFERRED-10-01 — Per-(user, role) scope-edit UI in ManageScopesDialog
-
-    **Decision:** Schema + audit-log + RPC support shipped in Plans 10-02/05/06. The UI affordance
-    for editing existing scopes-per-role binding requires extending `src/components/admin/manage-scopes-dialog.tsx`
-    with a roleId picker (selecting which assignment a scope belongs to). Deferred to v1.2 polish.
-
-    **Pre-condition:** None — can be picked up any time. Estimated 4-6 task-hours.
-
-    **Workaround in v1.1:** Operators delete + re-assign role to reset scopes. The audit log
-    captures both events.
-
-    ## DEFERRED-10-02 — Drop user.role text column
+    ## DEFERRED-10-01 — Drop user.role text column
 
     **Decision:** Per RESEARCH §Q1, Better Auth admin plugin (1.5.x) reads `session.user.role` text
     in 12 endpoint handlers. The text mirror is preserved as denormalised primary-tier indicator,
@@ -490,7 +479,7 @@ Output: 4 Playwright specs PASSING against preview; 5 doc files updated/created.
     **Tracking:** Re-evaluate during v1.2 planning. Confidence on remove path: MEDIUM (depends on
     upstream).
 
-    ## DEFERRED-10-03 — <UAT-discovered gap, if any>
+    ## DEFERRED-10-02 — <UAT-discovered gap, if any>
 
     Populated during operator UAT walk if specific issues are deferred. If clean, this section
     can be removed.
@@ -547,7 +536,7 @@ Output: 4 Playwright specs PASSING against preview; 5 doc files updated/created.
 - Operator has self-serve runbook for UAT + lock-out recovery
 - 8 plans across 6 waves shipped (Plan 10-01 + 10-02 in Wave 1; 10-03 in Wave 2; 10-04 + 10-05 in Wave 3; 10-06 in Wave 4; 10-07 in Wave 5; 10-08 in Wave 6 — matches each plan's frontmatter `wave:` field)
 - Critical reversal (Q1 user.role preserved) documented in STATE.md so future agents inherit context
-- Two deferred items registered with pre-conditions for v1.2 pickup
+- One deferred item registered with pre-conditions for v1.2 pickup (user.role text DROP — pending Better Auth admin plugin role-resolver hook)
 </success_criteria>
 
 <output>
@@ -556,6 +545,6 @@ After completion, create `.planning/phases/10-access-control-extended/10-08-SUMM
 - All 4 Playwright specs PASS against preview alias (with the screenshots / report URL if any failed during UAT and were fixed)
 - ROADMAP / REQUIREMENTS / STATE / deferred-items updated
 - The PR number + squash commit SHA from merge
-- The two deferred items with pre-conditions for v1.2 pickup
+- The deferred item (user.role text DROP) with pre-conditions for v1.2 pickup
 - Final phase status: ✓ MERGED
 </output>
