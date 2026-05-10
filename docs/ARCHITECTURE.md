@@ -24,7 +24,7 @@ A map of how `wkg-command-centre` is put together so a new developer can navigat
 | Auth | Better Auth 1.5 + `@better-auth/drizzle-adapter` + `admin` plugin + `nextCookies` | Schema lives in `user` / `session` / `account` / `verification` tables |
 | RBAC (target) | CASL `@casl/ability` 6.8.1 + `@casl/react` 6.0.0 | Phase 10 in flight — JSON rules in DB, admin-authorable, drop-in for `redactSensitiveFields` |
 | UI | Tailwind v4, base-ui, dnd-kit, react-big-calendar, svar Gantt, tanstack table | Brand tokens follow WeKnow Group guidelines |
-| Email | Resend (primary) + Brevo (fallback documented, not implemented) | Templates in `src/emails/` (react-email); send via Inngest (`emails.send` + `emails.retry`) |
+| Email | Resend (primary) + Brevo (fallback documented, not implemented) | Templates in `src/emails/` (react-email); send via Inngest function `send-email` (retry logic inline; triggered by `email/send.requested` events) |
 | Async / scheduled | Inngest 4.2.6 | Email queue + retries, weekly POC underperformance cron, daily BoE FX fetch cron |
 | Test | Vitest (unit/integration), Playwright (E2E + UAT), Testcontainers (integration vs real Postgres) | `playwright.config.ts` honours `PLAYWRIGHT_BASE_URL` for preview/prod runs |
 | Hosting (today) | Vercel | Single Vercel cron `0 4 * * *` → `/api/etl/azure/run`. All other schedules are Inngest, not Vercel cron. |
@@ -69,7 +69,7 @@ src/
       export/excel/route.ts    # Streaming xlsx download
       export/csv/route.ts      # Streaming CSV download
   db/
-    schema.ts                  # Single source of truth — ~45 pgTables
+    schema.ts                  # Single source of truth — 50 pgTables (verify with `grep -c pgTable src/db/schema.ts`)
     index.ts                   # Driver auto-detect (Neon vs postgres-js)
     is-neon-url.ts             # `.neon.tech` host check
     execute-rows.ts            # Normalises driver-specific .execute() return shape
@@ -98,7 +98,7 @@ src/
   emails/                      # react-email templates (branded; rendered in Inngest functions)
   inngest/
     client.ts                  # Inngest client + event types
-    functions/                 # send, retry, fx-rates.fetch-daily, poc-underperformance.weekly
+    functions/                 # send-email.ts (id `send-email`, retry inline), fx-rates-fetch-daily.ts, weekly-poc-alerts.ts
 migrations/                    # Generated SQL (do not hand-edit committed files; 0000–0049)
 scripts/                       # One-shots and operator scripts
   reset-admin-password.ts      # Prod credential rotation (see CLAUDE.md)
@@ -160,16 +160,16 @@ The ETL route declares `export const runtime = "nodejs"` and sets `maxDuration =
 
 `userType=external` overrides the role surface to portal-only views. Internal-only sensitive fields (commission, costs) are filtered server-side regardless of role when `userType=external`. **The portal is currently feature-paused (2026-04-25)** — external sessions land on `/portal/coming-soon`. The `userType` plumbing is still in place for revival; see `src/app/portal/layout.tsx`.
 
-**Phase 10 (in flight, Plan 10-01..10-08):** This 3-role + scope text-column model becomes hybrid `roles` (admin/Ops-IT tier/Read-only tier/custom) + `role_permissions` (subject × action × fields × conditions × inverted) + `user_roles` link table. `user.role` text becomes `role_id` FK. CASL builds an `Ability` once per request in `get-user-ctx.ts`; `redactSensitiveFields` becomes `permittedFieldsOf(ability, 'read', subject)`. Admin authors custom roles in `/settings/roles` (form-driven; no JSON editor in v1.1). Conflict resolution: explicit-deny-wins (AWS IAM semantics). `system` role bypasses CASL.
+**Phase 10 (in flight, Plan 10-01..10-08):** This 3-role + scope text-column model becomes hybrid `roles` (admin/Ops-IT tier/Read-only tier/custom) + `role_permissions` (subject × action × fields × conditions × inverted) + `user_roles` link table. `user.role` text becomes `role_id` FK. CASL builds an `Ability` once per request in `src/lib/auth/get-user-ctx.ts`; `redactSensitiveFields` (currently inside `src/lib/rbac.ts`) becomes `permittedFieldsOf(ability, 'read', subject)`. Admin authors custom roles in `/settings/roles` (form-driven; no JSON editor in v1.1). Conflict resolution: explicit-deny-wins (AWS IAM semantics). `system` role bypasses CASL.
 
 ### Background work
 
 | Job | How it runs today | Notes |
 |---|---|---|
 | Daily Azure sales ETL | Vercel cron `0 4 * * *` POSTs `/api/etl/azure/run` | `x-vercel-cron: 1` header **or** `x-etl-token` proves auth; gated by `ETL_AZURE_ENABLED=true`. Stamps `sales_records.net_amount_gbp` at ingest using BoE rate carry-forward (Phase 9.1); hard-fails the blob if rate is >7 days stale. |
-| Daily BoE FX fetch (Inngest cron) | `fx-rates.fetch-daily` runs ~06:00 UTC, before the Azure ETL | Fetches Bank of England IADB CSV for ~25 majors, idempotent upsert keyed on `(currency, rate_date)`. Emits `fx_rate_fetch_failed` email to `FX_ALERT_TO` on error. (Phase 9.1) |
-| Weekly POC underperformance alert (Inngest cron) | `poc-underperformance.weekly` — Mondays 09:00 Europe/London | Classifies eligible Live kiosks against percentile cutoffs over `app_settings.underperformance_window_days` (default 30). Per-POC batched email; `payloadHash` keyed on `(poc_user_id, run_iso_week)` for idempotency. (Phase 9) |
-| Email send + retry (Inngest) | Triggered by every `audit_logs`-style event that writes to `email_log` | Send → Resend; retry on transient failures. `email_log.payloadHash` unique idx prevents digest dupes. (Phase 8) |
+| Daily BoE FX fetch (Inngest cron) | `fx-rates-fetch-daily` runs ~06:00 UTC, before the Azure ETL | Fetches Bank of England IADB CSV for ~25 majors, idempotent upsert keyed on `(currency, rate_date)`. Emits `fx_rate_fetch_failed` email to `FX_ALERT_TO` on error. (Phase 9.1) |
+| Weekly POC underperformance alert (Inngest cron) | `weekly-poc-alerts` — Mondays 09:00 Europe/London | Classifies eligible Live kiosks against percentile cutoffs over `app_settings.underperformance_window_days` (default 30). Per-POC batched email; `payloadHash` keyed on `(poc_user_id, run_iso_week)` for idempotency. (Phase 9) |
+| Email send + retry (Inngest) | `send-email` function — triggered by `email/send.requested` events from any caller that wrote to `email_log` | Send → Resend; retry logic inline (no separate retry function). `email_log.payloadHash` unique idx prevents digest dupes. (Phase 8) |
 | Monday.com import | Operator-triggered in `/settings/data-import/monday` | Server action under `pg_try_advisory_lock` (key: import-specific constant) |
 | Sales CSV import | Operator-triggered in `/settings/data-import/sales` | Stage → review → commit; staging table pruned 1d retention (#32) |
 | Reset admin password | CLI: `scripts/reset-admin-password.ts` | Bypasses sign-up; documented in CLAUDE.md |
@@ -183,7 +183,7 @@ All long-running work uses Postgres advisory locks (`pg_try_advisory_lock`) so t
 |---|---|---|---|
 | **Azure Blob Storage** | Source of daily sales CSVs from kiosk POS systems | `AZURE_STORAGE_CONNECTION_STRING` *or* `AZURE_STORAGE_ACCOUNT_URL` (with `@azure/identity`), `AZURE_BLOB_CONTAINER` | Stays. Already Azure-native. |
 | **AWS S3** | Contract document uploads on locations | `AWS_S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `NEXT_PUBLIC_AWS_S3_BUCKET` | Optional swap to Azure Blob — see AZURE-SELF-HOSTING.md |
-| **Monday.com** | One-way import of hardware, hotels, kiosk-config-groups | `MONDAY_API_TOKEN`, `MONDAY_BOARD_ID` | No change |
+| **Monday.com** | One-way import of hardware, hotels, kiosk-config-groups | `MONDAY_API_TOKEN` (board IDs are hardcoded in `scripts/import-from-monday.ts`; `BOARD_ID` is consumed only by `scripts/diagnose-new-board.ts`) | No change |
 | **Google Maps** | Geocoding venue addresses | `GOOGLE_MAPS_API_KEY` | No change |
 | **Resend** | Transactional email (forgot-password, invite, password-changed, FX alerts, POC alerts) | `RESEND_API_KEY`, `EMAIL_FROM`, `ADMIN_SUPPORT_EMAIL`, `FX_ALERT_TO` | No change; Resend works on any host. Brevo is the documented fallback if needed. |
 | **Inngest** | Async + scheduled functions (email send/retry, BoE FX cron, weekly POC alert cron) | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | No change; Inngest cloud works regardless of host |

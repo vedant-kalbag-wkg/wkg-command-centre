@@ -52,7 +52,10 @@ Monday.com remains the **upstream-only data feed** for hotel-board enrichment vi
 - **Vercel preview env vars** — `BETTER_AUTH_URL` must use the **git-branch alias** (not the per-deploy URL), or every redeploy invalidates Better Auth's `trustedOrigins` and `/api/auth/*` returns 403.
 - **Prod admin** — `vedant.kalbag@weknowgroup.com`. Rotation script: `scripts/reset-admin-password.ts`.
 - **Lockdown** — external/customer-facing portal is a non-goal, locked behind the `archive/portal-lockdown-2026-04-25` branch.
-- **Playwright is mandatory first-layer UAT** — every user-facing feature needs at least one happy-path + one edge-case spec, run against the preview alias before the phase is "done".
+
+**Process & QA policy** (not a tech constraint, but enforced by convention — codified in repo `CLAUDE.md`):
+
+- Playwright is the mandatory first-layer UAT. Every user-facing feature needs at least one happy-path spec and one edge-case spec, run against the preview alias before the phase is "done". `--list` passing is not sufficient evidence.
 
 ---
 
@@ -271,7 +274,7 @@ Monday.com remains the **upstream-only data feed** for hotel-board enrichment vi
 | 09.1-01 | Wave 0 — test fixtures + RED scaffolds (FX-01..04) |
 | 09.1-02 | Wave 1 — schema + EmailKind + drizzle push |
 | 09.1-03 | Wave 1 — FX library: boe-fetch + rate-lookup + currencies |
-| 09.1-04 | Wave 2 — Inngest cron `fx-rates.fetch-daily` + serve registration |
+| 09.1-04 | Wave 2 — Inngest cron `fx-rates-fetch-daily` + serve registration |
 | 09.1-05 | Wave 3 — ETL stamping + backfill script + 0048 NOT-NULL flip operator-gated |
 | 09.1-06 | Wave 3 — Analytics SQL audit dual-emit (41 sites / 13 files) |
 | 09.1-07 | Wave 4 — Renderer dispatch + tooltips + classifier/commission swaps + admin stale banner |
@@ -430,8 +433,9 @@ This is the file-level orientation a new engineer needs to fix any issue or exte
 | Better Auth server config | `src/lib/auth.ts` |
 | Better Auth client | `src/lib/auth-client.ts` |
 | Role gates (`requireRole`, `getSessionOrThrow`) | `src/lib/rbac.ts` |
-| User context derivation (incl. scopes) | `src/lib/get-user-ctx.ts` |
-| Sensitive-field redaction (today) | `src/lib/redact-sensitive-fields.ts` |
+| User context derivation (incl. scopes) | `src/lib/auth/get-user-ctx.ts` |
+| Role-gating helpers (server-side) | `src/lib/auth/gating.ts` (+ `gating.test.ts`) |
+| Sensitive-field redaction (today) | `redactSensitiveFields` in `src/lib/rbac.ts` |
 | Row-level scoping (regions / hotelGroups / locationGroups) | `src/lib/scoping/` |
 | External-user invariant | `src/app/portal/layout.tsx` + `userType='external'` filter logic |
 | Audit writer | `src/lib/audit.ts` |
@@ -474,7 +478,7 @@ This is the file-level orientation a new engineer needs to fix any issue or exte
 | Resend client + send helpers | `src/lib/email.ts` |
 | Branded react-email templates | `src/emails/` (incl. `PocUnderperformanceEmail`, `PasswordChangedEmail`, FX alerts) |
 | Inngest client + event types | `src/inngest/client.ts` |
-| Inngest functions | `src/inngest/functions/` (`emails.send`, `emails.retry`, `fx-rates.fetch-daily`, `poc-underperformance.weekly`) |
+| Inngest functions | `src/inngest/functions/` — `send-email.ts` (id `send-email`, retry logic inline), `fx-rates-fetch-daily.ts` (id `fx-rates-fetch-daily`), `weekly-poc-alerts.ts` (id `weekly-poc-alerts`) |
 | Inngest webhook | `src/app/api/inngest/route.ts` |
 | `email_log` audit + `payloadHash` idempotency | `email_log` table + `migrations/0041..0044` |
 | Self-serve change-password | `src/app/(app)/account/security/` + `src/app/api/account/password-changed/route.ts` |
@@ -487,7 +491,7 @@ This is the file-level orientation a new engineer needs to fix any issue or exte
 | Decision function | `src/lib/poc-alerts/decideAlert.ts` |
 | Helpers (`iso-week`, `hash`, `poc-batching`) | `src/lib/poc-alerts/` |
 | Classifier | `src/lib/poc-alerts/classifyEligibleLocations.ts` |
-| Cron + step-level idempotency | `src/inngest/functions/poc-underperformance.weekly.ts` |
+| Cron + step-level idempotency | `src/inngest/functions/weekly-poc-alerts.ts` (function id `weekly-poc-alerts`; event `performance-alerts/run.requested`) |
 | State table | `kiosk_performance_alert_state` (`migrations/0043`) |
 | Silencing fields on kiosks | `kiosks.alert_silenced_at` + `alert_silenced_reason` (`migrations/0044`+`0045`) |
 | Admin dashboard | `src/app/(app)/admin/performance-alerts/` |
@@ -500,7 +504,7 @@ This is the file-level orientation a new engineer needs to fix any issue or exte
 | BoE fetcher | `src/lib/fx/boe-fetch.ts` |
 | Carry-forward rate lookup | `src/lib/fx/rate-lookup.ts` |
 | Currencies registry | `src/lib/fx/currencies.ts` |
-| Daily Inngest cron | `src/inngest/functions/fx-rates.fetch-daily.ts` (~06:00 UTC, before Azure ETL) |
+| Daily Inngest cron | `src/inngest/functions/fx-rates-fetch-daily.ts` (function id `fx-rates-fetch-daily`; ~06:00 UTC, before Azure ETL) |
 | ETL stamping (`net_amount_gbp` at ingest) | `src/lib/sales/etl/azure-etl.ts` (carry-forward + 7-day staleness ceiling) |
 | Backfill | `scripts/backfill-net-amount-gbp.ts` |
 | `exchange_rates` schema | `migrations/0046_phase_09_1_exchange_rates.sql` |
@@ -552,7 +556,8 @@ This is the file-level orientation a new engineer needs to fix any issue or exte
 | `ADMIN_SUPPORT_EMAIL` | Optional | Required | Contact for password-changed alerts |
 | `FX_ALERT_TO` | Optional | **Required** | `fx_rate_fetch_failed` + `fx_rate_stale` recipient. Phase 9.1 throws at call site if unset. |
 | `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` | Optional (use Inngest dev server) | Required | Inngest webhook auth |
-| `MONDAY_API_TOKEN` / `MONDAY_BOARD_ID` | Optional | Required for Monday import | Monday GraphQL |
+| `MONDAY_API_TOKEN` | Optional | Required for Monday import | Monday GraphQL |
+| `BOARD_ID` | Optional | Optional | Override consumed only by `scripts/diagnose-new-board.ts`; main `import-from-monday.ts` has board IDs hardcoded |
 | `GOOGLE_MAPS_API_KEY` | Optional | Required for `/settings/geocoding` | Geocoding |
 | `AWS_S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `NEXT_PUBLIC_AWS_S3_BUCKET` | Optional | Required for contract uploads | S3 |
 | `AZURE_STORAGE_CONNECTION_STRING` *or* `AZURE_STORAGE_ACCOUNT_URL` | Optional | Required for sales ETL | Azure Blob |
@@ -656,7 +661,7 @@ A development team picking up this codebase to take v1.1 over the line should wa
 - [x] `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (git-branch alias).
 - [x] `RESEND_API_KEY`, `EMAIL_FROM`, `ADMIN_SUPPORT_EMAIL`, `FX_ALERT_TO`.
 - [x] `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`.
-- [x] `MONDAY_API_TOKEN`, `MONDAY_BOARD_ID`, `GOOGLE_MAPS_API_KEY`.
+- [x] `MONDAY_API_TOKEN`, `GOOGLE_MAPS_API_KEY` (and `BOARD_ID` only if running the `diagnose-new-board.ts` diagnostic).
 - [x] AWS S3 vars + Azure Blob vars + `ETL_AZURE_ENABLED` + `ETL_SHARED_SECRET`.
 
 ### DNS + email deliverability (closes EMAIL-03)
@@ -676,14 +681,14 @@ A development team picking up this codebase to take v1.1 over the line should wa
 
 ### Phase 9 prod cutover (POC alerts)
 
-- [ ] Inngest cron `poc-underperformance.weekly` is registered and enabled.
+- [ ] Inngest cron `weekly-poc-alerts` is registered and enabled.
 - [ ] First production run is observable on `/admin/performance-alerts` with classified/skipped/silenced counts.
 - [ ] Manual "Run now" trigger respects the 5-minute rate limit.
 - [ ] Per-kiosk silencing UI on `/locations/[id]` writes `alert_silenced_at` + audit row.
 
 ### Phase 9.1 prod cutover (FX)
 
-- [ ] Inngest cron `fx-rates.fetch-daily` is registered, enabled, and ordered before the Azure ETL.
+- [ ] Inngest cron `fx-rates-fetch-daily` is registered, enabled, and ordered before the Azure ETL.
 - [ ] `/admin/performance-alerts` is always-GBP and the stale-rate banner appears when last successful BoE fetch is >24h.
 - [ ] A single non-GBP cohort exists somewhere (preview or prod) and the renderer-dispatch spec runs green — closes DEFERRED-09.1-01.
 
