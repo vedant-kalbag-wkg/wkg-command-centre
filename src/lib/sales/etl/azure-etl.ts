@@ -75,6 +75,11 @@ export async function runAzureEtl(
 ): Promise<EtlRunResult> {
   const containerName =
     options.containerName ?? process.env.AZURE_BLOB_CONTAINER ?? "clientdata";
+  // Phase 9.1 Plan 11 (NEW CR-01): resolve FX alert recipient ONCE at run-start,
+  // BEFORE the advisory lock and any try/catch blocks. If FX_ALERT_TO is unset,
+  // getFxAlertRecipient() throws here — making the misconfiguration explicit rather
+  // than masking it inside a per-blob catch block and losing the original error.
+  const alertRecipient = getFxAlertRecipient();
 
   const lockResult = await withAdvisoryLock(db, ETL_AZURE_LOCK_KEY, async () => {
     const processed: Array<{ regionCode: string; blobPath: string; rows: number }> = [];
@@ -187,11 +192,8 @@ export async function runAzureEtl(
                 name: "email/send.requested",
                 data: {
                   kind: "fx_rate_stale",
-                  // Phase 9.1 CR-02 — FX_ALERT_TO required; throws at call site
-                  // if unset (no hardcoded prod admin literal in source). Set on
-                  // Vercel preview AND production env vars per 09.1-HUMAN-UAT.md
-                  // step 4.
-                  to: getFxAlertRecipient(),
+                  // alertRecipient resolved at run-start (NEW CR-01 fix — Plan 11 Task 1).
+                  to: alertRecipient,
                   subject: `Sales ETL halted: stale FX rate for ${pair.currency}`,
                   template: "plain-text",
                   templateProps: {

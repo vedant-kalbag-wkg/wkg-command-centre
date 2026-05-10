@@ -92,6 +92,11 @@ export async function _handleFxRatesFetchDaily(args: {
   isoDate?: string;
 }): Promise<FxRatesFetchDailyResult> {
   const isoDate = args.isoDate ?? todayIso();
+  // Phase 9.1 Plan 11 (NEW CR-01): resolve FX alert recipient ONCE at run-start,
+  // BEFORE any try/catch block. If FX_ALERT_TO is unset, getFxAlertRecipient()
+  // throws here — surfacing as a run-start failure rather than masking the
+  // original fetch error inside the catch block and losing the stack trace.
+  const alertRecipient = getFxAlertRecipient();
   let alerted = false;
 
   // ── Step 1: fetch-boe ───────────────────────────────────────────────────────
@@ -115,10 +120,8 @@ export async function _handleFxRatesFetchDaily(args: {
         name: "email/send.requested",
         data: {
           kind: "fx_rate_fetch_failed",
-          // Phase 9.1 CR-02 — FX_ALERT_TO required; throws at call site if unset
-          // (no hardcoded prod admin literal in source). Set on Vercel preview
-          // AND production env vars per 09.1-HUMAN-UAT.md step 4.
-          to: getFxAlertRecipient(),
+          // alertRecipient resolved at run-start (NEW CR-01 fix — Plan 11 Task 1).
+          to: alertRecipient,
           subject: `FX rates daily fetch failed (${isoDate})`,
           template: "plain-text",
           templateProps: { reason, isoDate, runId: args.runId },
