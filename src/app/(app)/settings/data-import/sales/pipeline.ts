@@ -390,10 +390,15 @@ export async function _commitImportForActor(
           const sep = key.indexOf("|");
           const ccy = key.slice(0, sep);
           const date = key.slice(sep + 1);
-          // Pass through the same `db` we received so the lookup runs against
-          // the test container in integration tests (and the real pool in
-          // prod). GBP shortcuts without a DB roundtrip per D-04.
-          const r = await getRateForDate(ccy, date, db);
+          // Pass the active transaction handle (`tx`) so the lookup runs in
+          // the same Testcontainers tx as the surrounding ETL writes — keeps
+          // tests that rely on transaction isolation honest, and matches the
+          // rest of this transaction body. exchange_rates rows are pre-
+          // committed by the BoE cron well before this script runs, so the
+          // read is functionally equivalent to going through the outer pool;
+          // passing tx is the consistency choice. GBP shortcuts without a DB
+          // roundtrip per D-04. (PR #40 review observation B.)
+          const r = await getRateForDate(ccy, date, tx);
           if (!r) {
             throw new Error(
               `No FX rate exists for ${ccy} on or before ${date}`,
