@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import Papa from "papaparse";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
@@ -115,10 +115,16 @@ describe.skipIf(!CSV_PRESENT)("runAzureEtl (full CSV fixture)", () => {
   }, 180_000);
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     if (ctx) await teardownTestDb(ctx);
   });
 
   beforeEach(async () => {
+    // Plan 09.1-11 (NEW CR-01 fix): runAzureEtl now resolves FX_ALERT_TO at
+    // run-start (before any try/catch). Stub it so existing integration tests
+    // exercise the ETL code path rather than throwing the env-required error.
+    vi.stubEnv("FX_ALERT_TO", "ops@test.example");
+
     // FK-ordered deletes for a clean slate.
     await ctx.db.delete(salesRecords);
     await ctx.db.delete(salesBlobIngestions);

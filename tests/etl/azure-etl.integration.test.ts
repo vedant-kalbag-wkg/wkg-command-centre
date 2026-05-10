@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { eq, and } from "drizzle-orm";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
 import {
@@ -143,10 +143,16 @@ describe("runAzureEtl (integration)", () => {
   }, 180_000);
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     if (ctx) await teardownTestDb(ctx);
   });
 
   beforeEach(async () => {
+    // Plan 09.1-11 (NEW CR-01 fix): runAzureEtl now resolves FX_ALERT_TO at
+    // run-start (before any try/catch). Stub it so existing integration tests
+    // exercise the ETL code path rather than throwing the env-required error.
+    vi.stubEnv("FX_ALERT_TO", "ops@test.example");
+
     // Reset all ETL-touched tables (order respects FK dependencies).
     await ctx.db.delete(salesRecords);
     await ctx.db.delete(salesBlobIngestions);
