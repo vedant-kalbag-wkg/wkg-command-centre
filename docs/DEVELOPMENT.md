@@ -62,8 +62,18 @@ openssl rand -base64 32
 
 Optional variables used by specific features (safe to omit for most local work):
 
-- `MONDAY_API_TOKEN` — Monday.com integration (data import)
-- `MONDAY_BOARD_ID` — Monday.com board id
+- `MONDAY_API_TOKEN` — Monday.com data import (board IDs are hardcoded in `scripts/import-from-monday.ts`; the optional `BOARD_ID` override is read only by `scripts/diagnose-new-board.ts`)
+- `RESEND_API_KEY` / `EMAIL_FROM` / `ADMIN_SUPPORT_EMAIL` — Phase 8 email send (set `RESEND_API_KEY=re_test_key` to satisfy `src/lib/rbac.test.ts` even when not exercising email — see DEFERRED-08.02-01)
+- `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` — Inngest webhook auth in deployed envs; can stay blank locally if you run the Inngest dev server (Step 7b)
+- `FX_ALERT_TO` — Recipient for `fx_rate_fetch_failed` (cron) and `fx_rate_stale` (Azure ETL pre-blob gate) emails. **Required on every deploy target** — `fx-rates-fetch-daily` and `azure-etl` throw at the call site if unset (Phase 9.1 CR-02)
+- `AWS_S3_BUCKET` / `AWS_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `NEXT_PUBLIC_AWS_S3_BUCKET` — Contract document uploads on locations
+- `AZURE_STORAGE_CONNECTION_STRING` *or* `AZURE_STORAGE_ACCOUNT_URL` + `AZURE_BLOB_CONTAINER` — Sales ETL source
+- `ETL_AZURE_ENABLED` + `ETL_SHARED_SECRET` — Both must be set for `/api/etl/azure/run` to accept a request
+- `GOOGLE_MAPS_API_KEY` — `/settings/geocoding`
+- `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD` — Auth-flow E2E specs in `tests/auth/*`
+- `PLAYWRIGHT_BASE_URL` — Run Playwright against a preview/prod URL instead of starting a local dev server
+
+Full list with annotations: `.env.example`. Every `process.env.*` referenced from `src/`, `scripts/`, and `tests/` is documented there.
 
 ## 5. Apply the Drizzle schema
 
@@ -131,7 +141,7 @@ on the base seeds from Step 6 — run them in order.
 npm run db:import:monday
 ```
 
-Prereqs: `MONDAY_API_TOKEN` and `MONDAY_BOARD_ID` in `.env.local`.
+Prereqs: `MONDAY_API_TOKEN` in `.env.local`. Board IDs are hardcoded in `scripts/import-from-monday.ts`; only `scripts/diagnose-new-board.ts` reads the optional `BOARD_ID` override.
 
 ## 7. Run the dev server
 
@@ -143,6 +153,23 @@ The app starts on `http://localhost:3003` and redirects unauthenticated requests
 
 - **Email:** `admin@weknow.co`
 - **Password:** `Admin123!`
+
+## 7b. Run the Inngest dev server (optional, required for email/cron flows)
+
+Phase 8/9/9.1 features (email send, weekly POC alerts, daily BoE FX fetch) run as Inngest functions. To exercise them locally:
+
+```bash
+# In a second terminal (the dev server must be running on :3003):
+npx inngest-cli@latest dev -u http://localhost:3003/api/inngest
+```
+
+The dashboard at `http://localhost:8288` shows function registrations and lets you trigger any cron/event manually. With both servers up you can drop `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` from `.env.local`.
+
+To inspect rendered email templates without a real send:
+
+```bash
+npm run email:dev          # react-email playground at http://localhost:3000
+```
 
 ## 8. Run the test suites
 
@@ -175,6 +202,10 @@ npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-pipeline-stag
 - **`FATAL: role "postgres" does not exist`** — Container started without the `POSTGRES_PASSWORD` env var. Recreate with the `docker run` command in Step 2.
 - **Playwright can't sign in as admin** — Seed didn't run (Step 6). Verify with the `SELECT email` query above.
 - **`drizzle-kit push` prompts about data loss** — Review the diff; for a fresh dev DB the prompt should offer only `CREATE` statements. If you see `DROP`, your local schema has drifted from `main`.
+- **`vitest run` fails with `RESEND_API_KEY` undefined in `src/lib/rbac.test.ts`** — Set `RESEND_API_KEY=re_test_key` in your shell or `.env.local`. Root cause is module-scope `new Resend(...)` in `src/lib/email.ts`; canonical fix is lazy construction (DEFERRED-08.02-01).
+- **`fx-rates-fetch-daily` or Azure ETL throws on cold start** — `FX_ALERT_TO` is unset on the deploy target. Fix it on Vercel (or `.env.local`); Phase 9.1 hard-fails at the call site rather than silently dropping the alert recipient.
+- **CI fails with `Missing: @emnapi/...`** — Lockfile drift between macOS-arm64 and Linux-x64. Go straight to the Docker regen procedure in repo `CLAUDE.md` § "npm lockfile must stay in sync".
+- **Vercel preview deploy: `403 Invalid origin` from `/api/auth/*`** — `BETTER_AUTH_URL` is pinned to a per-deploy hash URL. Fix it to the git-branch alias (`wkg-command-centre-git-<branch>-...`); see repo `CLAUDE.md` § "Vercel preview env vars".
 
 ## Without Docker
 
