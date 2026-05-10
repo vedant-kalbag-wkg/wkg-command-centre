@@ -122,8 +122,11 @@ describe("Tasks 2.1 + 2.2 — total_rooms scalar subquery", () => {
 
     expect(sql).toMatch(SUBQUERY_BODY);
     expect(sql).toMatch(ARCHIVED_FILTER);
-    // Detail-view scope uses `IN (...)` against the supplied groupIds.
-    expect(sql).toMatch(/lgm\.location_group_id\s+IN\s*\(/i);
+    // Detail-view scope constrains to the supplied groupIds.
+    // drizzle-orm inArray() emits `"table"."column" in ($1, $2, ...)` (lowercase,
+    // quoted identifier) — accept both the quoted-identifier and unquoted shapes,
+    // plus drizzle's ANY($N::text[]) shape for forward-compat.
+    expect(sql).toMatch(/location_group_id"?\s*(in|IN|=\s*ANY)\s*\(/i);
     expect(sql).not.toMatch(SUM_DISTINCT_NUM_ROOMS);
   });
 

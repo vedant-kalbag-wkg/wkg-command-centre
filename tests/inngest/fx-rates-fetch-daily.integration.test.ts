@@ -77,11 +77,22 @@ describe("fx-rates-fetch-daily integration (Wave 0 RED scaffolding)", () => {
 
   afterAll(async () => {
     if (ctx) await teardownTestDb(ctx);
+    // Plan 11 (NEW CR-01 fix): restore any env stubs set during this suite.
+    vi.unstubAllEnvs();
   });
 
   beforeEach(async () => {
+    // Restore all spies/mocks so each test gets a clean globalThis.fetch.
+    // Without this, vi.spyOn(globalThis, "fetch") in one test accumulates calls
+    // from previous tests' mockImplementation stubs.
+    vi.restoreAllMocks();
     inngestSendMock.mockReset();
     inngestSendMock.mockResolvedValue({ ids: [] });
+    // Plan 11 (NEW CR-01 fix): getFxAlertRecipient() is now called at run-start
+    // (before any try/catch). Stub FX_ALERT_TO so all existing tests that drive
+    // _handleFxRatesFetchDaily() succeed — without the stub the handler throws at
+    // run-start rather than exercising the expected code path.
+    vi.stubEnv("FX_ALERT_TO", "ops@test.example");
     // Clear exchange_rates between tests so idempotency assertions start
     // from a known empty state.
     await ctx.db.execute(sql`TRUNCATE TABLE exchange_rates`);
@@ -135,6 +146,22 @@ describe("fx-rates-fetch-daily integration (Wave 0 RED scaffolding)", () => {
     };
     expect(evt.name).toBe("email/send.requested");
     expect(evt.data.kind).toBe("fx_rate_fetch_failed");
+  });
+
+  it("Plan 11 (NEW CR-01): throws at run-start if FX_ALERT_TO is unset — not inside catch", async () => {
+    // Unset the env var that beforeEach stubs — this simulates a misconfigured deploy.
+    vi.stubEnv("FX_ALERT_TO", "");
+    // fetch should never be called — the handler must throw before reaching step.run.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expect(
+      _handleFxRatesFetchDaily({ step: stepShim, runId: "test-run-cr01" }),
+    ).rejects.toThrow("FX_ALERT_TO env var is required");
+    // Alert fan-out must NOT fire — the throw is at run-start, not inside the
+    // D-06/D-08 catch block, so the operator gets the misconfiguration error, not a
+    // misleading "fx_rate_fetch_failed" event.
+    expect(inngestSendMock).not.toHaveBeenCalled();
+    // fetch should not have been called at all.
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("audit-log writeback: a row is written with entityType='fx_rate_fetch_run' for every run (success or failure)", async () => {
