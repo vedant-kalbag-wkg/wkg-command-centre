@@ -438,7 +438,7 @@ Output: 4 Playwright specs PASSING against preview; 5 doc files updated/created.
 
     **STATE.md** — append a new "Phase 10 close (post-execution) <DATE>" subsection. Mirror Phase 9.1's structure. Cover:
 
-    - 8 plans across 4 waves shipped on branch `gsd/phase-10-access-control-extended`
+    - 8 plans across 6 waves shipped on branch `gsd/phase-10-access-control-extended` (per plan-frontmatter `wave:` fields: 10-01 + 10-02 in Wave 1; 10-03 in Wave 2; 10-04 + 10-05 in Wave 3; 10-06 in Wave 4; 10-07 in Wave 5; 10-08 in Wave 6)
     - Critical reversal documented: **user.role text PRESERVED** (RESEARCH §Q1 reversed CONTEXT decision; Better Auth admin plugin reads it in 12 endpoints)
     - Headline deliverables (port from each PLAN's must_haves):
       - DB schema: 3 new tables (roles, role_permissions, user_roles) + user_scopes.role_id NOT NULL post-0052
@@ -545,7 +545,7 @@ Output: 4 Playwright specs PASSING against preview; 5 doc files updated/created.
 - 5 doc files created/updated
 - Phase 10 reaches code-complete + UAT-passed + doc-closed-out state
 - Operator has self-serve runbook for UAT + lock-out recovery
-- 8 plans across 4 waves shipped (Plan 10-01 + 10-02 in Wave 1; 10-03 + 10-04 in Wave 2; 10-05 + 10-06 + 10-07 in Wave 3; 10-08 in Wave 4)
+- 8 plans across 6 waves shipped (Plan 10-01 + 10-02 in Wave 1; 10-03 in Wave 2; 10-04 + 10-05 in Wave 3; 10-06 in Wave 4; 10-07 in Wave 5; 10-08 in Wave 6 — matches each plan's frontmatter `wave:` field)
 - Critical reversal (Q1 user.role preserved) documented in STATE.md so future agents inherit context
 - Two deferred items registered with pre-conditions for v1.2 pickup
 </success_criteria>

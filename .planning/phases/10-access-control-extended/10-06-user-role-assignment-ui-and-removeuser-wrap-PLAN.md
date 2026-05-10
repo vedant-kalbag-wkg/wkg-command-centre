@@ -10,12 +10,15 @@ files_modified:
   - src/app/(app)/settings/users/[id]/role-internal.ts
   - src/app/(app)/settings/users/[id]/role-assignment-client.tsx
   - src/app/(app)/settings/users/actions.ts
+  - src/components/admin/manage-scopes-dialog.tsx
+  - src/app/(app)/settings/users/[id]/scopes-actions.ts
+  - src/app/(app)/settings/users/[id]/scopes-internal.ts
 autonomous: true
 requirements: [AUTH-06, AUTH-07]
 must_haves:
   truths:
     - "/settings/users/[id]/page.tsx EXISTS and loads the user + their role assignments + their per-(user, role) scopes — currently the directory has only scopes-actions.ts + scopes-internal.ts with NO page.tsx (RESEARCH Open Questions OQ-1 + PATTERNS §E1)."
-    - "Admin can assign a role to a user with optional per-(user, role, dimension) scope binding (AUTH-07 SC4); revocation cascades user_scopes for that (user, role) pair via DB FK."
+    - "Admin can assign a role to a user AND bind per-(user, role, dimension) scopes to that assignment via the existing ManageScopesDialog (extended in this plan with a roleId picker — closes AUTH-07 SC4 end-to-end); revocation cascades user_scopes for that (user, role) pair via DB FK."
     - "assignRole and revokeRole run inside db.transaction; lockout-guard runs BEFORE commit on revoke; refreshUserRoleMirror(userId, tx) runs INSIDE the same tx so user.role text mirror stays in lock-step (RESEARCH Q1)."
     - "Audit-log written for every assignment change (entityType='user_role', action='assign'/'unassign', metadata kind 'user.roles.assign'/'user.roles.revoke' per RESEARCH Q5)."
     - "src/app/(app)/settings/users/actions.ts deleteUser() wraps Better Auth's removeUser AND runs assertAtLeastOneEffectiveAdmin(db, { excludingUserId: userId }) BEFORE the removeUser call — closes the lock-out coverage gap RESEARCH §Q6 flagged (PATTERNS §F1)."
@@ -601,13 +604,7 @@ Output: 5 files (4 new + 1 augmented). Plan 10-01's `tests/access-control/user-r
     }
     ```
 
-    Per PATTERNS §E2 "Things to NOT copy" — the existing `manage-scopes-dialog.tsx` was per-user-only; the planner extends to (role, scope[]) but for v1.1 we keep scope-add via the existing dialog (which now writes per-(user, role) scope rows because the schema supports it from Plan 10-02). The audit-log captures the scope context via the existing scopes-actions.ts. This UI shape ships per-(user, role) by NOT showing scopes inline; the operator clicks through to the existing scopes dialog from the page (rendered alongside RoleAssignmentClient).
-
-    **Decision (planner — pragmatic for v1.1):** RoleAssignmentClient handles ASSIGN/REVOKE only. Scope binding remains in the existing `<ManageScopesDialog>` from Phase 7/8, but Plan 10-02's schema means scopes ARE per-(user, role). The current scopes dialog needs a roleId picker to know which assignment a scope belongs to — extending it is in scope here:
-
-    Inspect `src/components/admin/manage-scopes-dialog.tsx` — if it doesn't yet pick roleId, extend it to add a roleId dropdown (pulling from the user's assignments) before the dimension/id pair. The scopes-actions.ts will need to take a roleId arg in `addScope` — augmenting that signature requires a tweak. Alternative: SKIP the scope-edit-from-dialog flow in v1.1 and document that scope-binding-per-role is "follow-up after Plan 10-08". 
-
-    **Pragmatic decision for this plan:** Ship the assign/revoke UI cleanly; document the per-(user, role) scope-edit UI extension as a Plan 10-08 close-out item OR a v1.2 carry. The DB schema supports it (Plan 10-02); the audit-log captures it (Plan 10-05); the test integration covers it (Plan 10-01). The UI affordance for editing existing scopes-per-role is a v1.2 polish item. Document in 10-06-SUMMARY.md.
+    This task ships RoleAssignmentClient with ASSIGN/REVOKE only. The per-(user, role) scope binding UI extension to `<ManageScopesDialog>` is **Task 4 of this plan** (added in revision iter 1 to deliver AUTH-07 SC4 end-to-end inside this phase, no v1.2 carry). RoleAssignmentClient renders the scope count + an "Edit scopes" affordance on each assignment row; the affordance opens the (extended) ManageScopesDialog scoped to (user, role).
   </action>
   <acceptance_criteria>
     - Both files exist
@@ -714,6 +711,188 @@ Output: 5 files (4 new + 1 augmented). Plan 10-01's `tests/access-control/user-r
   <done>deleteUser wrapped with lock-out guard; RESEARCH §Q6 last-paragraph mitigation gap closed. Better Auth's removeUser cannot inadvertently lock the system out from the existing user-delete UI.</done>
 </task>
 
+<task type="auto">
+  <name>Task 4: Extend ManageScopesDialog + scopes-actions with roleId binding (per-(user, role) scope-edit UI)</name>
+  <files>
+    src/components/admin/manage-scopes-dialog.tsx,
+    src/app/(app)/settings/users/[id]/scopes-actions.ts,
+    src/app/(app)/settings/users/[id]/scopes-internal.ts,
+    src/app/(app)/settings/users/[id]/role-assignment-client.tsx
+  </files>
+  <read_first>
+    - src/components/admin/manage-scopes-dialog.tsx (full file — current per-user-only dialog shape; donor pattern)
+    - src/app/(app)/settings/users/[id]/scopes-actions.ts (full file — `addScope` / `removeScope` / `listScopes` server-action signatures)
+    - src/app/(app)/settings/users/[id]/scopes-internal.ts (full file — `_addScopeForActor` / `_removeScopeForActor` / `_listScopesForActor` helpers; actor pattern + audit-log writer)
+    - src/app/(app)/settings/users/[id]/role-internal.ts (the per-(user, role) UserRoleAssignment shape from Task 1)
+    - src/db/schema.ts (`userScopes.roleId` column added by Plan 10-02 migration 0050; nullable until 0052 NOT-NULL flip)
+    - .planning/phases/10-access-control-extended/10-RESEARCH.md §Q6 ("Lock-out validation") + §"Open Questions OQ-2" (admin user has zero scope rows by design; nullable `role_id` invariant)
+    - .planning/phases/10-access-control-extended/10-PATTERNS.md §E2 (manage-scopes-dialog donor pattern; refresh-on-open + per-row removingId)
+  </read_first>
+  <action>
+    **Goal:** AUTH-07 SC4 end-to-end. Per-(user, role) scope binding in the UI, not just the RPC. Three coordinated edits.
+
+    **1. Extend `scopes-actions.ts` + `scopes-internal.ts` to take an optional `roleId` arg.**
+
+    `_addScopeForActor` and `_listScopesForActor` currently key on `userId`. Augment to optionally key on `(userId, roleId)`:
+
+    ```ts
+    // scopes-internal.ts — augment _addScopeForActor signature
+    export async function _addScopeForActor(args: {
+      actorId: string;
+      userId: string;
+      roleId: string;            // NEW — required (after migration 0052 the column is NOT NULL)
+      dimensionType: ScopeDimensionType;
+      dimensionId: string;
+    }): Promise<{ success: true; scope: UserScopeRow } | { error: string }> {
+      // ... existing actor gate + lookup ...
+
+      // Verify the (userId, roleId) pair has a corresponding user_roles row.
+      // Refusing scope-bind to a role the user is not assigned avoids orphans.
+      const [assignment] = await db
+        .select({ id: userRoles.id })
+        .from(userRoles)
+        .where(and(eq(userRoles.userId, args.userId), eq(userRoles.roleId, args.roleId)))
+        .limit(1);
+      if (!assignment) {
+        return { error: "Cannot bind scope: user does not have this role assigned." };
+      }
+
+      // ... existing INSERT into user_scopes — now SET role_id = args.roleId ...
+      // ... existing audit-log writer — extend metadata with kind: 'user.scope.bind', role_id: args.roleId ...
+    }
+
+    // scopes-internal.ts — augment _listScopesForActor signature
+    export async function _listScopesForActor(args: {
+      actorId: string;
+      userId: string;
+      roleId?: string;           // NEW — optional filter; if omitted, returns ALL scopes for user
+    }): Promise<UserScopeRow[]> {
+      // ... existing actor gate ...
+      const where = args.roleId
+        ? and(eq(userScopes.userId, args.userId), eq(userScopes.roleId, args.roleId))
+        : eq(userScopes.userId, args.userId);
+      // ... existing SELECT with the new where ...
+    }
+    ```
+
+    Same shape for `_removeScopeForActor` — it already takes a scope row id, but the audit-log metadata gains `role_id` from the deleted row.
+
+    Mirror the `roleId` arg through `scopes-actions.ts` server-action wrappers — `addScope(userId, roleId, dimensionType, dimensionId)`, `listScopes(userId, roleId?)`. Existing call sites that pass no `roleId` continue to work for the `listScopes(userId)` "all scopes for user" use case (Task 2's RSC page uses this).
+
+    **2. Extend `manage-scopes-dialog.tsx` with a roleId picker.**
+
+    The dialog currently takes `userId` and renders dimension/id pairs. Augment its props:
+
+    ```tsx
+    "use client";
+
+    type ManageScopesDialogProps = {
+      open: boolean;
+      onOpenChange: (open: boolean) => void;
+      userId: string;
+      // NEW: required when the dialog is bound to a specific (user, role) assignment.
+      // When omitted (legacy callers), the dialog falls back to picking a role from
+      // the user's assignments (defensive — Task 2's flow always passes a roleId).
+      roleId?: string;
+      assignmentLabel?: string;  // e.g. "Ops-IT" — shown in the dialog header for context
+    };
+
+    export function ManageScopesDialog({ open, onOpenChange, userId, roleId, assignmentLabel }: ManageScopesDialogProps) {
+      // ... existing useState / refresh-on-open pattern ...
+
+      const refresh = React.useCallback(async () => {
+        // listScopes now takes the optional roleId
+        const next = await listScopes(userId, roleId);
+        setScopes(next);
+      }, [userId, roleId]);
+
+      async function handleAdd(dimensionType: ScopeDimensionType, dimensionId: string) {
+        if (!roleId) {
+          toast.error("Cannot add scope: no role selected.");
+          return;
+        }
+        // addScope now takes roleId
+        const result = await addScope(userId, roleId, dimensionType, dimensionId);
+        // ... existing error handling + refresh ...
+      }
+
+      // ... rest of the dialog body ...
+
+      return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {assignmentLabel ? `Scopes for "${assignmentLabel}"` : "User scopes"}
+              </DialogTitle>
+            </DialogHeader>
+            {/* ... existing dimension/id pickers + scopes list ... */}
+          </DialogContent>
+        </Dialog>
+      );
+    }
+    ```
+
+    Behaviour: when `roleId` is provided, the dialog shows ONLY scopes bound to that (user, role) pair, and `addScope` writes with that `role_id`. The dialog header surfaces the assignment label (e.g. "Scopes for 'Ops-IT'") so the operator knows which assignment they're scoping.
+
+    **3. Wire into `role-assignment-client.tsx` (extending Task 2's component).**
+
+    Add an "Edit scopes" affordance per assignment row:
+
+    ```tsx
+    // role-assignment-client.tsx — augment the assignment row render
+    const [scopeDialog, setScopeDialog] = React.useState<{
+      open: boolean;
+      roleId: string | null;
+      label: string;
+    }>({ open: false, roleId: null, label: "" });
+
+    // ... in the assignment row ...
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => setScopeDialog({ open: true, roleId: a.roleId, label: a.roleDisplayName })}
+    >
+      Edit scopes
+    </Button>
+
+    // ... once at component root ...
+    {scopeDialog.roleId && (
+      <ManageScopesDialog
+        open={scopeDialog.open}
+        onOpenChange={(open) => setScopeDialog((s) => ({ ...s, open }))}
+        userId={userId}
+        roleId={scopeDialog.roleId}
+        assignmentLabel={scopeDialog.label}
+      />
+    )}
+    ```
+
+    The "scope count" already shown on the assignment row (`{a.scopes.length} scope(s)`) refreshes after the dialog closes via Task 2's existing `refresh()`.
+
+    **Audit-log:** every `addScope` call writes an audit row with `entityType='user_scope'`, `action='bind'`, `metadata.kind='user.scope.bind'`, `metadata.role_id`, `metadata.dimension`. Every `removeScope` writes `kind='user.scope.unbind'` with the deleted row's `role_id`. Confirms with 10-RESEARCH §Q5 audit shape.
+
+    **Migration ordering note:** Plan 10-02 migration 0050 adds `userScopes.role_id` nullable; 0051 backfills existing rows; 0052 (operator-gated) flips to NOT NULL. This Task 4 ships AFTER 0050+0051 are applied (Wave 4 depends on Wave 1's 10-02). The `roleId` arg becomes required in scopes-internal but the column stays nullable until 0052 — the runtime code is forward-compatible with both states.
+
+    **Out of scope for this task:** changing other (non-user-detail) callers of ManageScopesDialog. Defensive: the augmented dialog still works when `roleId` is undefined, returning early in `handleAdd` with the toast. Audit existing callers via `grep -r "ManageScopesDialog" src/` — if any other call site exists, leave it untouched and document in the SUMMARY.
+  </action>
+  <acceptance_criteria>
+    - `src/app/(app)/settings/users/[id]/scopes-actions.ts` and `scopes-internal.ts` accept `roleId` parameter on `addScope` (required) and `listScopes` (optional filter)
+    - `_addScopeForActor` refuses to bind a scope when `(userId, roleId)` has no matching `user_roles` row (returns `{ error: "Cannot bind scope: user does not have this role assigned." }`)
+    - `src/components/admin/manage-scopes-dialog.tsx` accepts `roleId?` and `assignmentLabel?` props and surfaces the assignment label in the dialog title when provided
+    - `src/app/(app)/settings/users/[id]/role-assignment-client.tsx` renders an "Edit scopes" button per assignment row that opens ManageScopesDialog scoped to that `(user, role)` pair
+    - Audit log: `addScope` writes `metadata.kind='user.scope.bind'` with `metadata.role_id`; `removeScope` writes `metadata.kind='user.scope.unbind'`
+    - `npx tsc --noEmit -p tsconfig.json` exits 0
+    - `tests/db/casl-ability.integration.test.ts` GREEN — extend it to cover: assigning Ops-IT to a user, binding a region scope to that (user, role) pair, asserting `buildAbility(ctx)` produces `conditions: { regionId: $1 }` ONLY on rules from the Ops-IT role
+    - `tests/access-control/user-role-assignment.spec.ts` (Plan 10-01 RED stub) Playwright-list-clean; full-green gate is Plan 10-08
+    - `git diff src/app/(app)/settings/users/page.tsx` empty (the user-list page is NOT in scope; only [id]/* + manage-scopes-dialog.tsx)
+  </acceptance_criteria>
+  <verify>
+    <automated>grep -q "roleId" src/app/\(app\)/settings/users/\[id\]/scopes-internal.ts && grep -q "roleId" src/app/\(app\)/settings/users/\[id\]/scopes-actions.ts && grep -q "user does not have this role assigned" src/app/\(app\)/settings/users/\[id\]/scopes-internal.ts && grep -q "roleId" src/components/admin/manage-scopes-dialog.tsx && grep -q "assignmentLabel" src/components/admin/manage-scopes-dialog.tsx && grep -q "ManageScopesDialog" src/app/\(app\)/settings/users/\[id\]/role-assignment-client.tsx && grep -q "Edit scopes" src/app/\(app\)/settings/users/\[id\]/role-assignment-client.tsx && grep -q "user.scope.bind" src/app/\(app\)/settings/users/\[id\]/scopes-internal.ts && npx tsc --noEmit -p tsconfig.json 2>&1 | grep -c "error TS" | grep -q "^0$" && npx vitest run --project integration tests/db/casl-ability.integration.test.ts 2>&1 | tail -5 | grep -qE "passed|✓"</automated>
+  </verify>
+  <done>Per-(user, role) scope binding shipped end-to-end: scopes-actions/internal take roleId; ManageScopesDialog filters + writes per-(user, role); role-assignment-client opens the dialog scoped to a specific assignment. AUTH-07 SC4 fully delivered without v1.2 carry.</done>
+</task>
+
 </tasks>
 
 <threat_model>
@@ -746,12 +925,13 @@ Output: 5 files (4 new + 1 augmented). Plan 10-01's `tests/access-control/user-r
 </verification>
 
 <success_criteria>
-- 5 files (4 new + 1 augmented)
+- 8 files (4 new + 4 augmented — added scopes-actions.ts/scopes-internal.ts/manage-scopes-dialog.tsx + augmented role-assignment-client.tsx in revision iter 1 to deliver AUTH-07 SC4 end-to-end)
 - Two-file `"use server"` split applied (role-actions.ts + role-internal.ts) per PATTERNS §"non-negotiable"
 - Every mutation transactional + mirror-refresh-in-tx + lockout-guard (revoke only) + audit-log
 - deleteUser wraps Better Auth removeUser with assertAtLeastOneEffectiveAdmin (closes RESEARCH §Q6 gap)
 - /settings/users/[id]/page.tsx EXISTS (was missing per PATTERNS §"Critical Reversals" item 2)
-- All Plan 10-01 better-auth-admin-plugin + lockout-guard integration tests GREEN
+- ManageScopesDialog + scopes-actions/internal extended with roleId; per-(user, role) scope binding shipped end-to-end (AUTH-07 SC4)
+- All Plan 10-01 better-auth-admin-plugin + lockout-guard + casl-ability integration tests GREEN
 - Plan 10-01 user-role-assignment.spec.ts list-clean (full GREEN gate is Plan 10-08)
 </success_criteria>
 

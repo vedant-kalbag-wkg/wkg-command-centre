@@ -6,16 +6,17 @@ wave: 3
 depends_on: [02, 03]
 files_modified:
   - src/lib/rbac.ts
-  - src/lib/rbac.test.ts
   - src/app/(app)/locations/actions.ts
   - src/app/(app)/locations/[id]/page.tsx
   - src/app/(app)/locations/new/page.tsx
+files_unchanged_invariant:
+  - src/lib/rbac.test.ts  # MUST remain bit-identical to v1.0 — the regression bar; verified by Task 1 acceptance
 autonomous: true
 requirements: [AUTH-06, AUTH-07]
 must_haves:
   truths:
     - "Every existing requireRole(...) / canAccessSensitiveFields(...) / redactSensitiveFields(...) call site STILL COMPILES AND BEHAVES IDENTICALLY after this plan — the shim layer in src/lib/rbac.ts preserves the public API while internally delegating to ctx.ability."
-    - "The 4 redactSensitiveFields call sites (locations actions/page/new + location-products-client) cut over to using readableFields(ctx.ability, 'Location') in lock-step. v1.0 redaction behaviour is preserved bit-for-bit (asserted by src/lib/rbac.test.ts unchanged + src/lib/casl/__tests__/seed.test.ts parity)."
+    - "The 3 redactSensitiveFields call sites (locations actions / [id]/page / new/page) cut over to using readableFields(ctx.ability, 'Location') in lock-step. v1.0 redaction behaviour is preserved bit-for-bit (asserted by src/lib/rbac.test.ts unchanged + src/lib/casl/__tests__/seed.test.ts parity). Note: location-products-client.tsx has zero redactSensitiveFields references and is owned by Plan 10-07 for the <Can> migration of its `session?.user?.role === 'admin'` branch."
     - "src/lib/rbac.test.ts continues to pass UNCHANGED — every existing assertion holds because the shim returns identical results."
     - "No call site needs to import @casl/ability directly in this plan — they keep using requireRole / redactSensitiveFields. The shim is the abstraction boundary."
   artifacts:
@@ -247,22 +248,21 @@ Output: `src/lib/rbac.ts` rewritten as a delegating shim. 4 call-site files upda
 </task>
 
 <task type="auto">
-  <name>Task 2: Migrate the 4 redactSensitiveFields call sites to consume getUserCtx().ability via readableFields</name>
+  <name>Task 2: Migrate the 3 redactSensitiveFields call sites to consume getUserCtx().ability via readableFields</name>
   <files>
     src/app/(app)/locations/actions.ts,
     src/app/(app)/locations/[id]/page.tsx,
-    src/app/(app)/locations/new/page.tsx,
-    src/app/(app)/locations/[id]/products/location-products-client.tsx
+    src/app/(app)/locations/new/page.tsx
   </files>
   <read_first>
-    - All four files (full contents — find every `redactSensitiveFields(...)` and `canAccessSensitiveFields(...)` invocation)
+    - All three files (full contents — find every `redactSensitiveFields(...)` and `canAccessSensitiveFields(...)` invocation)
     - src/lib/rbac.ts (the new shim — confirms signatures still accept legacy UserCtx literals)
     - src/lib/casl/fields.ts (`readableFields(ability, subject)`)
     - src/lib/auth/get-user-ctx.ts (returns ctx with `.ability`)
     - .planning/phases/10-access-control-extended/10-CONTEXT.md §"Existing redaction call sites"
   </read_first>
   <action>
-    For each of the 4 files, locate every `redactSensitiveFields(data, user)` call. Two valid migration patterns:
+    For each of the 3 files, locate every `redactSensitiveFields(data, user)` call. Two valid migration patterns:
 
     **Pattern A (preferred — when the call site can access ctx with full ability):** Use `readableFields(ctx.ability, "Location")` + a `pickFields` helper:
 
@@ -285,11 +285,12 @@ Output: `src/lib/rbac.ts` rewritten as a delegating shim. 4 call-site files upda
 
     The decision rule: if the call site ALREADY does `await getUserCtx()` or has session in scope, switch to Pattern A. Otherwise leave as `redactSensitiveFields(...)` (Pattern B).
 
-    Per CONTEXT §"Existing redaction call sites" the four sites are:
+    Per CONTEXT §"Existing redaction call sites" the three sites are:
     - `src/app/(app)/locations/actions.ts` — likely 1-2 invocations in mutation actions
     - `src/app/(app)/locations/[id]/page.tsx` — likely 1 invocation in RSC page render
     - `src/app/(app)/locations/new/page.tsx` — likely 1 invocation
-    - `src/app/(app)/locations/[id]/products/location-products-client.tsx` — note this is a 'use client' component; CANNOT call getUserCtx() from client. This file MUST receive the redacted data from its RSC parent (a server-side prop drill). Inspect the parent — if the component receives `location` as a prop, switch the parent (RSC) to do `readableFields` and pass the already-redacted object. The 'use client' file itself probably doesn't call `redactSensitiveFields` directly — it may call `canAccessSensitiveFields` for a UI gate; per RESEARCH Q4 the 'admin' branch in this file (line 474) is migrated to `<Can I="manage" a="LocationProduct">` in Plan 10-07. That migration is OUT OF SCOPE for this task; only the redaction call (if any) is in scope.
+
+    Note: `src/app/(app)/locations/[id]/products/location-products-client.tsx` is NOT in scope for this plan — codebase grep confirms it has zero `redactSensitiveFields | canAccessSensitiveFields` references. Its `session?.user?.role === 'admin'` branch is migrated to `<Can I="manage" a="LocationProduct">` in Plan 10-07.
 
     For each file, inspect the actual invocations and:
     - Pattern A migration: switch to `readableFields(ctx.ability, "Location")`-driven strip.
@@ -300,18 +301,18 @@ Output: `src/lib/rbac.ts` rewritten as a delegating shim. 4 call-site files upda
     The acceptance bar: `npx tsc --noEmit -p tsconfig.json` clean + `npx playwright test --list tests/access-control` lists OK + every existing test under `src/app/(app)/locations/` still GREEN (`npx vitest run src/app/(app)/locations/`).
   </action>
   <acceptance_criteria>
-    - All 4 files compile (`npx tsc --noEmit -p tsconfig.json` exits 0)
-    - At LEAST 2 of the 4 files now import `readableFields` from `@/lib/casl/fields` (Pattern A migration in the RSC pages)
-    - The `'use client'` file `location-products-client.tsx` does NOT import `getUserCtx` (it cannot — client component); if it received pre-redacted data via props, the RSC parent does the strip
+    - All 3 files compile (`npx tsc --noEmit -p tsconfig.json` exits 0)
+    - At LEAST 2 of the 3 files now import `readableFields` from `@/lib/casl/fields` (Pattern A migration in the RSC pages)
+    - `src/app/(app)/locations/[id]/products/location-products-client.tsx` is NOT touched by this task (out of scope — owned by 10-07; verified via `git diff --stat` showing the file unchanged)
     - Existing `src/lib/rbac.test.ts` still GREEN
     - Existing `src/app/(app)/locations/actions.test.ts` still GREEN
     - Existing `src/app/(app)/locations/__tests__/list-region-options-scoping.test.ts` and `update-location-field-location-type.test.ts` still GREEN
     - No new console warnings about `redactSensitiveFields` being called with non-UserCtx arg
   </acceptance_criteria>
   <verify>
-    <automated>npx tsc --noEmit -p tsconfig.json 2>&1 | grep -c "error TS" | grep -q "^0$" && [ "$(grep -l 'readableFields' src/app/\(app\)/locations/actions.ts src/app/\(app\)/locations/\[id\]/page.tsx src/app/\(app\)/locations/new/page.tsx 2>/dev/null | wc -l)" -ge 2 ] && ! grep -q "getUserCtx" src/app/\(app\)/locations/\[id\]/products/location-products-client.tsx && npx vitest run --project unit src/app/\(app\)/locations/ src/lib/rbac.test.ts 2>&1 | tail -5 | grep -qE "passed|✓"</automated>
+    <automated>npx tsc --noEmit -p tsconfig.json 2>&1 | grep -c "error TS" | grep -q "^0$" && [ "$(grep -l 'readableFields' src/app/\(app\)/locations/actions.ts src/app/\(app\)/locations/\[id\]/page.tsx src/app/\(app\)/locations/new/page.tsx 2>/dev/null | wc -l)" -ge 2 ] && [ -z "$(git diff src/app/\(app\)/locations/\[id\]/products/location-products-client.tsx)" ] && npx vitest run --project unit src/app/\(app\)/locations/ src/lib/rbac.test.ts 2>&1 | tail -5 | grep -qE "passed|✓"</automated>
   </verify>
-  <done>The 4 redactSensitiveFields call sites migrated where possible (Pattern A for RSC; left as shim for client component). All locations tests + rbac tests GREEN. The shim continues to handle all OTHER 50+ requireRole call sites uniformly without per-file edits in this plan.</done>
+  <done>The 3 redactSensitiveFields call sites (locations actions / [id]/page / new/page) migrated to Pattern A where applicable. location-products-client.tsx untouched (owned by 10-07). All locations tests + rbac tests GREEN. The shim continues to handle all OTHER 50+ requireRole call sites uniformly without per-file edits in this plan.</done>
 </task>
 
 </tasks>
@@ -345,7 +346,7 @@ Output: `src/lib/rbac.ts` rewritten as a delegating shim. 4 call-site files upda
 <success_criteria>
 - src/lib/rbac.ts is a delegating shim with dual-path canAccess / redactSensitive (CASL when ability present, legacy keys-list fallback otherwise)
 - src/lib/rbac.test.ts unchanged + GREEN
-- 4 redactSensitiveFields call sites updated where Pattern A applies; client component left untouched (gets data redacted upstream by RSC parent)
+- 3 redactSensitiveFields call sites (locations actions / [id]/page / new/page) updated where Pattern A applies; location-products-client.tsx left untouched (owned by Plan 10-07 for the <Can> migration)
 - All 50+ remaining requireRole call sites continue working through the shim with NO per-file edits in this plan
 - Regression: every test that was GREEN at start of Plan 10-04 is GREEN at end
 - Plan 10-05 inherits a fully-functioning shim ready to be tightened to ctx.ability.can(...) checks

@@ -611,15 +611,16 @@ Source: `node_modules/drizzle-orm/utils.d.ts:37` — returns `T['_']['columns']`
 | A5 | The `system` userType (per `getUserCtx`'s short-circuit branch) will continue to bypass CASL entirely; no script/cron uses `requireRole`. | Architecture | LOW — verified by grep: `requireRole` only appears in user-facing server actions; no Inngest function or `scripts/` path uses it. |
 | A6 | The 5 client-side role gates (Q4) are exhaustive — no other component reads `user.role` for client-side conditional rendering. | Q4 | MEDIUM — based on grep of `session.user.role`, `session?.user?.role`, `user.role ===`, `isAdmin` in `*.tsx` files. Possible miss: dynamic role lookups via destructuring, e.g. `const { role } = session.user`. |
 
-## Open Questions (none blocking — for planner attention)
+## Open Questions (RESOLVED)
 
 1. **Should the `users/[id]` page be created in this phase?** Currently `src/app/(app)/settings/users/[id]/` has only `scopes-actions.ts` + `scopes-internal.ts` (no `page.tsx`). Per CONTEXT, user-to-role assignment "stays on `/settings/users/[id]`" — implying the page exists. It does not. Plan must include creating it as part of AUTH-07.
-   - Recommendation: include in plan.
+   - **RESOLVED:** included in Plan 10-06 Task 2. The RSC page + `role-assignment-client.tsx` ship together; verified via Plan 10-06 acceptance `test -f src/app/(app)/settings/users/[id]/page.tsx`.
 
 2. **`userScopes.role_id`: should it be `NOT NULL` or stay nullable to allow legacy unscoped admin user_roles rows?** Admin role grants `manage all` and historically has zero `userScopes` rows. So `userScopes.role_id` can be nullable (and is nullable per the recommended schema above) — no admin user has scope rows to backfill.
-   - Recommendation: stay nullable until usage clarifies; verify with a unit test that admin user has zero scopes both before and after migration.
+   - **RESOLVED:** Plan 10-02 ships `role_id` nullable in migration 0050; the operator-gated NOT-NULL flip is migration 0052 (verbatim 0048-style guard) and runs only after 0051 backfill verifies zero `role_id IS NULL` rows. Admin invariant (zero scope rows) verified by `tests/db/casl-ability.integration.test.ts`.
 
 3. **Audit-log entityType extension.** `auditLogs.entityType` currently has a fixed enum with no `role`. Plan must include extending the enum (`'role' | 'role_permission' | 'user_role'`) — see Q5.
+   - **RESOLVED:** Plan 10-02 Task 2 widens `src/lib/audit.ts` TS literal unions (no SQL ALTER — the column is text in Postgres; the TypeScript union is the gate) to add `'role' | 'role_permission' | 'user_role'` entityTypes plus `'permissions_replace' | 'assign' | 'revoke' | 'scope_update'` actions. Verified via Plan 10-02-T2 grep `'"role"' src/lib/audit.ts && '"permissions_replace"' src/lib/audit.ts`.
 
 ---
 
@@ -1053,18 +1054,18 @@ async function assertAtLeastOneEffectiveAdmin(tx: AnyDb) {
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| AUTH-06 | Tier defaults preserve v1.0 behaviour for Ops-IT (member) and Read-only (viewer) | unit | `pytest`-equivalent: `npx vitest run src/lib/casl/__tests__/seed.test.ts` | ❌ Wave 0 |
-| AUTH-06 | `redactSensitiveFields` 4 call sites return same fields under default tier rules as before | unit | `npx vitest run src/lib/casl/__tests__/redaction-parity.test.ts` | ❌ Wave 0 |
-| AUTH-06 | External-user invariant strips banking even if rule data allows it | unit | `npx vitest run src/lib/casl/__tests__/external-invariant.test.ts` | ❌ Wave 0 |
-| AUTH-06 | `userScopes` per-(user, role) drives `conditions` correctly; admin sees all, viewer scoped to one region | integration | `npx vitest run --project integration tests/auth/scoped-ability.integration.test.ts` | ❌ Wave 0 |
-| AUTH-06 | Admin can edit Ops-IT rules and changes apply to next request without deploy | e2e | `PLAYWRIGHT_BASE_URL=… npx playwright test tests/access-control/edit-tier.spec.ts` | ❌ Wave 0 |
-| AUTH-07 | Admin can create custom role, assign to user with scope, user gets exactly those rules | integration | `npx vitest run --project integration tests/auth/custom-role.integration.test.ts` | ❌ Wave 0 |
-| AUTH-07 | Explicit-deny-wins: deny rule on a role overrides allow on a different role for the same user | unit | `npx vitest run src/lib/casl/__tests__/deny-wins.test.ts` | ❌ Wave 0 |
-| AUTH-07 | Lock-out guard refuses to save if zero effective admins remain (Path B query) | integration | `npx vitest run --project integration tests/auth/lockout-guard.integration.test.ts` | ❌ Wave 0 |
-| AUTH-07 | `<Can>` component hides "Merge" button on locations page for non-admin viewer | e2e | `PLAYWRIGHT_BASE_URL=… npx playwright test tests/access-control/can-component.spec.ts` | ❌ Wave 0 |
-| AUTH-06+07 | Better Auth `setRole` / `impersonate` / `ban` continue to work after migration | integration | `npx vitest run --project integration tests/auth/better-auth-admin-plugin.integration.test.ts` | ❌ Wave 0 |
-| AUTH-06 | `permittedFieldsOf` returns expected field set when `fields` is undefined (uses fieldsFrom fallback) | unit | `npx vitest run src/lib/casl/__tests__/permitted-fields.test.ts` | ❌ Wave 0 |
-| AUTH-06 | Subject-table registry exhaustiveness (every Subject literal has a SUBJECT_TABLES entry) | unit | `npx vitest run src/lib/casl/__tests__/subjects.test.ts` | ❌ Wave 0 |
+| AUTH-06 | Tier defaults preserve v1.0 behaviour for Ops-IT (member) and Read-only (viewer) | unit | `npx vitest run --project unit src/lib/casl/__tests__/seed.test.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-06 | `redactSensitiveFields` 3 call sites return same fields under default tier rules as before | unit | `npx vitest run --project unit src/lib/casl/__tests__/seed.test.ts` (parity covered by seed regression bar mirroring `src/lib/rbac.test.ts` 1:1) | ❌ Wave 0 (Plan 10-01) |
+| AUTH-06 | External-user invariant strips banking even if rule data allows it | unit | `npx vitest run --project unit src/lib/casl/__tests__/external-invariant.test.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-06 | `userScopes` per-(user, role) drives `conditions` correctly; admin sees all, viewer scoped to one region | integration | `npx vitest run --project integration tests/db/casl-ability.integration.test.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-06 | Admin can edit Ops-IT rules and changes apply to next request without deploy | e2e | `PLAYWRIGHT_BASE_URL=$BRANCH_ALIAS npx playwright test tests/access-control/edit-tier.spec.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-07 | Admin can create custom role, assign to user with scope, user gets exactly those rules | integration | `npx vitest run --project integration tests/db/custom-role.integration.test.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-07 | Explicit-deny-wins: deny rule on a role overrides allow on a different role for the same user | unit | `npx vitest run --project unit src/lib/casl/__tests__/deny-wins.test.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-07 | Lock-out guard refuses to save if zero effective admins remain (Path B query) | integration | `npx vitest run --project integration tests/db/lockout-guard.integration.test.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-07 | `<Can>` component hides "Merge" button on locations page for non-admin viewer | e2e | `PLAYWRIGHT_BASE_URL=$BRANCH_ALIAS npx playwright test tests/access-control/can-component.spec.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-06+07 | Better Auth `setRole` / `impersonate` / `ban` continue to work after migration | integration | `npx vitest run --project integration tests/db/better-auth-admin-plugin.integration.test.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-06 | `permittedFieldsOf` returns expected field set when `fields` is undefined (uses fieldsFrom fallback) | unit | `npx vitest run --project unit src/lib/casl/__tests__/permitted-fields.test.ts` | ❌ Wave 0 (Plan 10-01) |
+| AUTH-06 | Subject-table registry exhaustiveness (every Subject literal has a SUBJECT_TABLES entry) | unit | `npx vitest run --project unit src/lib/casl/__tests__/subjects.test.ts` | ❌ Wave 0 (Plan 10-01) |
 
 ### Sampling Rate
 - **Per task commit:** `npx vitest run --project unit src/lib/casl src/app/\(app\)/settings/roles src/app/\(app\)/settings/users` (~5s)
@@ -1072,18 +1073,29 @@ async function assertAtLeastOneEffectiveAdmin(tx: AnyDb) {
 - **Phase gate:** all of the above + `PLAYWRIGHT_BASE_URL=… npx playwright test tests/access-control/` against the branch alias (UAT preview).
 
 ### Wave 0 Gaps
-- [ ] `src/lib/casl/__tests__/seed.test.ts` — Ops-IT / Read-only tier defaults match v1.0 behaviour (regression bar)
-- [ ] `src/lib/casl/__tests__/redaction-parity.test.ts` — `redactSensitiveFields` parity test for 4 sites
-- [ ] `src/lib/casl/__tests__/external-invariant.test.ts` — external-user banking strip
-- [ ] `src/lib/casl/__tests__/deny-wins.test.ts` — explicit-deny-wins precedence
-- [ ] `src/lib/casl/__tests__/permitted-fields.test.ts` — fieldsFrom callback contract
-- [ ] `src/lib/casl/__tests__/subjects.test.ts` — registry exhaustiveness
-- [ ] `tests/auth/scoped-ability.integration.test.ts` — per-(user, role) scope conditions
-- [ ] `tests/auth/custom-role.integration.test.ts` — full custom-role roundtrip
-- [ ] `tests/auth/lockout-guard.integration.test.ts` — Path B query in transaction
-- [ ] `tests/auth/better-auth-admin-plugin.integration.test.ts` — Better Auth admin endpoints intact
-- [ ] `tests/access-control/edit-tier.spec.ts` — Playwright: admin edits Ops-IT, change applies
-- [ ] `tests/access-control/can-component.spec.ts` — Playwright: `<Can>` hides Merge button for viewer
+
+> Paths reflect the Plan 10-01 file list. Unit RED stubs go under `src/lib/casl/__tests__/`. Integration RED stubs go under `tests/db/` (project convention — testcontainers DB tests live there). Playwright RED specs go under `tests/access-control/`. The `redaction-parity` requirement is folded into `seed.test.ts` (mirrors `src/lib/rbac.test.ts` 1:1); a separate `redaction-parity.test.ts` is NOT created.
+
+Unit RED scaffolds (`src/lib/casl/__tests__/`):
+- [ ] `src/lib/casl/__tests__/ability.test.ts` — system short-circuit, react.cache memoisation, multi-role + scope merge
+- [ ] `src/lib/casl/__tests__/seed.test.ts` — Ops-IT / Read-only tier defaults match v1.0 behaviour (regression bar mirroring `src/lib/rbac.test.ts` 1:1, also covers redaction parity)
+- [ ] `src/lib/casl/__tests__/external-invariant.test.ts` — external-user banking strip (unconditional regardless of rule data)
+- [ ] `src/lib/casl/__tests__/deny-wins.test.ts` — explicit-deny-wins precedence across multi-role union
+- [ ] `src/lib/casl/__tests__/permitted-fields.test.ts` — `fieldsFrom` callback contract
+- [ ] `src/lib/casl/__tests__/subjects.test.ts` — registry exhaustiveness (every `Subject` literal has a `SUBJECT_TABLES` entry)
+
+Integration RED scaffolds (`tests/db/`):
+- [ ] `tests/db/casl-ability.integration.test.ts` — per-(user, role) scope conditions against testcontainers
+- [ ] `tests/db/custom-role.integration.test.ts` — full custom-role roundtrip (create / assign / verify rules)
+- [ ] `tests/db/lockout-guard.integration.test.ts` — Path B SQL inside transaction
+- [ ] `tests/db/better-auth-admin-plugin.integration.test.ts` — Better Auth admin endpoints (`setRole` / `impersonate` / `ban`) gate on `user.role` text after migration
+- [ ] `tests/db/migration-0051-backfill.integration.test.ts` — verifies seed + backfill of `user_roles` + `user_scopes.role_id` post-0051
+
+Playwright RED specs (`tests/access-control/`):
+- [ ] `tests/access-control/role-editor.spec.ts` — happy-path for `/settings/roles` list + drill-in editor
+- [ ] `tests/access-control/user-role-assignment.spec.ts` — `/settings/users/[id]` role assignment block
+- [ ] `tests/access-control/edit-tier.spec.ts` — admin edits Ops-IT, change applies on next request (AUTH-06 SC2)
+- [ ] `tests/access-control/can-component.spec.ts` — `<Can>` hides Merge button for viewer-tier user
 
 ## Security Domain
 
