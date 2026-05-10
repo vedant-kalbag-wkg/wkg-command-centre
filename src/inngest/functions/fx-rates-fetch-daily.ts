@@ -140,9 +140,14 @@ export async function _handleFxRatesFetchDaily(args: {
   // re-run on the same date drops the duplicate rows silently. Empty `rates`
   // (Sat / Sun / holiday) skips the INSERT entirely — no-op upsert is wasted
   // SQL.
+  // PR #40 review (Medium #1): use `.returning()` to count rows actually
+  // written this run. Returning `rates.length` would falsely report a
+  // re-run / Inngest retry as `upserted=N` even when ON CONFLICT DO NOTHING
+  // skipped every row, hiding no-op runs from operators reading the audit
+  // trail.
   const upserted = await args.step.run("upsert-rates", async () => {
     if (rates.length === 0) return 0;
-    await db
+    const inserted = await db
       .insert(exchangeRates)
       .values(
         rates.map((r) => ({
@@ -158,8 +163,9 @@ export async function _handleFxRatesFetchDaily(args: {
       )
       .onConflictDoNothing({
         target: [exchangeRates.currency, exchangeRates.rateDate],
-      });
-    return rates.length;
+      })
+      .returning({ currency: exchangeRates.currency });
+    return inserted.length;
   });
 
   // ── Step 3: write-run-audit ─────────────────────────────────────────────────
