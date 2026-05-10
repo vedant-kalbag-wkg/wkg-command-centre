@@ -174,3 +174,57 @@ export function pocUnderperformanceText({
     FOOTER,
   ].join("\n");
 }
+
+// Phase 9.1 Gap 1 closure — plain-text bodies for FX alert kinds
+// (`fx_rate_fetch_failed`, `fx_rate_stale`). Both flow through the
+// `template === "plain-text"` sentinel branch in src/inngest/functions/
+// send-email.ts; that branch picks the body builder by `event.data.kind`.
+// Keep them short, operationally-actionable, and free of CTAs (these go to
+// the operator inbox; the action is "fix the pipeline", not "click a link").
+
+export function fxRateFetchFailedText(props: {
+  reason: string;
+  isoDate: string;
+  runId: string;
+}): string {
+  return [
+    "FX rates daily fetch failed",
+    "",
+    "Date: " + props.isoDate,
+    "Run ID: " + props.runId,
+    "Reason: " + props.reason,
+    "",
+    "The Bank of England daily fetch did not complete. The carry-forward",
+    "lookup will continue using the most recent rate (D-05) for up to 7",
+    "days (D-07). Investigate before the staleness ceiling trips and the",
+    "sales ETL hard-fails.",
+    "",
+    "Inngest dashboard: check the fx-rates-fetch-daily run history.",
+  ].join("\n");
+}
+
+export function fxRateStaleText(props: {
+  currency: string;
+  transactionDate: string;
+  staleDays: number | null;
+  blobPath: string;
+  importId: string;
+}): string {
+  const staleClause =
+    props.staleDays === null
+      ? "no rate exists at-or-before the transaction date"
+      : "most recent rate is " + props.staleDays + " day(s) old (limit 7)";
+  return [
+    "Sales ETL halted: stale FX rate for " + props.currency,
+    "",
+    "Currency: " + props.currency,
+    "Transaction date: " + props.transactionDate,
+    "Staleness: " + staleClause,
+    "Blob path: " + props.blobPath,
+    "Import id: " + props.importId,
+    "",
+    "The blob has been refused at the per-blob FX-stale gate (D-07). The",
+    "fx-rates-fetch-daily Inngest cron has not produced a fresh rate for",
+    "this currency in 7 calendar days — investigate the BoE fetch path.",
+  ].join("\n");
+}
