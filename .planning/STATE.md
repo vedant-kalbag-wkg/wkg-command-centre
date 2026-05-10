@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 9.1 (Multi-currency forex normalisation) MERGED 2026-05-10 (PR #40, squash `ca62db3`). 11 plans (8 original + 3 gap-closure rounds) + 2 PR-review-fix commit waves. Schema delta on prod: migrations 0046 (exchange_rates table), 0047 (sales_records.net_amount_gbp NULLABLE), backfill of 95,103 GBP-identity rows, 0048 (NOT NULL flip), 0049 (commission_ledger.gross_amount → gross_amount_gbp rename) — all applied 2026-05-10 directly post-merge. exchange_rates table seeded by next BoE Inngest cron run at 06:00 Europe/London. Phase 10 (Access Control Extended, CASL) is next."
-last_updated: "2026-05-10T11:05:00.000Z"
-last_activity: "2026-05-10 — Phase 9.1 MERGED to main (PR #40). Two Claude review rounds: round 1 closed 4 medium + 3 nit findings (.returning() upsert, per-chunk backfill commit, portfolio D-12 comments, dropped-currency contingency, daysBetweenIso JSDoc, NOK fixture, buildExclusionCondition retired); round 2 closed 2 observations (pipeline tx pass-through, commission_ledger.gross_amount → gross_amount_gbp rename via migration 0049). Migrations + backfill applied to prod Neon."
+stopped_at: "Phase 10 (Access Control Extended) context captured 2026-05-10 — `.planning/phases/10-access-control-extended/10-CONTEXT.md` + `10-DISCUSSION-LOG.md` committed (`2a8048a`). 4/4 gray areas decided: hybrid `roles`+`role_permissions` schema with replace-all edit semantics, scope rules layered at builder time (Option B); Admin immutable system role + editable Ops-IT/Read-only seed tiers, `user.role` text replaced by `role_id` FK in one migration, `system` role bypasses CASL, external-user invariant kept as code-level guard; IAM-style multi-role per user with scope-on-assignment (`userScopes` evolves to per-(user, role, dimension)) and AWS-style explicit-deny-wins; form-driven editor at new `/settings/roles` with diff + impacted-users-count save flow. Six open research questions for the planner. Phase 10 ready for `/gsd-plan-phase 10`."
+last_updated: "2026-05-10T17:30:00.000Z"
+last_activity: "2026-05-10 — Phase 10 discuss-phase complete. CONTEXT.md + DISCUSSION-LOG.md committed (`2a8048a`)."
 progress:
   total_phases: 6
   completed_phases: 3
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 ## Current Position
 
 Phase: 10
-Status: Ready to plan (no `phases/10-*/` directory yet — run `/gsd-plan-phase 10` to scaffold)
+Status: Ready to plan — context captured (`phases/10-access-control-extended/10-CONTEXT.md`); next step is `/gsd-plan-phase 10`
 Last activity: 2026-05-10
 
 ## Pending v1.1 close-out actions (from completed phases)
