@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: "`/gsd-discuss-phase 9.1` complete. CONTEXT.md + DISCUSSION-LOG.md authored on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep` (cut from main at scaffold commit `0dd054b`). 17 implementation decisions captured (D-01 through D-17) across four gray areas: rate source & ingest (BoE locked), missing-rate gap-fill (carry-forward + 7-day staleness ceiling + email_log alerts), companion column scope (net_amount_gbp only — drop vat/total companions from ROADMAP wording), analytics UX continuity (no user toggle — display follows data: single-currency cohort → native, multi-currency → GBP, ranking always GBP). Phase 9 still awaiting operator UAT; phase 9.1 plan + execute may proceed in parallel where independent of phase 9 merge."
-last_updated: "2026-05-09T17:29:38.129Z"
-last_activity: 2026-05-09 -- Phase 9.1 planning complete
+stopped_at: "Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves: 09.1-01 Wave 0 fixtures + RED tests; 09.1-02 schema substrate (exchange_rates table, sales_records.net_amount_gbp NULLABLE, EmailKind extended); 09.1-03 FX library (boe-fetch + rate-lookup + currencies); 09.1-04 Inngest cron `fx-rates.fetch-daily` + serve registration; 09.1-05 ETL stamping + backfill script + migration 0048 NOT NULL flip operator-gated; 09.1-06 analytics SQL audit dual-emit (41 sites / 13 files) with saved-pivot back-compat (D-17); 09.1-07 renderer dispatch + tooltips + classifier/commission swaps + admin stale-rate banner; 09.1-08 doc surgery (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook. Awaiting operator UAT against preview alias per CLAUDE.md gate (`PLAYWRIGHT_BASE_URL=<preview-alias> npx playwright test tests/fx-normalisation/`); list-pass is NOT sufficient evidence."
+last_updated: "2026-05-10T05:41:11.508Z"
+last_activity: 2026-05-10 -- Phase 9.1 planning complete
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 24
-  completed_plans: 14
-  percent: 58
+  total_plans: 26
+  completed_plans: 22
+  percent: 85
 ---
 
 # Project State
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 ## Current Position
 
 Phase: 09.1
-Status: Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves; operator UAT in `09.1-HUMAN-UAT.md` pending merge.
-Last activity: 2026-05-09 -- Phase 9.1 code-complete (8/8 plans, awaiting operator UAT against preview alias)
+Status: Ready to execute
+Last activity: 2026-05-10 -- Phase 9.1 planning complete
 
 ## v1.1 Phase Index
 
