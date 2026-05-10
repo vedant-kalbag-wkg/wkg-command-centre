@@ -9,6 +9,8 @@ import { PocUnderperformanceEmail } from "@/emails/poc-underperformance";
 import {
   passwordChangedText,
   pocUnderperformanceText,
+  fxRateFetchFailedText,
+  fxRateStaleText,
 } from "@/emails/text-versions";
 
 import { inngest } from "../client";
@@ -78,6 +80,38 @@ export async function _handleSendEmail({
     event.data;
 
   const { html, text } = await step.run("render-html", async () => {
+    // Phase 9.1 gap-closure (Gap 1) — `plain-text` is a sentinel template
+    // for hand-crafted text-only emails (FX alerts). It bypasses the React-
+    // template TEMPLATES dispatch entirely; the body is picked by `kind`.
+    if (template === "plain-text") {
+      let textBody: string;
+      if (kind === "fx_rate_fetch_failed") {
+        textBody = fxRateFetchFailedText(
+          templateProps as Parameters<typeof fxRateFetchFailedText>[0],
+        );
+      } else if (kind === "fx_rate_stale") {
+        textBody = fxRateStaleText(
+          templateProps as Parameters<typeof fxRateStaleText>[0],
+        );
+      } else {
+        throw new Error(
+          "Unknown plain-text email kind: " +
+            kind +
+            " (expected fx_rate_fetch_failed | fx_rate_stale)",
+        );
+      }
+      // Resend accepts text-only emails; html is a minimal pre-wrap so HTML-only
+      // mail clients still see the body.
+      const htmlBody =
+        '<pre style="font-family: monospace; white-space: pre-wrap;">' +
+        textBody
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;") +
+        "</pre>";
+      return { html: htmlBody, text: textBody };
+    }
+
     const Component = TEMPLATES[template as TemplateKey];
     if (!Component) {
       throw new Error(`Unknown email template: ${template}`);

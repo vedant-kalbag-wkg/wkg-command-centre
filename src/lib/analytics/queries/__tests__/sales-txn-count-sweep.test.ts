@@ -64,16 +64,10 @@ vi.mock("@/lib/scoping/scoped-query", () => ({
   scopedSalesCondition: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/analytics/queries/shared")>();
-  return {
-    ...actual,
-    // hotel-groups uses the legacy outlet-exclusion path; short-circuit to
-    // avoid the DB lookup. The active-location predicate covers the same
-    // semantic in practice.
-    buildExclusionCondition: vi.fn().mockResolvedValue(undefined),
-  };
-});
+// PR #40 review (Nit #7): the legacy `buildExclusionCondition` mock was a
+// no-op holdover; hotel-groups.ts now imports `buildActiveLocationCondition`
+// directly from @/lib/analytics/active-locations. The active-locations mock
+// below covers the predicate; no shared.ts override needed.
 
 vi.mock("@/lib/analytics/active-locations", () => ({
   getActiveLocationIds: vi.fn().mockResolvedValue([]),

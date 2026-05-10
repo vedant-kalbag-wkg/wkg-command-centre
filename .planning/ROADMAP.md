@@ -17,7 +17,7 @@ Source documents: `PROJECT.md` (current milestone section), `REQUIREMENTS.md`, `
 - [x] **Phase 7: Data Foundation Rebuild** — Wipe-and-rebuild from Monday, location-merge admin UI, same-name guardrails, `LOCATION_NEEDED` sentinel, two-pass `assigned_at` seed (merged 2026-05-08, PR #36)
 - [x] **Phase 8: Email Infrastructure** — Resend transport, self-serve change-password, forgot-password deliverability UAT, transactional alerts substrate via Inngest (code-complete 2026-05-09; awaiting operator UAT — `08-HUMAN-UAT.md`)
 - [x] **Phase 9: POC Underperformance Alerts** — Weekly Inngest cron emails kiosk POCs when their `Live` kiosks fall into bottom outlet-tier; admin per-kiosk silencing; `/admin/performance-alerts` dashboard with manual run trigger (merged 2026-05-09, PR #38)
-- [ ] **Phase 9.1: Multi-currency analytics — forex normalisation to GBP base reporting** (INSERTED) — Adds `exchange_rates` table populated from a daily reference rate source, denormalises GBP companion columns onto `sales_records` at ingest, swaps every analytics aggregate to its GBP-normalised equivalent, switches the Phase 9 POC classifier to GBP-normalised revenue for percentile ranking. Tracks GitHub issue #39
+- [ ] **Phase 9.1: Multi-currency analytics — forex normalisation to GBP base reporting** (INSERTED) — Adds `exchange_rates` table populated daily from Bank of England spot rates via Inngest cron, denormalises `net_amount_gbp` onto `sales_records` at ingest with carry-forward + 7-day staleness ceiling, swaps every analytics aggregate to dual-emit native + GBP for auto-pick rendering, switches the Phase 9 POC classifier and commission processor to GBP-normalised revenue for cross-portfolio ranking. Tracks GitHub issue #39
 - [ ] **Phase 10: Access Control Extended** — CASL `Ability` migration; configurable Ops/IT/Read-only tier rules in DB JSON; admin UI for tier editing without deploy; custom granular roles authorable in admin UI
 - [ ] **Phase 11: Tooling, Polish & Tech-Debt Close-out** — Staging orphan-rate baseline, Monday drift detection, analytics `useEffect → loadData()` migration, GitHub auto-delete-merged-branches, tab hover/loading polish, calendar empty-state overlay, bulk-action type-safety, Drizzle 0.45.2 patch audit
 
@@ -81,16 +81,29 @@ Plans:
 - [x] 09-07-doc-updates-PLAN.md — STATE.md / REQUIREMENTS.md / phase-summary close-out
 
 ### Phase 9.1: Multi-currency analytics — forex normalisation (INSERTED)
-**Goal**: Cross-currency portfolios rank correctly. Adds an `exchange_rates` table populated from a daily reference rate source (ECB / BoE / NetSuite TBD), denormalises `net_amount_gbp` / `vat_amount_gbp` / `total_amount_gbp` onto `sales_records` at ingest (locks the historical rate against later revisions), swaps every analytics `SUM(net_amount)` aggregate to its GBP-normalised equivalent for cross-currency comparability, and switches the Phase 9 POC underperformance classifier (`classifyEligibleLocations`) to GBP-normalised revenue for percentile ranking. Per-kiosk email continues to render native currency for display.
+**Goal**: Cross-currency portfolios rank correctly. Adds an `exchange_rates(currency, rate_date, rate_to_gbp, source, fetched_at)` table populated daily from the **Bank of England daily spot rate** (D-01 locked — BoE IADB CSV, no triangulation through EUR, zero-auth, ~25 majors). Denormalises **`net_amount_gbp` only** onto `sales_records` at ingest using the BoE rate for `transaction_date` with carry-forward gap-fill (D-09 — vat/total companion columns deferred until a real consumer surfaces). Rate is locked at insert time — later BoE revisions never retroactively rewrite stamped rows. When the most recent BoE rate for a currency is more than 7 calendar days older than a row's `transaction_date`, the sales ETL hard-fails the affected blob and emits an `fx_rate_stale` email alert (D-07). Swaps every analytics `SUM(net_amount)` aggregate to dual-emit `(SUM(net_amount), SUM(net_amount_gbp), currency_key)` for renderer auto-pick (single-currency cohort → native, mixed → GBP per D-10/D-11). Switches the Phase 9 POC underperformance classifier (`classifyEligibleLocations`) and `commission/processor.ts` commission base to GBP-normalised revenue. `/admin/performance-alerts` always renders GBP and surfaces a stale-rate banner when the last successful BoE fetch is older than 24h. Per-kiosk POC email continues to render native currency via existing `format-currency.ts` (unchanged).
 **Depends on**: Phase 9 (classifier change), Phase 7 (sales ETL extension)
 **Tracks**: GitHub issue #39 (surfaced from PR #38 code review)
-**Requirements**: TBD (discuss-phase will draft them — likely `FX-01` exchange_rates table + daily ingest, `FX-02` sales_records GBP companion columns + ETL backfill, `FX-03` analytics query audit + swap, `FX-04` POC classifier swap)
+**Requirements**: FX-01, FX-02, FX-03, FX-04
 **Success Criteria** (what must be TRUE):
-  1. `exchange_rates(currency, rate_date, rate_to_gbp)` populated daily from chosen reference source; gap-fill / staleness handling defined
-  2. `sales_records.{net_amount_gbp, vat_amount_gbp, total_amount_gbp}` populated on ingest using the rate for `transaction_date`; backfill script for historical rows
-  3. Every analytics query audited; aggregations on multi-currency cohorts use GBP-normalised columns; per-kiosk views can still surface native currency
-  4. `classifyEligibleLocations` ranks on GBP-normalised revenue; POC underperformance email continues to render each kiosk's native-currency revenue
-**Plans**: TBD (run `/gsd-discuss-phase 9.1` then `/gsd-plan-phase 9.1`)
+  1. `exchange_rates(currency, rate_date, rate_to_gbp, source, fetched_at)` populated daily from Bank of England via Inngest cron `fx-rates.fetch-daily`; carry-forward lookup for non-publish days; 7-day staleness ceiling enforced at sales ETL with `fx_rate_stale` email alert; fetch failures emit `fx_rate_fetch_failed`
+  2. `sales_records.net_amount_gbp` populated on ingest using the BoE rate for `transaction_date` (identity for `currency='GBP'` — no rate lookup); one-shot historical backfill script populates pre-existing rows; migration 0048 flips the column to NOT NULL after backfill completes
+  3. Every analytics query audited; cross-cohort aggregations rank/sort on `net_amount_gbp` (always GBP per D-12) while dual-emitting `(SUM(net_amount), SUM(net_amount_gbp), currency_key)` so the renderer auto-picks native for single-currency cohorts and GBP for mixed cohorts (D-10/D-11). Pivot-engine field id `net_amount` preserved for saved-pivot back-compat (D-17). Sales mode and Revenue mode both swap.
+  4. `classifyEligibleLocations` ranks on `net_amount_gbp`; `commission/processor.ts` commission base on `net_amount_gbp`; `/admin/performance-alerts` always-GBP + stale-rate banner when MAX(`exchange_rates.fetched_at`) > 24h; POC underperformance email continues to render each kiosk's native-currency revenue via the existing `formatRevenueForKiosk` helper
+**Plans**: 11 plans (8 original + 3 gap closure)
+
+Plans:
+- [x] 09.1-01-PLAN.md — Wave 0: Test fixtures + RED-stage scaffolds (FX-01..04)
+- [x] 09.1-02-PLAN.md — Wave 1: Schema + EmailKind + drizzle push (FX-01/FX-02)
+- [x] 09.1-03-PLAN.md — Wave 1: FX library — boe-fetch + rate-lookup + currencies (FX-01/FX-02)
+- [x] 09.1-04-PLAN.md — Wave 2: Inngest cron fx-rates.fetch-daily + serve registration (FX-01)
+- [x] 09.1-05-PLAN.md — Wave 3: ETL stamping + backfill script + 0048 NOT-NULL flip operator-gated (FX-02)
+- [x] 09.1-06-PLAN.md — Wave 3: Analytics SQL audit dual-emit (41 sites / 13 files) (FX-03a)
+- [x] 09.1-07-PLAN.md — Wave 4: Renderer dispatch + tooltips + classifier/commission swaps + admin stale banner (FX-03b/FX-04)
+- [x] 09.1-08-PLAN.md — Wave 5: Doc edits (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook
+- [x] 09.1-09-PLAN.md — Wave 1 (gap closure): plain-text dispatch + UUID-shape validator + inArray IN-list + FX_ALERT_TO env-required + hotel-groups buildActiveLocationCondition migration (closes Gaps 1-4 + WR-04)
+- [x] 09.1-10-PLAN.md — Wave 1 (gap closure): daysBetweenIso shared helper + backfill cursor uuid-typed + commission processor uuid[] bind (no 65k ceiling) + pivot-engine WR-09 currency_key symmetry test (closes CR-04 + CR-05 + WR-05 + WR-09)
+- [x] 09.1-11-PLAN.md — Wave 2 (gap closure 2): recipient lifted to run-start in fx cron + azure-etl (NEW CR-01) + EmailTemplate union extended with "plain-text" sentinel (NEW CR-02) + num-rooms-subquery regex updated post-CR-01 inArray + FX cron integration FX_ALERT_TO stub + run-start throw spec (closes 3 gaps from re-verification)
 
 ### Phase 10: Access Control Extended
 **Goal**: Migrate RBAC onto CASL (`@casl/ability` + `@casl/react`). Tier rules stored as JSON in DB, editable from an admin UI without deploy; `redactSensitiveFields` becomes `permittedFieldsOf(ability, 'read', subject)`. Custom granular roles authorable in admin UI per-role rule set (subjects × actions × fields × conditions).
@@ -127,7 +140,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 7. Data Foundation Rebuild | 6/6 | Complete (PR #36 merged) | 2026-05-08 |
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
-| 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 0/0 | Not planned (issue #39) | — |
+| 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
 | 10. Access Control Extended | 0/0 | Not planned | — |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 

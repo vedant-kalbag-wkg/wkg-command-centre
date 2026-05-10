@@ -184,10 +184,24 @@ async function computePerformerPatterns(
       // Top products by revenue for tier locations. Always exclude fee rows
       // (Booking Fee / Cash Handling Fee) — they aren't products and swamp
       // the ranking by transaction count.
-      executeRows<{ name: string; revenue: string }>(sql`
+      //
+      // Phase 9.1 / D-11 / D-12 — dual-emit native + GBP + currency_key; the
+      // ORDER BY (and the consumer's downstream sort) ranks on GBP so the
+      // per-tier "Top 5 products" doesn't accidentally drop a EUR-region best-
+      // seller behind a GBP-region runner-up.
+      executeRows<{
+        name: string;
+        revenue_native: string;
+        revenue_gbp: string;
+        currency_key: string | null;
+      }>(sql`
         SELECT
           ${products.name} AS name,
-          COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue
+          COALESCE(SUM(${salesRecords.netAmount}),     0) AS revenue_native,
+          COALESCE(SUM(${salesRecords.netAmountGbp}), 0) AS revenue_gbp,
+          CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) = 1
+               THEN MIN(${salesRecords.currency})
+               ELSE NULL END AS currency_key
         FROM ${salesRecords}
           INNER JOIN ${products} ON ${salesRecords.productId} = ${products.id}
           INNER JOIN ${locations} ON ${salesRecords.locationId} = ${locations.id}
@@ -195,7 +209,7 @@ async function computePerformerPatterns(
           AND ${buildNonFeeCondition()}
           ${whereClause ? sql`AND ${whereClause}` : sql``}
         GROUP BY ${products.name}
-        ORDER BY revenue DESC
+        ORDER BY revenue_gbp DESC      -- D-12: ranking always GBP
         LIMIT 5
       `),
     ]);
@@ -241,7 +255,9 @@ async function computePerformerPatterns(
 
   const topProducts = topProductRows.map((r) => ({
     name: r.name,
-    revenue: Number(r.revenue),
+    // D-12 — Top-5 products list uses GBP-bound revenue. Renderer dispatch
+    // (09.1-07) layers currency_key + revenue_native for the auto-pick.
+    revenue: Number(r.revenue_gbp),
   }));
 
   // 5. Insights — symmetric copy

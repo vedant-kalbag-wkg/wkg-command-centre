@@ -9,33 +9,28 @@ import {
 } from "@/db/schema";
 import { sql, inArray, type SQL } from "drizzle-orm";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
-import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 
-/**
- * Phase 07-06 — `buildExclusionCondition` now delegates to
- * `buildActiveLocationCondition` (which scans `kiosks` via
- * `kiosk_assignments` for per-kiosk outlet codes matching exclusions).
- *
- * Pre-07-06 this helper produced a `NOT (locations.outlet_code = ... OR ...)`
- * predicate that callers ANDed into a WHERE clause that already INNER JOINed
- * `locations`. The locations.outlet_code column is gone (migration 0040)
- * and outlet codes now live on kiosks. Rather than duplicate the
- * kiosk-scan logic here, we delegate to the (cached) active-locations
- * helper — semantically identical: a sales row is in scope iff its
- * location's currently-assigned kiosks have no outlet code matching an
- * exclusion in the same region.
- *
- * Caller contract is preserved: returns `undefined` if no exclusions
- * apply (so the caller's `combineConditions` sees a no-op), otherwise
- * returns a `salesRecords.location_id = ANY(...)` predicate.
- */
-export async function buildExclusionCondition(): Promise<SQL | undefined> {
-  return buildActiveLocationCondition();
-}
+// Phase 9.1 / PR #40 review (Nit #7): the legacy `buildExclusionCondition`
+// alias was retired here. It was a Phase 07-06 carry-over that delegated to
+// `buildActiveLocationCondition` after the locations.outlet_code column was
+// dropped (migration 0040) and outlet codes moved to kiosks. The remaining
+// production caller (`commission/where-builder.ts`) was migrated to import
+// `buildActiveLocationCondition` from `@/lib/analytics/active-locations`
+// directly. Test mocks were similarly cleaned up. Search history for the
+// rationale if you find pre-9.1 code referencing the old name.
 
 export function buildDateCondition(filters: AnalyticsFilters): SQL {
   return sql`${salesRecords.transactionDate} >= ${filters.dateFrom} AND ${salesRecords.transactionDate} <= ${filters.dateTo}`;
 }
+
+// Phase 9.1 / FX-03 — dual-emit revenue contract (D-11) lives in a pure module
+// at `@/lib/analytics/revenue-display` so client components can dispatch
+// without dragging the drizzle/postgres graph imported above into the browser
+// bundle. Re-exported here for back-compat with existing server callers.
+export {
+  pickRevenueDisplay,
+  type DualEmitRevenueRow,
+} from "@/lib/analytics/revenue-display";
 
 // "A fee row" — single-column predicate post-D10. Parser sets is_weknow_fee=true
 // for NetSuite 9991 (Booking Fee) and 9992 (Cash Handling Fee).

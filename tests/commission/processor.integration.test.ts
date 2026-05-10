@@ -114,6 +114,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "100.00",
+        netAmountGbp: "100.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
         vatAmount: "20.00",
         isWeknowFee: true,
         netsuiteCode: "9991",
@@ -130,6 +131,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "500.00",
+        netAmountGbp: "500.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
         vatAmount: "100.00",
         isWeknowFee: false,
         netsuiteCode: "P-001",
@@ -146,15 +148,17 @@ describe("commission processor — booking-fee semantics (integration)", () => {
     const entries = await ctx.db
       .select({
         salesRecordId: commissionLedger.salesRecordId,
-        grossAmount: commissionLedger.grossAmount,
+        grossAmountGbp: commissionLedger.grossAmountGbp,
         commissionAmount: commissionLedger.commissionAmount,
       })
       .from(commissionLedger);
 
     expect(entries).toHaveLength(1);
     expect(entries[0].salesRecordId).toBe(feeRow.id);
-    // net=100 stored in grossAmount column (column not renamed this phase).
-    expect(Number(entries[0].grossAmount)).toBeCloseTo(100);
+    // net=100 stored in grossAmountGbp column (PR #40 review observation A —
+    // renamed from gross_amount in migration 0049 to match the GBP semantics
+    // FX-04 introduced).
+    expect(Number(entries[0].grossAmountGbp)).toBeCloseTo(100);
     // 10% flat tier → 10.00 commission.
     expect(Number(entries[0].commissionAmount)).toBeCloseTo(10);
   });
@@ -193,6 +197,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
       locationId,
       productId,
       netAmount: "999999.00",
+      netAmountGbp: "999999.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
       vatAmount: "0.00",
       isWeknowFee: false,
       netsuiteCode: "P-PRE",
@@ -208,6 +213,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "100.00",
+        netAmountGbp: "100.00", // Phase 9.1 FX-02 NOT NULL — GBP identity.
         vatAmount: "20.00",
         isWeknowFee: true,
         netsuiteCode: "9991",
@@ -238,6 +244,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
   it("recalculateCommissions only recalculates booking-fee rows", async () => {
     // Seed one fee row + one principal row in the same month. Principal must
     // not produce a ledger entry on recalc.
+    // Phase 9.1 FX-02 NOT NULL — GBP identity stamps for all rows.
     await ctx.db.insert(salesRecords).values([
       {
         regionId,
@@ -247,6 +254,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "200.00",
+        netAmountGbp: "200.00",
         vatAmount: "40.00",
         isWeknowFee: true,
         netsuiteCode: "9991",
@@ -259,6 +267,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
         locationId,
         productId,
         netAmount: "700.00",
+        netAmountGbp: "700.00",
         vatAmount: "140.00",
         isWeknowFee: false,
         netsuiteCode: "P-003",
@@ -271,7 +280,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
 
     const entries = await ctx.db
       .select({
-        grossAmount: commissionLedger.grossAmount,
+        grossAmountGbp: commissionLedger.grossAmountGbp,
         commissionAmount: commissionLedger.commissionAmount,
         isReversal: commissionLedger.isReversal,
       })
@@ -284,8 +293,97 @@ describe("commission processor — booking-fee semantics (integration)", () => {
       );
 
     expect(entries).toHaveLength(1);
-    expect(Number(entries[0].grossAmount)).toBeCloseTo(200);
+    expect(Number(entries[0].grossAmountGbp)).toBeCloseTo(200);
     // 10% flat tier → 20.00.
     expect(Number(entries[0].commissionAmount)).toBeCloseTo(20);
+  });
+
+  // ─── Phase 9.1 / D-15 — multi-currency commission base ────────────────────
+  //
+  // Pre-FX-04: commission tiers were applied to raw native sums, so a EUR-
+  // billing kiosk would cross the £10k tier boundary at €11.5k of native
+  // sales (an FX-driven over-count). Post-FX-04: cumulative base reads
+  // SUM(net_amount_gbp) and the per-row engine call uses netAmountGbp, so
+  // the tier-bracket lookup is GBP-denominated end-to-end. This test seeds
+  // a multi-currency window (EUR + GBP) and asserts the cumulative base
+  // matches the hand-calculated GBP total.
+  it("multi-currency commission window: cumulative base matches GBP-normalised total (D-15)", async () => {
+    // EUR sale: net €1000, GBP £850 (rate 0.85 at sale time).
+    // GBP sale: net £500.
+    // Expected GBP cumulative base after both = £1350.
+    // 10% flat tier → £85 + £50 = £135 commission across the two.
+    await ctx.db.insert(salesRecords).values([
+      {
+        regionId,
+        saleRef: "S-FEE-EUR",
+        refNo: "R-FEE-EUR",
+        transactionDate: "2025-10-01",
+        locationId,
+        productId,
+        netAmount: "1000.00",
+        netAmountGbp: "850.00",
+        vatAmount: "0.00",
+        currency: "EUR",
+        isWeknowFee: true,
+        netsuiteCode: "9991",
+      },
+      {
+        regionId,
+        saleRef: "S-FEE-GBP",
+        refNo: "R-FEE-GBP",
+        transactionDate: "2025-10-02",
+        locationId,
+        productId,
+        netAmount: "500.00",
+        netAmountGbp: "500.00",
+        vatAmount: "0.00",
+        currency: "GBP",
+        isWeknowFee: true,
+        netsuiteCode: "9991",
+      },
+    ]);
+
+    const ids = await ctx.db
+      .select({ id: salesRecords.id })
+      .from(salesRecords)
+      .where(eq(salesRecords.transactionDate, "2025-10-01"));
+    const idsB = await ctx.db
+      .select({ id: salesRecords.id })
+      .from(salesRecords)
+      .where(eq(salesRecords.transactionDate, "2025-10-02"));
+
+    const result = await calculateCommissionsForRecords([
+      ...ids.map((r) => r.id),
+      ...idsB.map((r) => r.id),
+    ]);
+    expect(result.calculated).toBe(2);
+
+    const entries = await ctx.db
+      .select({
+        grossAmountGbp: commissionLedger.grossAmountGbp,
+        commissionAmount: commissionLedger.commissionAmount,
+      })
+      .from(commissionLedger)
+      .where(
+        and(
+          eq(commissionLedger.locationProductId, locationProductId),
+          eq(commissionLedger.isReversal, false),
+        ),
+      );
+
+    // Two ledger rows; commission base stored in GBP-normalised units per D-15.
+    expect(entries).toHaveLength(2);
+    const gbpTotal = entries.reduce(
+      (sum, e) => sum + Number(e.grossAmountGbp),
+      0,
+    );
+    // £850 (EUR-normalised) + £500 (native GBP) = £1350 — matches hand-calc.
+    expect(gbpTotal).toBeCloseTo(1350);
+    const commissionTotal = entries.reduce(
+      (sum, e) => sum + Number(e.commissionAmount),
+      0,
+    );
+    // 10% flat tier on £1350 GBP cumulative base = £135 total commission.
+    expect(commissionTotal).toBeCloseTo(135);
   });
 });

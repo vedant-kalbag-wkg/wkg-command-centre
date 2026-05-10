@@ -13,6 +13,29 @@ export function formatCurrency(value: number): string {
   return gbpFormatter.format(value);
 }
 
+/**
+ * Phase 9.1 / D-10 / FX-03 — native-currency formatter for analytics cells in
+ * single-currency cohorts. Sister to the GBP-pinned `formatCurrency` above,
+ * which stays for multi-currency cohorts and always-GBP surfaces (D-15/D-16).
+ *
+ * Defensive try/catch fallback mirrors `src/lib/performance-alerts/format-currency.ts`
+ * — an invalid ISO 4217 code on a malformed sales_records row would otherwise
+ * throw RangeError and abort the render. Prefer emitting a readable string
+ * with the literal code over a hard failure.
+ */
+export function formatNativeCurrency(value: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currency} ${value.toFixed(2)}`;
+  }
+}
+
 export function formatNumber(value: number, decimals?: number): string {
   const formatter = new Intl.NumberFormat("en-GB", {
     minimumFractionDigits: decimals ?? 0,

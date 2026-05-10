@@ -16,6 +16,7 @@ import { CapacityMetrics } from "./capacity-metrics";
 import { PeerAnalysis } from "./peer-analysis";
 import { HotelBreakdown } from "./hotel-breakdown";
 import type { LocationGroupData, LocationGroupDetail } from "@/lib/analytics/types";
+import { isUuid } from "@/lib/uuid";
 
 function parseIdParam(value: string | null): string[] {
   if (!value) return [];
@@ -29,7 +30,11 @@ export default function LocationGroupsPage() {
   const filters = useAnalyticsFilters();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialUrlGroupIds = parseIdParam(searchParams?.get("group") ?? null);
+  // Phase 9.1 CR-01 / WR-04 — drop non-UUID URL params before they reach the
+  // SQL builder. Renders the standard EmptyState for malformed inputs.
+  const initialUrlGroupIds = parseIdParam(
+    searchParams?.get("group") ?? null,
+  ).filter(isUuid);
   const [groups, setGroups] = useState<LocationGroupData[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(
     initialUrlGroupIds,
@@ -112,7 +117,7 @@ export default function LocationGroupsPage() {
   }, [loadDetail]);
 
   const emptyDetail: LocationGroupDetail = {
-    metrics: { revenue: 0, transactions: 0, hotelCount: 0, totalRooms: null },
+    metrics: { revenue: 0, revenueNative: 0, currencyKey: null, transactions: 0, hotelCount: 0, totalRooms: null },
     capacityMetrics: {
       revenuePerRoom: null,
       txnPerRoom: null,

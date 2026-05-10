@@ -4,12 +4,20 @@ import { db } from "@/db";
 import {
   auditLogs,
   emailLog,
+  exchangeRates,
   locationPerformanceAlertState,
   locations,
 } from "@/db/schema";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RunNowButton } from "./run-now-button";
+
+// Phase 9.1 / D-16 — stale-rate threshold. The BoE daily fetch Inngest
+// function runs once a day; if MAX(exchange_rates.fetched_at) is older than
+// 24h the cron has either failed or been disabled. Sales ETL hard-fails
+// blobs whose currencies have rates older than 7 days (per CONTEXT.md D-07),
+// so a 24h-old fetch is the early-warning threshold.
+const FX_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 export default async function AdminPerformanceAlertsPage() {
   await requireRole("admin");
@@ -20,10 +28,32 @@ export default async function AdminPerformanceAlertsPage() {
   // write an audit_logs row but no state rows, so the dashboard would render
   // "—" for "Last run" while the recent-runs list below contradicted it.
   const [latestRow] = await db
-    .select({ ts: sql<Date | null>`MAX(${auditLogs.createdAt})` })
+    .select({ ts: sql<Date | string | null>`MAX(${auditLogs.createdAt})` })
     .from(auditLogs)
     .where(eq(auditLogs.entityType, "performance_alert_run"));
-  const latestRunAt = latestRow?.ts ?? null;
+  const latestRunAt = toDate(latestRow?.ts ?? null);
+
+  // Phase 9.1 / D-16 — FX stale-rate signal. The BoE daily fetch Inngest
+  // function writes a row per (currency, rate_date) tuple; the canonical
+  // freshness signal is MAX(fetched_at) across the whole table. When this
+  // is null (table empty — first cron has not yet run on this branch) or
+  // > 24h old (cron failed or disabled), the page renders an inline banner
+  // above the latest-run Card so an admin notices before the 7-day hard-fail
+  // threshold fires in sales ETL.
+  //
+  // Phase 9.1 UAT discovery (2026-05-10): drizzle's `sql<Date | null>` template
+  // does NOT parse the aggregate result via the column-level timestamp parser
+  // — node-postgres returns the raw `timestamptz` string, not a Date. The
+  // earlier `.getTime()` call therefore threw `not a function` during SSR and
+  // crashed the route the moment any row existed in `exchange_rates`. The
+  // `toDate` helper at the bottom of this file normalises both shapes.
+  const [latestFxRow] = await db
+    .select({ ts: sql<Date | string | null>`MAX(${exchangeRates.fetchedAt})` })
+    .from(exchangeRates);
+  const latestFxFetchAt = toDate(latestFxRow?.ts ?? null);
+  const fxStale =
+    !latestFxFetchAt ||
+    Date.now() - latestFxFetchAt.getTime() > FX_STALE_THRESHOLD_MS;
 
   // Counts grouped by tier (for the latest run — tier reflects most-recent classification).
   const tierCountsRows = await db
@@ -90,6 +120,33 @@ export default async function AdminPerformanceAlertsPage() {
         description="Weekly POC underperformance alert — last-run metadata + manual trigger."
       />
       <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
+        {fxStale && (
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardHeader>
+              <CardTitle className="text-destructive">
+                FX rates are stale
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              <p>
+                Last successful FX rate fetch:{" "}
+                <strong>
+                  {latestFxFetchAt
+                    ? `${latestFxFetchAt.toLocaleString("en-GB")} (${humaniseAge(latestFxFetchAt)} ago)`
+                    : "never"}
+                </strong>
+                .
+              </p>
+              <p className="mt-2">
+                Sales ETL will hard-fail blobs whose currencies have rates
+                older than 7 days (per CONTEXT.md D-07). Investigate the{" "}
+                <strong>FX rates daily fetch (BoE)</strong> Inngest function
+                — its last successful run is the source of truth here.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Latest run</CardTitle>
@@ -146,4 +203,32 @@ function Stat({ label, value }: { label: string; value: string }) {
       <span className="text-base font-semibold">{value}</span>
     </div>
   );
+}
+
+/**
+ * Phase 9.1 / D-16 — humanise the age of the last FX fetch for the stale
+ * banner copy. Plain "X hours ago" / "Y days ago" — admin-readable on
+ * sight, no need for a heavyweight i18n library here.
+ */
+function humaniseAge(date: Date): string {
+  const ms = Date.now() - date.getTime();
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
+/**
+ * Phase 9.1 UAT discovery (2026-05-10) — node-postgres returns raw
+ * `timestamptz` strings for SQL aggregate expressions wrapped in
+ * `sql<Date | null>...`, because drizzle's runtime parser only kicks in for
+ * column-level reads (where it knows the column type). The previous
+ * `.getTime()` call on the result therefore crashed SSR with a TypeError
+ * the moment `exchange_rates` had any row. `toDate` normalises both shapes
+ * — it's the single boundary every aggregate-timestamp on this page now
+ * passes through, so no other render path is silently broken.
+ */
+function toDate(v: Date | string | null): Date | null {
+  if (v === null) return null;
+  return v instanceof Date ? v : new Date(v);
 }

@@ -14,6 +14,7 @@ import { RegionMetrics } from "./region-metrics";
 import { HotelGroupBreakdown } from "./hotel-group-breakdown";
 import { LocationGroupBreakdown } from "./location-group-breakdown";
 import type { RegionData, RegionDetail } from "@/lib/analytics/types";
+import { isUuid } from "@/lib/uuid";
 
 function parseIdParam(value: string | null): string[] {
   if (!value) return [];
@@ -27,7 +28,12 @@ export default function RegionsPage() {
   const filters = useAnalyticsFilters();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialUrlRegionIds = parseIdParam(searchParams?.get("region") ?? null);
+  // Phase 9.1 CR-01 / WR-04 — drop non-UUID URL params on the floor before they
+  // reach the SQL builder. Empty selection renders the standard EmptyState UX
+  // (vs throwing) — appropriate for a malformed URL param.
+  const initialUrlRegionIds = parseIdParam(
+    searchParams?.get("region") ?? null,
+  ).filter(isUuid);
   const [regionsList, setRegionsList] = useState<RegionData[]>([]);
   const [selectedRegionIds, setSelectedRegionIds] = useState<string[]>(
     initialUrlRegionIds,
@@ -130,7 +136,7 @@ export default function RegionsPage() {
   }, [loadDetail]);
 
   const emptyDetail: RegionDetail = {
-    metrics: { revenue: 0, transactions: 0, hotelGroupCount: 0, locationGroupCount: 0 },
+    metrics: { revenue: 0, revenueNative: 0, currencyKey: null, transactions: 0, hotelGroupCount: 0, locationGroupCount: 0 },
     hotelGroupBreakdown: [],
     locationGroupBreakdown: [],
     previousMetrics: null,

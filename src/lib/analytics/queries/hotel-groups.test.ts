@@ -16,13 +16,24 @@ vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/analytics/queries/shared")>();
   return {
     ...actual,
-    buildExclusionCondition: vi.fn().mockResolvedValue(undefined),
     buildDateCondition: vi.fn().mockReturnValue(undefined),
     buildDimensionFilters: vi.fn().mockReturnValue([]),
     buildMaturityCondition: vi.fn().mockReturnValue(undefined),
     combineConditions: vi.fn().mockReturnValue(undefined),
   };
 });
+
+// Phase 9.1 CR-03 — hotel-groups.ts now imports buildActiveLocationCondition
+// directly from @/lib/analytics/active-locations (not via the legacy alias in
+// shared.ts). Mock here to short-circuit the active-locations DB lookup the
+// same way regions.test.ts does — keeps mockExecute call counts stable.
+vi.mock("@/lib/analytics/active-locations", () => ({
+  getActiveLocationIds: vi.fn().mockResolvedValue([]),
+  buildActiveLocationCondition: vi.fn().mockResolvedValue(undefined),
+  buildActiveLocationConditionForRawContext: vi
+    .fn()
+    .mockResolvedValue(undefined),
+}));
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
@@ -74,28 +85,37 @@ const userCtx: UserCtx = {
  * engine (CTE pre-aggregates per location, outer aggregates per hotel group).
  * From the TypeScript side we just consume whatever the outer SELECT
  * produced, so the unit test verifies the function reads the columns the
- * outer SELECT aliases (group_id, group_name, revenue, transactions,
- * hotel_count) and threads previous-period deltas correctly.
+ * outer SELECT aliases (group_id, group_name, revenue_native, revenue_gbp,
+ * currency_key, transactions, hotel_count) and threads previous-period
+ * deltas correctly.
+ *
+ * Phase 9.1 / FX-03 (D-11/D-12): outer SELECT now dual-emits revenue_native
+ * + revenue_gbp + currency_key. Public `revenue` field on HotelGroupData
+ * binds to the GBP arm so cross-group ranking is currency-agnostic.
  */
 const currentRows = [
   {
     group_id: "hg-1",
     group_name: "Luxury Collection",
-    revenue: "50000",
+    revenue_native: "50000",
+    revenue_gbp: "50000",
+    currency_key: "GBP",
     transactions: "200",
     hotel_count: "5",
   },
   {
     group_id: "hg-2",
     group_name: "Budget Chain",
-    revenue: "20000",
+    revenue_native: "20000",
+    revenue_gbp: "20000",
+    currency_key: "GBP",
     transactions: "500",
     hotel_count: "10",
   },
 ];
 
 const prevRows = [
-  { group_id: "hg-1", revenue: "40000", transactions: "180" },
+  { group_id: "hg-1", revenue_native: "40000", revenue_gbp: "40000", currency_key: "GBP", transactions: "180" },
   // hg-2 has no previous period data — tests the null-delta branch
 ];
 
@@ -224,10 +244,10 @@ describe("getHotelGroupDetail – multi-group fan-out guard (D5 Part E)", () => 
     // Four queries in getHotelGroupDetail: summary, hotel breakdown, daily
     // trends, prev-period summary. Mock all four with empty/zero results.
     mockExecute
-      .mockResolvedValueOnce([{ revenue: "0", transactions: "0", hotel_count: "0" }])
+      .mockResolvedValueOnce([{ revenue_native: "0", revenue_gbp: "0", currency_key: null, transactions: "0", hotel_count: "0" }])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ revenue: "0", transactions: "0" }]);
+      .mockResolvedValueOnce([{ revenue_native: "0", revenue_gbp: "0", currency_key: null, transactions: "0" }]);
 
     await getHotelGroupDetail(["hg-1", "hg-2"], filters, userCtx);
 
@@ -247,13 +267,15 @@ describe("getHotelGroupDetail – multi-group fan-out guard (D5 Part E)", () => 
     // membered to both selected groups appears once with its full revenue,
     // not twice with revenue split or duplicated.
     mockExecute
-      .mockResolvedValueOnce([{ revenue: "100", transactions: "1", hotel_count: "1" }])
+      .mockResolvedValueOnce([{ revenue_native: "100", revenue_gbp: "100", currency_key: "GBP", transactions: "1", hotel_count: "1" }])
       .mockResolvedValueOnce([
         {
           location_id: "loc-jv",
           outlet_code: "JV1",
           hotel_name: "JV Hotel",
-          revenue: "100",
+          revenue_native: "100",
+          revenue_gbp: "100",
+          currency_key: "GBP",
           transactions: "1",
           rooms: "50",
           kiosks: "2",
@@ -261,7 +283,7 @@ describe("getHotelGroupDetail – multi-group fan-out guard (D5 Part E)", () => 
         },
       ])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ revenue: "0", transactions: "0" }]);
+      .mockResolvedValueOnce([{ revenue_native: "0", revenue_gbp: "0", currency_key: null, transactions: "0" }]);
 
     const result = await getHotelGroupDetail(["hg-hilton", "hg-marriott"], filters, userCtx);
 

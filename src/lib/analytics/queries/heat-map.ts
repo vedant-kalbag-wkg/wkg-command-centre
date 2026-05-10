@@ -167,7 +167,9 @@ export async function getHeatMapData(
     live_date: string | null;
     hotel_group_name: string | null;
     kiosk_count: number;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     quantity: string;
   }>(sql`
@@ -182,7 +184,11 @@ export async function getHeatMapData(
       ${kioskLiveDateSubquery}::text AS live_date,
       ${canonicalHotelGroupNameFragment()} AS hotel_group_name,
       ${activeKioskCountFragment()} AS kiosk_count,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS quantity
     FROM ${salesRecords}
@@ -226,7 +232,10 @@ export async function getHeatMapData(
 
   // 2. Calculate derived metrics per hotel
   const rawHotels = rows.map((row) => {
-    const revenue = Number(row.revenue);
+    // D-12 — heat-map percentile rank is cross-cohort, must compare on GBP so
+    // a EUR outlet doesn't sink because of the raw-currency gap. Renderer
+    // dispatch (09.1-07) reads revenue_native + currency_key for cell display.
+    const revenue = Number(row.revenue_gbp);
     const transactions = Number(row.transactions);
     const numRooms = row.num_rooms ? Number(row.num_rooms) : null;
     const kiosks = kioskCountMap.get(row.location_id) ?? null;

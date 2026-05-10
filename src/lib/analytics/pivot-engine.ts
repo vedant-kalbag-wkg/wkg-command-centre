@@ -13,7 +13,11 @@
  *   - buildPivotData       — crosstab pivot builder (row × column matrix)
  */
 
-import { formatCurrency, formatNumber } from "@/lib/analytics/formatters";
+import {
+  formatCurrency,
+  formatNativeCurrency,
+  formatNumber,
+} from "@/lib/analytics/formatters";
 import type {
   PivotConfig,
   PivotValueConfig,
@@ -51,6 +55,18 @@ const IS_SALES_TXN_RAW_SQL =
  * in the FROM/SELECT with full table names in the WHERE triggers Postgres
  * error 42P01 ("invalid reference to FROM-clause entry"). Keeping both sides
  * un-aliased avoids that mismatch.
+ *
+ * Phase 9.1 / D-17 / Pitfall 4 — saved-pivot back-compat:
+ *   The field ids `"net_amount"` and `"booking_fee"` are PRESERVED in the
+ *   public allowlist so saved pivots in production (which serialise
+ *   {field: "net_amount", aggregation: "sum"} into JSON) keep resolving.
+ *   The underlying SQL fragment is unchanged — every aggregate over
+ *   `net_amount` continues to compute the native (raw-currency) sum. The
+ *   GBP arm is added via the parallel `CURRENCY_GBP_COLUMNS` map below;
+ *   `buildPivotSQL` auto-emits `<alias>_gbp` and `currency_key_<field>`
+ *   companions whenever a value config references one of these fields, so
+ *   the pivot row carries the substrate plan 09.1-07 needs to dispatch
+ *   per D-10. No saved-pivot config changes hands.
  */
 export const ALLOWED_COLUMNS = new Map<string, string>([
   ["product_name", "products.name"],
@@ -65,9 +81,60 @@ export const ALLOWED_COLUMNS = new Map<string, string>([
   ["location_group", "locations.location_group"],
   // `net_amount` is the universal value column; `booking_fee` isolates fee-row
   // revenue (9991 + 9992) using IS_FEE_RAW_SQL — see migration 0022.
+  // FX-03 / D-17: field id PRESERVED. SQL fragment unchanged. GBP companion
+  // is wired below — see CURRENCY_GBP_COLUMNS + buildPivotSQL.
   ["net_amount", "sales_records.net_amount::numeric"],
   ["booking_fee", `(CASE WHEN ${IS_FEE_RAW_SQL} THEN sales_records.net_amount::numeric ELSE 0 END)`],
 ]);
+
+/**
+ * FX-03 / D-11 sibling map — for each currency-typed metric field, the SQL
+ * expression that computes its GBP-normalised companion. The pivot SQL
+ * builder auto-emits an additional `<alias>_gbp` column whenever a value
+ * config references one of these fields, alongside a `currency_key_<field>`
+ * column resolved per D-10 (single-currency cohort → ISO code, multi → NULL).
+ *
+ * The field ID stays the same — saved pivots that reference
+ * `{field: "net_amount", ...}` get the dual-emit substrate transparently
+ * without any saved-pivot rewrite (Pitfall 4 back-compat).
+ *
+ * Renderer dispatch (D-10) lands in plan 09.1-07; this plan ships the SQL
+ * contract so the renderer has the columns to dispatch on.
+ */
+export const CURRENCY_GBP_COLUMNS = new Map<string, string>([
+  ["net_amount", "sales_records.net_amount_gbp::numeric"],
+  ["booking_fee", `(CASE WHEN ${IS_FEE_RAW_SQL} THEN sales_records.net_amount_gbp::numeric ELSE 0 END)`],
+]);
+
+/**
+ * FX-03 / D-11 helper — returns true iff the given metric field has a
+ * GBP-normalised sibling (i.e., is currency-typed). The pivot SQL builder
+ * uses this to decide whether to emit `<alias>_gbp` and `currency_key_<field>`
+ * columns alongside the primary value column.
+ */
+export function isCurrencyField(field: string): boolean {
+  return CURRENCY_GBP_COLUMNS.has(field);
+}
+
+/**
+ * FX-03 / D-11 — alias for the GBP sibling of a value config. Mirrors the
+ * `${agg}_${field}` shape used by buildPivotSQL so renderer code (plan 09.1-07)
+ * can derive the GBP cell key directly from the value config.
+ */
+export function gbpAlias(agg: PivotAggregation, field: string): string {
+  return `${agg}_${field}_gbp`;
+}
+
+/**
+ * FX-03 / D-10 — alias for the per-row currency_key column emitted alongside
+ * any currency-typed value config. One per currency-typed value config so two
+ * currency metrics in the same pivot don't collide (e.g., net_amount and
+ * booking_fee can each have their own resolver — though they share the
+ * underlying `sales_records.currency` column).
+ */
+export function currencyKeyAlias(field: string): string {
+  return `currency_key_${field}`;
+}
 
 /**
  * Derived group columns that require SQL expressions (not simple column refs).
@@ -306,6 +373,50 @@ export function buildPivotSQL(
         `COUNT(${expr}) AS "${avgCountAlias(v.field)}"`,
       );
     }
+
+    // FX-03 / D-11 — currency dual-emit. When the value config references a
+    // currency-typed field (net_amount or booking_fee), auto-emit a GBP
+    // sibling and a currency_key column. The renderer (plan 09.1-07) reads
+    // these companions to dispatch native vs GBP per D-10 cell-by-cell. The
+    // primary alias (`${agg}_${field}`) keeps its native semantics so saved
+    // pivots that reference {field: "net_amount", ...} continue to surface
+    // raw-currency sums by default — Pitfall 4 / D-17 back-compat.
+    //
+    // count aggregations skip the dual-emit: COUNT is currency-agnostic and
+    // a "count of fee rows in GBP" is meaningless. The currency_key column
+    // is also skipped for count because the dispatch is moot.
+    if (v.aggregation !== "count" && isCurrencyField(v.field)) {
+      const gbpExpr = CURRENCY_GBP_COLUMNS.get(v.field)!;
+      selectParts.push(
+        `${v.aggregation.toUpperCase()}(COALESCE(${gbpExpr}, 0)) AS "${gbpAlias(v.aggregation, v.field)}"`,
+      );
+      // currency_key resolver per D-10: single-currency cohort → ISO code,
+      // multi → NULL. The FILTER predicate MUST track exactly the population
+      // of rows the SUM "sees with non-zero contribution" (Phase 9.1 / WR-09):
+      //
+      //   - booking_fee: the SUM expression at line 87 wraps the value in a
+      //     CASE WHEN ${IS_FEE_RAW_SQL} THEN ... ELSE 0 END — non-fee rows are
+      //     in the rowset but contribute 0. currency_key MUST apply the same
+      //     filter so a non-fee EUR row in a GBP-fee cohort doesn't pollute
+      //     COUNT(DISTINCT currency) and force currency_key to NULL incorrectly.
+      //
+      //   - net_amount: the SUM is unfiltered (raw native, no CASE WHEN). Every
+      //     row in the rowset contributes its native amount. currency_key
+      //     MUST be unfiltered to match — so cross-currency cohorts correctly
+      //     resolve to NULL (multi).
+      //
+      // The asymmetry is intentional and load-bearing — see pivot-engine.test.ts
+      // "WR-09 currency_key symmetry" describe block. A future "tidy-up"
+      // refactor that makes the two paths uniform will silently break one
+      // of these contracts; the unit tests catch that drift.
+      const keyFilter =
+        v.field === "booking_fee" ? ` FILTER (WHERE ${IS_FEE_RAW_SQL})` : "";
+      selectParts.push(
+        `CASE WHEN COUNT(DISTINCT sales_records.currency)${keyFilter} = 1
+              THEN MIN(sales_records.currency)${keyFilter}
+              ELSE NULL END AS "${currencyKeyAlias(v.field)}"`,
+      );
+    }
   }
 
   // FROM with JOINs (always join locations + products).
@@ -344,20 +455,129 @@ export function buildPivotSQL(
 
 // ─── Formatting ─────────────────────────────────────────────────────────────
 
-/** Formats a numeric value into a display cell. */
-function formatCell(value: number, field: string, agg: PivotAggregation): PivotCell {
+/** Formats a numeric value into a display cell.
+ *
+ * FX-03 / D-10 / D-17 — auto-pick dispatch (plan 09.1-07):
+ *   - For currency-typed fields (net_amount, booking_fee), the renderer reads
+ *     the per-row `currency_key_<field>` companion column auto-emitted by
+ *     `buildPivotSQL`. When that key is set (single-currency cohort), the cell
+ *     formats with `formatNativeCurrency` against the raw native sum at the
+ *     primary alias (`<agg>_<field>`). When NULL (multi-currency cohort), the
+ *     cell falls back to `formatCurrency` (GBP-pinned) against the GBP arm
+ *     (`<agg>_<field>_gbp`) — i.e. callers pass the GBP-side value when the
+ *     cohort is multi-currency, and the native-side value when it's single.
+ *
+ * Saved-pivot back-compat (D-17 / Pitfall 4): the primary alias still emits
+ * the native sum, so consumers that have not yet migrated to read
+ * `<alias>_gbp` see the same numbers they always did. The dispatch only
+ * activates when the consumer threads the `currencyKey` through.
+ *
+ * `currencyKey === undefined` means "no currency context available" (e.g.
+ * tests pre-FX-03 contract, or consumers that haven't migrated): keep the
+ * pre-FX behaviour and format the primary value as GBP via formatCurrency.
+ */
+function formatCell(
+  value: number,
+  field: string,
+  agg: PivotAggregation,
+  currencyKey?: string | null,
+): PivotCell {
   const isCurrency = field === "net_amount" || field === "booking_fee";
 
   let formatted: string;
   if (agg === "count") {
     formatted = formatNumber(value, 0);
   } else if (isCurrency) {
-    formatted = formatCurrency(value);
+    // D-10 dispatch: single-currency cohort → native; otherwise → GBP.
+    // The caller is responsible for passing the value matching the chosen
+    // currency arm (native sum when currencyKey is set; GBP sum when null).
+    if (currencyKey) {
+      formatted = formatNativeCurrency(value, currencyKey);
+    } else {
+      formatted = formatCurrency(value);
+    }
   } else {
     formatted = formatNumber(value, agg === "avg" ? 2 : 0);
   }
 
   return { value, formatted };
+}
+
+/**
+ * FX-03 / D-10 — per-cell value picker. For currency-typed value configs,
+ * reads the per-row `currency_key_<field>` companion column auto-emitted by
+ * buildPivotSQL: when set (single-currency cohort), returns the native sum
+ * at the primary alias; when null (multi-currency cohort), returns the GBP
+ * sum at the `<alias>_gbp` companion. Non-currency / count fields fall
+ * through with `currencyKey: undefined` (no dispatch — formatCell renders
+ * as before).
+ *
+ * Back-compat (D-17 / Pitfall 4): when neither `currency_key_<field>` nor
+ * `<alias>_gbp` is present on the raw row (e.g. test fixtures pre-FX-03 or
+ * legacy callers), fall through to the primary alias with `undefined`
+ * currency key — formatCell renders as GBP via formatCurrency exactly like
+ * pre-FX behaviour.
+ */
+function pickCellValue(
+  raw: Record<string, unknown>,
+  v: PivotValueConfig,
+): { val: number; currencyKey?: string | null } {
+  const alias = `${v.aggregation}_${v.field}`;
+
+  // count + non-currency fields: no dispatch.
+  if (v.aggregation === "count" || !isCurrencyField(v.field)) {
+    return { val: Number(raw[alias] ?? 0) };
+  }
+
+  const keyAlias = currencyKeyAlias(v.field);
+  const gbpKey = gbpAlias(v.aggregation, v.field);
+  const hasDualEmit = keyAlias in raw || gbpKey in raw;
+
+  // Back-compat: rows without the dual-emit substrate render as before
+  // (primary alias, GBP-pinned via formatCurrency).
+  if (!hasDualEmit) {
+    return { val: Number(raw[alias] ?? 0) };
+  }
+
+  const rawKey = raw[keyAlias];
+  const currencyKey =
+    typeof rawKey === "string" && rawKey.length > 0 ? rawKey : null;
+
+  if (currencyKey) {
+    // Single-currency cohort: render the native sum at the primary alias.
+    return { val: Number(raw[alias] ?? 0), currencyKey };
+  }
+  // Multi-currency cohort: render the GBP sum at the companion alias.
+  return {
+    val: Number(raw[gbpKey] ?? 0),
+    currencyKey: null,
+  };
+}
+
+/**
+ * FX-03 / D-10 — grand-total currency-key resolver. Returns the shared ISO
+ * code when every row in the bucket has the same non-null currency_key; null
+ * when the bucket spans multiple currencies (or any row is null). Used by
+ * formatPivotResults to dispatch the grand-total row between native and GBP.
+ *
+ * The single-bucket convention mirrors the SQL-side resolver (`CASE WHEN
+ * COUNT(DISTINCT currency) = 1 THEN MIN(currency) ELSE NULL END`) so the
+ * grand total visually matches the per-cell behaviour.
+ */
+function uniformCurrencyKey(
+  rows: Record<string, unknown>[],
+  v: PivotValueConfig,
+): string | null {
+  if (v.aggregation === "count" || !isCurrencyField(v.field)) return null;
+  const keyAlias = currencyKeyAlias(v.field);
+  let shared: string | null = null;
+  for (const r of rows) {
+    const k = r[keyAlias];
+    if (typeof k !== "string" || k.length === 0) return null;
+    if (shared === null) shared = k;
+    else if (shared !== k) return null;
+  }
+  return shared;
 }
 
 /**
@@ -386,8 +606,12 @@ export function buildPivotData(
       const cells: Record<string, PivotCell> = {};
       for (const v of values) {
         const alias = `${v.aggregation}_${v.field}`;
-        const val = Number(raw[alias] ?? 0);
-        cells[alias] = formatCell(val, v.field, v.aggregation);
+        // D-10 dispatch: single-currency cohort → render native sum at the
+        // primary alias; multi-currency cohort → render GBP sum at the
+        // <alias>_gbp companion. Non-currency fields (count, etc.) fall
+        // through with currencyKey=undefined (no dispatch).
+        const { val, currencyKey } = pickCellValue(raw, v);
+        cells[alias] = formatCell(val, v.field, v.aggregation, currencyKey);
       }
 
       return { dimensions, cells };
@@ -416,10 +640,11 @@ export function buildPivotData(
 
     for (const v of values) {
       const alias = `${v.aggregation}_${v.field}`;
-      const val = Number(raw[alias] ?? 0);
+      // D-10 dispatch (same rule as the no-column-pivot branch above).
+      const { val, currencyKey } = pickCellValue(raw, v);
       // Cell key includes column dimension for crosstab layout
       const cellKey = pivotCellKey(colKey, alias, values.length);
-      pivotRow.cells[cellKey] = formatCell(val, v.field, v.aggregation);
+      pivotRow.cells[cellKey] = formatCell(val, v.field, v.aggregation, currencyKey);
     }
   }
 
@@ -493,9 +718,17 @@ export function formatPivotResults(
     // No column pivoting — one grand total per value config.
     for (const v of config.values) {
       const alias = `${v.aggregation}_${v.field}`;
-      const nums = trimmed.map((r) => Number(r[alias] ?? 0));
+      // D-10 grand-total dispatch: when every row in the pivot shares the
+      // same non-null currency_key, render the grand total native; otherwise
+      // fall back to the GBP arm. Back-compat: rows without the dual-emit
+      // substrate (no `<alias>_gbp` column) keep the pre-FX behaviour.
+      const groupKey = uniformCurrencyKey(trimmed, v);
+      const gbpKey = gbpAlias(v.aggregation, v.field);
+      const hasGbpArm = trimmed.some((r) => gbpKey in r);
+      const sumAlias = groupKey || !hasGbpArm ? alias : gbpKey;
+      const nums = trimmed.map((r) => Number(r[sumAlias] ?? 0));
       const total = aggregateGrandTotal(v, trimmed, nums);
-      grandTotals[alias] = formatCell(total, v.field, v.aggregation);
+      grandTotals[alias] = formatCell(total, v.field, v.aggregation, groupKey);
     }
   } else {
     // Column pivoting — bucket raw rows by their column-key, then compute
@@ -514,10 +747,17 @@ export function formatPivotResults(
     for (const [colKey, bucketRows] of buckets) {
       for (const v of config.values) {
         const alias = `${v.aggregation}_${v.field}`;
-        const nums = bucketRows.map((r) => Number(r[alias] ?? 0));
+        // Per-bucket D-10 dispatch — a bucket spanning a single currency
+        // gets a native grand total even if other buckets are mixed.
+        // Back-compat: bucket rows without the GBP arm keep pre-FX behaviour.
+        const groupKey = uniformCurrencyKey(bucketRows, v);
+        const gbpKey = gbpAlias(v.aggregation, v.field);
+        const hasGbpArm = bucketRows.some((r) => gbpKey in r);
+        const sumAlias = groupKey || !hasGbpArm ? alias : gbpKey;
+        const nums = bucketRows.map((r) => Number(r[sumAlias] ?? 0));
         const total = aggregateGrandTotal(v, bucketRows, nums);
         const cellKey = pivotCellKey(colKey, alias, config.values.length);
-        grandTotals[cellKey] = formatCell(total, v.field, v.aggregation);
+        grandTotals[cellKey] = formatCell(total, v.field, v.aggregation, groupKey);
       }
     }
   }
@@ -576,6 +816,15 @@ function aggregateGrandTotal(
 
 // ─── Label Helpers ──────────────────────────────────────────────────────────
 
+// FX-03 review (RESEARCH inventory line 546 — pivot-engine line 585):
+//   This is the display-label map. Variant (b)/(c) per plan: it references
+//   the field id `net_amount` to resolve "Revenue" — preserving the field id
+//   in ALLOWED_COLUMNS (D-17 / Pitfall 4) keeps this label resolution
+//   working unchanged. No dual-emit substitution is needed AT THIS LINE
+//   because the label is identity-on-id, not a SUM aggregate. The dual-emit
+//   substrate sits above (CURRENCY_GBP_COLUMNS + buildPivotSQL companions);
+//   the renderer-side native-vs-GBP label tweak (e.g., "Revenue (native)" /
+//   "Revenue (GBP)") is plan 09.1-07's call once the dispatch is live.
 const DIMENSION_LABELS: Record<string, string> = {
   product_name: "Product",
   outlet_code: "Outlet Code",

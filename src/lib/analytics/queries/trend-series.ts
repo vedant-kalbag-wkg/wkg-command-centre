@@ -86,8 +86,21 @@ function buildSeriesDimensionFilters(filters: SeriesFilters): SQL[] {
 //
 // Avg-basket numerator and denominator are split out (Task 2.7) so the chart
 // can compute a weighted weekly/monthly average — see `metricSelectColumns`.
+//
+// Phase 9.1 / D-11: every `SUM(net_amount)` site dual-emits. Trend series is a
+// single-column-per-row contract (the chart reads `value`), so the public
+// `metricExpression` returns the GBP arm — D-12 says cross-time aggregation
+// uses GBP so a multi-currency portfolio's trend doesn't oscillate with FX.
+// The native-arm sibling `metricExpressionNative` is exposed alongside for any
+// future native-display surface (renderer dispatch in 09.1-07).
 
 function avgBasketNumeratorExpr(): SQL {
+  // D-12 — avg-basket numerator GBP for cross-region trend stability.
+  return sql`SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
+}
+
+function avgBasketNumeratorNativeExpr(): SQL {
+  // D-11 — native sibling for future single-currency trend surfaces.
   return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
 }
 
@@ -99,7 +112,8 @@ function metricExpression(metric: TrendMetric): SQL {
   switch (metric) {
     case "revenue":
       // Customer-paid sales (D1 sales-mode "Total Sales") — non-fee only.
-      return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
+      // D-12: trend uses GBP-bound revenue.
+      return sql`SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
     case "transactions":
       // D1 mode-invariant transactions: non-fee, non-reversal.
       return sql`COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()})::numeric`;
@@ -108,8 +122,34 @@ function metricExpression(metric: TrendMetric): SQL {
       return sql`${avgBasketNumeratorExpr()} / NULLIF(${avgBasketDenominatorExpr()}, 0)`;
     case "booking_fee":
       // Fee revenue (9991 + 9992). is_weknow_fee=true covers both post-D10.
+      // D-12: trend bound to GBP.
+      return sql`SUM(${salesRecords.netAmountGbp}::numeric) FILTER (WHERE ${buildIsFeeCondition()})`;
+  }
+}
+
+function metricExpressionNative(metric: TrendMetric): SQL {
+  // D-11 sibling — native arm of the same metric. Returned alongside the
+  // GBP arm by the trend-series query so plan 09.1-07's renderer can pick
+  // native for single-currency series.
+  switch (metric) {
+    case "revenue":
+      return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildNonFeeCondition()})`;
+    case "transactions":
+      return sql`COUNT(*) FILTER (WHERE ${buildSalesTxnCondition()})::numeric`;
+    case "avg_basket_value":
+      return sql`${avgBasketNumeratorNativeExpr()} / NULLIF(${avgBasketDenominatorExpr()}, 0)`;
+    case "booking_fee":
       return sql`SUM(${salesRecords.netAmount}::numeric) FILTER (WHERE ${buildIsFeeCondition()})`;
   }
+}
+
+function currencyKeyExpr(): SQL {
+  // D-11 — single-currency-cohort key per row group. Trend series buckets by
+  // transaction_date, so a single-day single-region series will resolve to
+  // that region's currency; mixed-region or daily-mix days resolve to NULL.
+  return sql`CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) = 1
+                  THEN MIN(${salesRecords.currency})
+                  ELSE NULL END`;
 }
 
 // ─── Main Query ──────────────────────────────────────────────────────────────
@@ -156,12 +196,19 @@ export async function getTrendSeriesData(
     const rows = await executeRows<{
       date: string;
       value: string;
+      value_native: string;
+      currency_key: string | null;
       numerator: string;
       denominator: string;
     }>(sql`
       SELECT
         ${salesRecords.transactionDate}::text AS date,
-        COALESCE(${avgBasketNumeratorExpr()} / NULLIF(${avgBasketDenominatorExpr()}, 0), 0) AS value,
+        -- D-12: public value reads GBP arm; native + currency_key materialised
+        -- for renderer dispatch (09.1-07). The numerator/denominator pair
+        -- continues to feed weekly/monthly weighted re-aggregation.
+        COALESCE(${avgBasketNumeratorExpr()}       / NULLIF(${avgBasketDenominatorExpr()}, 0), 0) AS value,
+        COALESCE(${avgBasketNumeratorNativeExpr()} / NULLIF(${avgBasketDenominatorExpr()}, 0), 0) AS value_native,
+        ${currencyKeyExpr()} AS currency_key,
         COALESCE(${avgBasketNumeratorExpr()}, 0) AS numerator,
         COALESCE(${avgBasketDenominatorExpr()}, 0) AS denominator
       FROM ${salesRecords}
@@ -172,6 +219,8 @@ export async function getTrendSeriesData(
 
     return rows.map((row) => ({
       date: row.date,
+      // D-12 — public `value` is GBP-bound; renderer in 09.1-07 reads
+      // value_native + currency_key to surface native for single-currency days.
       value: Number(row.value),
       numerator: Number(row.numerator),
       denominator: Number(row.denominator),
@@ -181,10 +230,15 @@ export async function getTrendSeriesData(
   const rows = await executeRows<{
     date: string;
     value: string;
+    value_native: string;
+    currency_key: string | null;
   }>(sql`
     SELECT
       ${salesRecords.transactionDate}::text AS date,
-      COALESCE(${metricExpression(metric)}, 0) AS value
+      -- D-11 dual-emit: GBP-bound public value + native sibling + currency_key.
+      COALESCE(${metricExpression(metric)},       0) AS value,
+      COALESCE(${metricExpressionNative(metric)}, 0) AS value_native,
+      ${currencyKeyExpr()} AS currency_key
     FROM ${salesRecords}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${salesRecords.transactionDate}
@@ -193,6 +247,7 @@ export async function getTrendSeriesData(
 
   return rows.map((row) => ({
     date: row.date,
+    // D-12 — trend chart line is GBP for cross-currency stability.
     value: Number(row.value),
   }));
 }

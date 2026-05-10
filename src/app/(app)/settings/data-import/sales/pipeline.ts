@@ -47,6 +47,8 @@ import {
   type ReversalCandidate,
   type ReversalMatch,
 } from "@/lib/sales/reversal-matcher";
+import { getRateForDate } from "@/lib/fx/rate-lookup";
+import { BOE_SUPPORTED_CURRENCIES } from "@/lib/fx/currencies";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = NodePgDatabase | any;
@@ -364,6 +366,52 @@ export async function _commitImportForActor(
       const CHUNK = 1000;
       for (let i = 0; i < orderedPrepared.length; i += CHUNK) {
         const batch = orderedPrepared.slice(i, i + CHUNK);
+
+        // ── FX-02 (D-03/D-04/D-05/D-07): per-chunk rate gather + stamp ────
+        // Hard-fail on unknown currencies before any DB roundtrip so the
+        // operator gets a precise message without consuming a rate-lookup
+        // slot. The carry-forward lookup batches one query per distinct
+        // (currency, transaction_date) pair — ~1k rows typically resolve to
+        // ≤10 lookups (one or two currencies × a few dates).
+        for (const p of batch) {
+          const ccy = p.parsed.currency;
+          if (!BOE_SUPPORTED_CURRENCIES.includes(ccy)) {
+            throw new Error(
+              `Unknown currency '${ccy}' on row ${p.id} — extend BOE_SERIES_TO_CCY in src/lib/fx/currencies.ts and re-run after a fresh fetch`,
+            );
+          }
+        }
+        const distinctPairs = new Set<string>();
+        for (const p of batch) {
+          distinctPairs.add(`${p.parsed.currency}|${p.parsed.transactionDate}`);
+        }
+        const ratePairs = new Map<string, { rate: number; staleDays: number }>();
+        for (const key of distinctPairs) {
+          const sep = key.indexOf("|");
+          const ccy = key.slice(0, sep);
+          const date = key.slice(sep + 1);
+          // Pass the active transaction handle (`tx`) so the lookup runs in
+          // the same Testcontainers tx as the surrounding ETL writes — keeps
+          // tests that rely on transaction isolation honest, and matches the
+          // rest of this transaction body. exchange_rates rows are pre-
+          // committed by the BoE cron well before this script runs, so the
+          // read is functionally equivalent to going through the outer pool;
+          // passing tx is the consistency choice. GBP shortcuts without a DB
+          // roundtrip per D-04. (PR #40 review observation B.)
+          const r = await getRateForDate(ccy, date, tx);
+          if (!r) {
+            throw new Error(
+              `No FX rate exists for ${ccy} on or before ${date}`,
+            );
+          }
+          if (r.staleDays > 7) {
+            throw new Error(
+              `Stale FX rate for ${ccy} on ${date}: most recent is ${r.staleDays}d old (limit 7 per CONTEXT D-07)`,
+            );
+          }
+          ratePairs.set(key, { rate: r.rate, staleDays: r.staleDays });
+        }
+
         const inserts = batch.map((p) => {
           const match = matchByRefundId.get(p.id);
           // For matched refunds: rewrite location_id to the original's; keep
@@ -372,6 +420,20 @@ export async function _commitImportForActor(
           // NULL (only meaningful for matched refunds).
           const locationId = match ? match.originalLocationId : p.resolution.locationId;
           const processedAtLocationId = match ? p.resolution.locationId : null;
+
+          // FX-02 D-04: GBP identity (no rate lookup, exact precision).
+          // FX-02 D-05: non-GBP → net_amount / rate_to_gbp (BoE quotes are
+          //   foreign-per-GBP, so divide). Round to 2dp via toFixed to match
+          //   the column precision (numeric(12,2)).
+          const netAmountStr = String(p.parsed.netAmount);
+          const netAmountGbp =
+            p.parsed.currency === "GBP"
+              ? netAmountStr
+              : (
+                  Number(netAmountStr) /
+                  ratePairs.get(`${p.parsed.currency}|${p.parsed.transactionDate}`)!.rate
+                ).toFixed(2);
+
           return {
             id: p.id,
             importId,
@@ -384,6 +446,7 @@ export async function _commitImportForActor(
             productId: p.resolution.productId,
             providerId: p.resolution.providerId,
             netAmount: p.parsed.netAmount,
+            netAmountGbp,
             vatAmount: p.parsed.vatAmount,
             vatRate: p.parsed.vatRate,
             currency: p.parsed.currency,

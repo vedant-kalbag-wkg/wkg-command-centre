@@ -45,15 +45,15 @@ vi.mock("@/db", () => ({
   db: drizzle("postgres://noop"),
 }));
 
-vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/analytics/queries/shared")>();
-  return {
-    ...actual,
-    // Short-circuit the active-outlet exclusion DB lookup; not under test here.
-    buildExclusionCondition: vi.fn().mockResolvedValue(undefined),
-  };
-});
+// PR #40 review (Nit #7): where-builder.ts now imports
+// buildActiveLocationCondition directly from @/lib/analytics/active-locations
+// (the legacy buildExclusionCondition alias was removed). Mock the
+// active-locations module to short-circuit the DB lookup; not under test here.
+vi.mock("@/lib/analytics/active-locations", () => ({
+  getActiveLocationIds: vi.fn().mockResolvedValue([]),
+  buildActiveLocationCondition: vi.fn().mockResolvedValue(undefined),
+  buildActiveLocationConditionForRawContext: vi.fn().mockResolvedValue(undefined),
+}));
 
 const filters = {
   dateFrom: "2025-01-01",

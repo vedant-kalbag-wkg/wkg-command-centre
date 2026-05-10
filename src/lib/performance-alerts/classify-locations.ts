@@ -91,9 +91,13 @@ export type ClassifiedLocationRow = {
  *    Emerging tier — the alert is meant to flag underperformance, not absence
  *    of data)
  *
- * Cross-currency forex normalisation is NOT applied — the percentile ranks
- * compare raw revenue across currencies. Acceptable for the current GBP-only
- * portfolio; tracked in #39 for multi-currency rollouts.
+ * Cross-currency forex normalisation IS applied as of Phase 9.1 / D-14: the
+ * per-window revenue SUM at line 172 reads `net_amount_gbp` so percentile
+ * ranks compare like-for-like across currencies. The modal-currency picker
+ * (lines 173-182) is unchanged and continues to flow into the per-kiosk POC
+ * email via formatRevenueForKiosk per D-13 — operators still see native
+ * symbols in their personalised emails while the cross-portfolio ranking
+ * itself is GBP-normalised.
  *
  * Single-eligible-hotel cohort: `percentRanks` returns 50 for every metric
  * (matching the heat-map's lone-hotel convention), giving a composite of 50.
@@ -166,10 +170,15 @@ export async function classifyEligibleLocations(): Promise<{
       WHERE ka2.location_id = l.id
     ) ml ON TRUE
 
-    -- In-window aggregates: revenue, txn count, modal currency.
+    -- In-window aggregates: revenue (GBP-normalised per D-14), txn count,
+    -- modal currency. Phase 9.1 / D-14: cross-portfolio ranking ALWAYS uses
+    -- GBP — comparing raw native sums across currencies (a high-yen-volume
+    -- kiosk vs a mid-GBP-volume kiosk) buries underperformers under FX
+    -- magnitude. The modal-currency picker stays as-is so the per-kiosk POC
+    -- email continues to render native via formatRevenueForKiosk per D-13.
     LEFT JOIN LATERAL (
       SELECT
-        SUM(s.net_amount::numeric) AS total_revenue,
+        SUM(s.net_amount_gbp::numeric) AS total_revenue,    -- D-14: GBP for ranking
         COUNT(*) AS total_transactions,
         (
           SELECT s2.currency

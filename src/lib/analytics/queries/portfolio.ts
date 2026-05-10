@@ -109,14 +109,20 @@ export async function getPortfolioSummary(
   const salesTxn = buildSalesTxnCondition();
 
   const rows = await executeRows<{
-    total_revenue: string;
+    total_revenue_native: string;
+    total_revenue_gbp: string;
+    currency_key: string | null;
     total_transactions: string;
     total_quantity: string;
     unique_products: string;
     unique_outlets: string;
   }>(sql`
     SELECT
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS total_revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS total_revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS total_revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS total_transactions,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS total_quantity,
       COUNT(DISTINCT ${salesRecords.productId}) FILTER (WHERE ${salesTxn})::text AS unique_products,
@@ -126,7 +132,13 @@ export async function getPortfolioSummary(
   `);
 
   const row = rows[0]!;
-  const totalRevenue = Number(row.total_revenue);
+  // D-12 — portfolio-level aggregates are always GBP. The SQL fetches
+  // currency_key + total_revenue_native for shape-symmetry with dimension-page
+  // queries (HotelGroupDetail, RegionDetail, LocationGroupDetail) where the
+  // D-10 native/GBP renderer dispatch fires, but the PortfolioSummary type
+  // intentionally drops them: a portfolio rollup is by definition cross-cohort,
+  // so it ranks/displays in the GBP base only.
+  const totalRevenue = Number(row.total_revenue_gbp);
   const totalTransactions = Number(row.total_transactions);
 
   return {
@@ -170,29 +182,43 @@ export async function getCategoryPerformance(
 
   const rows = await executeRows<{
     category_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     quantity: string;
-    avg_value: string;
+    avg_value_native: string;
+    avg_value_gbp: string;
   }>(sql`
     SELECT
       COALESCE(${products.categoryName}, '— Uncategorised') AS category_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}),     0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) = 1
+           THEN MIN(${salesRecords.currency})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS quantity,
-      COALESCE(AVG(${salesRecords.netAmount}), 0) AS avg_value
+      COALESCE(AVG(${salesRecords.netAmount}),     0) AS avg_value_native,
+      COALESCE(AVG(${salesRecords.netAmountGbp}), 0) AS avg_value_gbp
     FROM ${baseFromWithProducts()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY COALESCE(${products.categoryName}, '— Uncategorised')
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: ranking always GBP
   `);
 
   return rows.map((row) => ({
     categoryName: row.category_name,
-    revenue: Number(row.revenue),
+    // D-12 — portfolio-level aggregate; binds GBP only. revenue_native and
+    // currency_key are fetched for SQL shape-symmetry with dimension queries
+    // but intentionally dropped here — cross-category ranking compares
+    // like-for-like in the GBP base.
+    revenue: Number(row.revenue_gbp),
     transactions: Number(row.transactions),
     quantity: Number(row.quantity),
-    avgValue: Number(row.avg_value),
+    // D-11 — AVG of revenue is treated like SUM: dual-emit native + GBP siblings.
+    // D-12 binding: portfolio-level avgValue reads GBP for cross-category parity.
+    avgValue: Number(row.avg_value_gbp),
   }));
 }
 
@@ -232,7 +258,9 @@ export async function getTopProducts(
     // subquery uses its own explicit alias for the parent-side self-join.
     const rows = await executeRows<{
       product_name: string;
-      revenue: string;
+      revenue_native: string;
+      revenue_gbp: string;
+      currency_key: string | null;
       transactions: string;
       quantity: string;
     }>(sql`
@@ -240,7 +268,11 @@ export async function getTopProducts(
       -- here counts fee events attributed to the parent product.
       SELECT
         p.name AS product_name,
-        COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
+        COALESCE(SUM(${salesRecords.netAmount}),     0) AS revenue_native,
+        COALESCE(SUM(${salesRecords.netAmountGbp}), 0) AS revenue_gbp,
+        CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) = 1
+             THEN MIN(${salesRecords.currency})
+             ELSE NULL END AS currency_key,
         COUNT(*)::text AS transactions,
         COUNT(*)::text AS quantity
       FROM ${salesRecords}
@@ -255,7 +287,7 @@ export async function getTopProducts(
       INNER JOIN ${products} AS p ON p.id = parent_one.product_id
       ${whereClause ? sql`WHERE ${whereClause}` : sql``}
       GROUP BY p.name
-      ORDER BY revenue DESC
+      ORDER BY revenue_gbp DESC      -- D-12: ranking always GBP
       LIMIT ${limit}
     `);
 
@@ -263,7 +295,10 @@ export async function getTopProducts(
       rank: idx + 1,
       productName: row.product_name,
       categoryName: row.product_name,
-      revenue: Number(row.revenue),
+      // D-12 — portfolio-level Top Products ranking is always GBP. revenue_native
+      // and currency_key are fetched for shape-symmetry with dimension-page
+      // dual-emit queries but intentionally dropped at this level.
+      revenue: Number(row.revenue_gbp),
       transactions: Number(row.transactions),
       quantity: Number(row.quantity),
     }));
@@ -276,7 +311,9 @@ export async function getTopProducts(
 
   const rows = await executeRows<{
     product_name: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     quantity: string;
   }>(sql`
@@ -284,13 +321,17 @@ export async function getTopProducts(
     -- top products); raw COUNT(*) here counts product transactions.
     SELECT
       ${products.name} AS product_name,
-      COALESCE(SUM(${salesRecords.netAmount}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount}),     0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) = 1
+           THEN MIN(${salesRecords.currency})
+           ELSE NULL END AS currency_key,
       COUNT(*)::text AS transactions,
       COUNT(*)::text AS quantity
     FROM ${baseFromWithProducts()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${products.name}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: ranking always GBP
     LIMIT ${limit}
   `);
 
@@ -298,7 +339,11 @@ export async function getTopProducts(
     rank: idx + 1,
     productName: row.product_name,
     categoryName: row.product_name, // products table has no category — product name IS the category
-    revenue: Number(row.revenue),
+    // D-12 — portfolio-level cross-product ranking is always GBP.
+    // revenue_native + currency_key fetched for shape-symmetry with dimension
+    // queries but intentionally dropped here (no per-product native render at
+    // the portfolio rollup).
+    revenue: Number(row.revenue_gbp),
     transactions: Number(row.transactions),
     quantity: Number(row.quantity),
   }));
@@ -316,12 +361,18 @@ export async function getDailyTrends(
 
   const rows = await executeRows<{
     date: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
   }>(sql`
     SELECT
       ${salesRecords.transactionDate}::text AS date,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${baseFrom()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -331,7 +382,8 @@ export async function getDailyTrends(
 
   return rows.map((row) => ({
     date: row.date,
-    revenue: Number(row.revenue),
+    // D-12 — GBP-bound; cross-day trend is intrinsically multi-currency.
+    revenue: Number(row.revenue_gbp),
     transactions: Number(row.transactions),
   }));
 }
@@ -383,12 +435,18 @@ export async function getHourlyDistribution(
 
   const rows = await executeRows<{
     hour: string;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
   }>(sql`
     SELECT
       ${localHourExpr}::int::text AS hour,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions
     FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
@@ -398,7 +456,8 @@ export async function getHourlyDistribution(
 
   return rows.map((row) => ({
     hour: Number(row.hour),
-    revenue: Number(row.revenue),
+    // D-12 — hourly distribution is portfolio-wide; bind GBP.
+    revenue: Number(row.revenue_gbp),
     transactions: Number(row.transactions),
   }));
 }
@@ -441,7 +500,9 @@ export async function getOutletTiers(
     hotel_group_name: string | null;
     kiosk_count: number;
     num_rooms: number | null;
-    revenue: string;
+    revenue_native: string;
+    revenue_gbp: string;
+    currency_key: string | null;
     transactions: string;
     total_count: number;
   }>(sql`
@@ -456,13 +517,17 @@ export async function getOutletTiers(
       ${canonicalHotelGroupNameFragment()} AS hotel_group_name,
       ${activeKioskCountFragment()} AS kiosk_count,
       ${locations.numRooms} AS num_rooms,
-      COALESCE(SUM(${salesRecords.netAmount}) FILTER (WHERE ${amountMode}), 0) AS revenue,
+      COALESCE(SUM(${salesRecords.netAmount})     FILTER (WHERE ${amountMode}), 0) AS revenue_native,
+      COALESCE(SUM(${salesRecords.netAmountGbp}) FILTER (WHERE ${amountMode}), 0) AS revenue_gbp,
+      CASE WHEN COUNT(DISTINCT ${salesRecords.currency}) FILTER (WHERE ${amountMode}) = 1
+           THEN MIN(${salesRecords.currency}) FILTER (WHERE ${amountMode})
+           ELSE NULL END AS currency_key,
       COUNT(*) FILTER (WHERE ${salesTxn})::text AS transactions,
       COUNT(*) OVER ()::int AS total_count
     FROM ${baseFromWithLocations()}
     ${whereClause ? sql`WHERE ${whereClause}` : sql``}
     GROUP BY ${locations.id}, ${locations.customerCode}, ${locations.name}, ${locations.numRooms}
-    ORDER BY revenue DESC
+    ORDER BY revenue_gbp DESC      -- D-12: outlet tier ranking always GBP
     LIMIT ${OUTLET_TIERS_LIMIT}
   `);
 
@@ -482,7 +547,10 @@ export async function getOutletTiers(
       hotelGroupName: row.hotel_group_name,
       kioskCount,
       numRooms,
-      revenue: Number(row.revenue),
+      // D-12 — outlet-tier percentile uses GBP-bound revenue so cross-currency
+      // outlets rank against the same scale (a EUR Premium outlet doesn't
+      // appear under a GBP Standard outlet just because €1 < £1).
+      revenue: Number(row.revenue_gbp),
       transactions: Number(row.transactions),
     };
   });

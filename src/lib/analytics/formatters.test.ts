@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatCurrency,
+  formatNativeCurrency,
   formatHotelDisplayName,
   formatNumber,
   formatCompactNumber,
@@ -22,6 +23,28 @@ describe("formatCurrency", () => {
   });
   it("handles negative", () => {
     expect(formatCurrency(-500)).toBe("-£500.00");
+  });
+});
+
+// Phase 9.1 / D-10 / FX-03 — sister to formatCurrency for native-currency cells
+// in single-currency cohorts. Symmetric to performance-alerts/format-currency.ts
+// but lives next to its consumers in /lib/analytics so the dispatch in
+// pickRevenueDisplay can import everything from a single module set.
+describe("formatNativeCurrency", () => {
+  it("formats EUR with the euro symbol", () => {
+    // en-GB locale renders EUR as €1,234.56 (symbol-prefixed).
+    expect(formatNativeCurrency(1234.56, "EUR")).toBe("€1,234.56");
+  });
+  it("formats USD with the dollar symbol", () => {
+    expect(formatNativeCurrency(99.5, "USD")).toBe("US$99.50");
+  });
+  it("formats GBP identically to formatCurrency for the GBP case", () => {
+    expect(formatNativeCurrency(12345.67, "GBP")).toBe("£12,345.67");
+  });
+  it("falls back to literal `<CCY> <value>` on an invalid ISO 4217 code", () => {
+    // Invalid currency code — Intl.NumberFormat throws RangeError; fallback
+    // shape mirrors performance-alerts/format-currency.ts.
+    expect(formatNativeCurrency(50, "ZZZZ")).toBe("ZZZZ 50.00");
   });
 });
 

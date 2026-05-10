@@ -1,6 +1,7 @@
 import type { BlobServiceClient } from "@azure/storage-blob";
 import { and, eq, sql } from "drizzle-orm";
 import {
+  importStagings,
   productCodeFallbacks,
   regions,
   salesBlobIngestions,
@@ -13,6 +14,9 @@ import {
   type ImportActor,
 } from "@/app/(app)/settings/data-import/sales/pipeline";
 import { ETL_AZURE_LOCK_KEY, withAdvisoryLock } from "./advisory-lock";
+import { getRateForDate } from "@/lib/fx/rate-lookup";
+import { getFxAlertRecipient } from "@/lib/fx/alert-recipient";
+import { inngest } from "@/inngest/client";
 
 /**
  * Azure ETL orchestrator.
@@ -71,6 +75,11 @@ export async function runAzureEtl(
 ): Promise<EtlRunResult> {
   const containerName =
     options.containerName ?? process.env.AZURE_BLOB_CONTAINER ?? "clientdata";
+  // Phase 9.1 Plan 11 (NEW CR-01): resolve FX alert recipient ONCE at run-start,
+  // BEFORE the advisory lock and any try/catch blocks. If FX_ALERT_TO is unset,
+  // getFxAlertRecipient() throws here — making the misconfiguration explicit rather
+  // than masking it inside a per-blob catch block and losing the original error.
+  const alertRecipient = getFxAlertRecipient();
 
   const lockResult = await withAdvisoryLock(db, ETL_AZURE_LOCK_KEY, async () => {
     const processed: Array<{ regionCode: string; blobPath: string; rows: number }> = [];
@@ -141,6 +150,66 @@ export async function runAzureEtl(
               `Validation failed: ${stage.invalidCount}/${stage.totalRows} rows invalid`,
             );
           }
+
+          // ── FX-02 (D-07/D-08): per-blob defensive stale-rate pre-check ──
+          // pipeline.ts (Task 1 of 09.1-05) already enforces D-07 at per-row
+          // stamp time. This pre-check exists so the operator alert
+          // (fx_rate_stale) names the FIRST stale (currency, date) the blob
+          // carries, rather than whichever row pipeline.ts happens to hit
+          // first inside its chunked transaction. On hit: emit the alert
+          // event then throw — the existing failure handler below records
+          // the blob as failed with the stale-rate message.
+          //
+          // Distinct (currency, transaction_date) is read from the JSONB
+          // `parsed_row` of staging — staged rows have not yet landed in
+          // sales_records (commit hasn't run).
+          const distinctPairs: Array<{
+            currency: string;
+            transactionDate: string;
+          }> = await db.execute(sql`
+            SELECT DISTINCT
+              parsed_row->'parsed'->>'currency'         AS currency,
+              parsed_row->'parsed'->>'transactionDate'  AS "transactionDate"
+            FROM ${importStagings}
+            WHERE import_id = ${stage.importId}
+              AND status = 'valid'
+              AND parsed_row IS NOT NULL
+          `).then((res: unknown) => {
+            const rows = (res as { rows?: unknown[] }).rows ?? (res as unknown[]);
+            return Array.isArray(rows)
+              ? (rows as Array<{ currency: string; transactionDate: string }>)
+              : [];
+          });
+
+          for (const pair of distinctPairs) {
+            if (!pair.currency || !pair.transactionDate) continue;
+            const r = await getRateForDate(pair.currency, pair.transactionDate, db);
+            if (!r || r.staleDays > 7) {
+              const reason = !r
+                ? `no rate exists for ${pair.currency} on or before ${pair.transactionDate}`
+                : `staleDays=${r.staleDays} > 7 for ${pair.currency} on ${pair.transactionDate}`;
+              await inngest.send({
+                name: "email/send.requested",
+                data: {
+                  kind: "fx_rate_stale",
+                  // alertRecipient resolved at run-start (NEW CR-01 fix — Plan 11 Task 1).
+                  to: alertRecipient,
+                  subject: `Sales ETL halted: stale FX rate for ${pair.currency}`,
+                  template: "plain-text",
+                  templateProps: {
+                    currency: pair.currency,
+                    transactionDate: pair.transactionDate,
+                    staleDays: r?.staleDays ?? null,
+                    blobPath,
+                    importId: stage.importId,
+                  },
+                  payloadHash: `fx_rate_stale:${pair.currency}:${pair.transactionDate}:${blobPath}`,
+                },
+              });
+              throw new Error(`FX-02 stale-rate gate: ${reason}`);
+            }
+          }
+
           const commit = await _commitImportForActor(stage.importId, ETL_ACTOR, db);
           await db
             .insert(salesBlobIngestions)
