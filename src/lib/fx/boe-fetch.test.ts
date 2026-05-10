@@ -108,4 +108,30 @@ describe("parseBoeCsv", () => {
       "07 May 2026,1.3631,not-a-number,212.9834,1.8779,1.8586,1.0587\n";
     expect(() => parseBoeCsv(malformed)).toThrow(/XUDLERS|EUR|07 May 2026|invalid/i);
   });
+
+  // PR #40 review (Nit #6) — non-network coverage for the 9 UAT-added series
+  // codes (NZD/NOK/SEK/DKK/HKD/SGD/ZAR/SAR/TWD). The committed multi-day
+  // fixture only covers the original 6 codes (USD/EUR/JPY/AUD/CAD/CHF); the
+  // live probe at tests/lib/fx/series-codes-live.integration.test.ts covers
+  // the new 9 but is gated on INTEGRATION_TESTS=1 + a real BoE round-trip.
+  // Inline CSV strings exercise the parser path in unit tests without
+  // touching the fixture-file invariant (real BoE captures only — see
+  // src/lib/fx/__fixtures__/README.md "Provenance rule").
+  it("parses UAT-added series codes (NZD/NOK/SEK/DKK/HKD/SGD/ZAR/SAR/TWD) into the right ISO currencies", () => {
+    const csv =
+      "DATE,XUDLNDS,XUDLNKS,XUDLSKS,XUDLDKS,XUDLHDS,XUDLSGS,XUDLZRS,XUDLSRS,XUDLTWS\n" +
+      "07 May 2026,2.2810,12.8421,12.7510,8.5402,10.6021,1.7820,22.4831,5.0890,42.5183\n";
+    const rates = parseBoeCsv(csv);
+    expect(rates).toHaveLength(9);
+    const byCurrency = Object.fromEntries(rates.map((r) => [r.currency, r]));
+    expect(Object.keys(byCurrency).sort()).toEqual(
+      ["DKK", "HKD", "NOK", "NZD", "SAR", "SEK", "SGD", "TWD", "ZAR"],
+    );
+    expect(byCurrency.NOK.rate).toBeCloseTo(12.8421, 4);
+    expect(byCurrency.NOK.rateDate).toBe("2026-05-07");
+    for (const r of rates) {
+      expect(Number.isFinite(r.rate)).toBe(true);
+      expect(r.rate).toBeGreaterThan(0);
+    }
+  });
 });
