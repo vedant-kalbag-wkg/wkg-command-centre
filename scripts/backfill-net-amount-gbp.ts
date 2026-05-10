@@ -29,6 +29,8 @@
  */
 import { Pool, type PoolClient } from "pg";
 
+import { daysBetweenIso } from "@/lib/fx/days-between-iso";
+
 const CHUNK = 1000;
 
 type SalesRow = {
@@ -43,8 +45,6 @@ type RateLookupResult = {
   rateDate: string;
   staleDays: number;
 };
-
-const MS_PER_DAY = 86_400_000;
 
 async function lookupRate(
   client: PoolClient,
@@ -64,9 +64,10 @@ async function lookupRate(
   );
   if (rows.length === 0) return null;
   const r = rows[0];
-  const staleDays = Math.floor(
-    (Date.parse(isoDate) - Date.parse(r.rate_date)) / MS_PER_DAY,
-  );
+  // Phase 9.1 gap closure (CR-04): pure-string-day arithmetic via the shared
+  // helper. Mirrors the rate-lookup.ts call site so the two staleDays
+  // computations cannot drift in a future refactor.
+  const staleDays = daysBetweenIso(r.rate_date, isoDate);
   return {
     rate: Number(r.rate_to_gbp),
     rateDate: r.rate_date,
@@ -127,6 +128,16 @@ export async function runBackfill(
     let cursorId: string | null = null;
 
     while (true) {
+      // Phase 9.1 gap closure (CR-05): the cursor query previously cast
+      // `id::text` in the WHERE tuple AND in ORDER BY. That collated UUIDs
+      // lexicographically, defeating planner use of the (transaction_date,
+      // id) PK index path and risking row-skips when text-collation order
+      // disagreed with natural uuid sort. Fix: compare and order on the
+      // uuid column directly; bind the cursor id with `$2::uuid` so pg
+      // coerces the JS string. The SELECT projection keeps `id::text AS
+      // id` so the JS `SalesRow.id` type stays string for downstream
+      // consumers; that cast is purely a wire-format choice and does not
+      // affect plan/skip behaviour.
       const result: { rows: SalesRow[] } =
         cursorDate && cursorId
           ? await client.query<SalesRow>(
@@ -136,8 +147,8 @@ export async function runBackfill(
                       transaction_date::text AS transaction_date
                FROM sales_records
                WHERE net_amount_gbp IS NULL
-                 AND (transaction_date, id::text) > ($1, $2)
-               ORDER BY transaction_date, id::text
+                 AND (transaction_date, id) > ($1::date, $2::uuid)
+               ORDER BY transaction_date, id
                LIMIT $3`,
               [cursorDate, cursorId, chunkSize],
             )
@@ -148,7 +159,7 @@ export async function runBackfill(
                       transaction_date::text AS transaction_date
                FROM sales_records
                WHERE net_amount_gbp IS NULL
-               ORDER BY transaction_date, id::text
+               ORDER BY transaction_date, id
                LIMIT $1`,
               [chunkSize],
             );
