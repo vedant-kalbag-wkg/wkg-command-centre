@@ -101,9 +101,9 @@ Plans:
 - [x] 09.1-06-PLAN.md — Wave 3: Analytics SQL audit dual-emit (41 sites / 13 files) (FX-03a)
 - [x] 09.1-07-PLAN.md — Wave 4: Renderer dispatch + tooltips + classifier/commission swaps + admin stale banner (FX-03b/FX-04)
 - [x] 09.1-08-PLAN.md — Wave 5: Doc edits (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook
-- [ ] 09.1-09-PLAN.md — Wave 1 (gap closure): plain-text dispatch + UUID-shape validator + inArray IN-list + FX_ALERT_TO env-required + hotel-groups buildActiveLocationCondition migration (closes Gaps 1-4 + WR-04)
-- [ ] 09.1-10-PLAN.md — Wave 1 (gap closure): daysBetweenIso shared helper + backfill cursor uuid-typed + commission processor uuid[] bind (no 65k ceiling) + pivot-engine WR-09 currency_key symmetry test (closes CR-04 + CR-05 + WR-05 + WR-09)
-- [ ] 09.1-11-PLAN.md — Wave 2 (gap closure 2): recipient lifted to run-start in fx cron + azure-etl (NEW CR-01) + EmailTemplate union extended with "plain-text" sentinel (NEW CR-02) + num-rooms-subquery regex updated post-CR-01 inArray + FX cron integration FX_ALERT_TO stub + run-start throw spec (closes 3 gaps from re-verification)
+- [x] 09.1-09-PLAN.md — Wave 1 (gap closure): plain-text dispatch + UUID-shape validator + inArray IN-list + FX_ALERT_TO env-required + hotel-groups buildActiveLocationCondition migration (closes Gaps 1-4 + WR-04)
+- [x] 09.1-10-PLAN.md — Wave 1 (gap closure): daysBetweenIso shared helper + backfill cursor uuid-typed + commission processor uuid[] bind (no 65k ceiling) + pivot-engine WR-09 currency_key symmetry test (closes CR-04 + CR-05 + WR-05 + WR-09)
+- [x] 09.1-11-PLAN.md — Wave 2 (gap closure 2): recipient lifted to run-start in fx cron + azure-etl (NEW CR-01) + EmailTemplate union extended with "plain-text" sentinel (NEW CR-02) + num-rooms-subquery regex updated post-CR-01 inArray + FX cron integration FX_ALERT_TO stub + run-start throw spec (closes 3 gaps from re-verification)
 
 ### Phase 10: Access Control Extended
 **Goal**: Migrate RBAC onto CASL (`@casl/ability` + `@casl/react`). Tier rules stored as JSON in DB, editable from an admin UI without deploy; `redactSensitiveFields` becomes `permittedFieldsOf(ability, 'read', subject)`. Custom granular roles authorable in admin UI per-role rule set (subjects × actions × fields × conditions).
