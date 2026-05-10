@@ -37,6 +37,7 @@
 import { db } from "@/db";
 import { exchangeRates } from "@/db/schema";
 import { fetchBoeRatesForDate, type ParsedRate } from "@/lib/fx/boe-fetch";
+import { getFxAlertRecipient } from "@/lib/fx/alert-recipient";
 import { writeAuditLog } from "@/lib/audit";
 
 import { inngest } from "../client";
@@ -114,7 +115,10 @@ export async function _handleFxRatesFetchDaily(args: {
         name: "email/send.requested",
         data: {
           kind: "fx_rate_fetch_failed",
-          to: process.env.FX_ALERT_TO ?? "vedant.kalbag@weknowgroup.com",
+          // Phase 9.1 CR-02 — FX_ALERT_TO required; throws at call site if unset
+          // (no hardcoded prod admin literal in source). Set on Vercel preview
+          // AND production env vars per 09.1-HUMAN-UAT.md step 4.
+          to: getFxAlertRecipient(),
           subject: `FX rates daily fetch failed (${isoDate})`,
           template: "plain-text",
           templateProps: { reason, isoDate, runId: args.runId },

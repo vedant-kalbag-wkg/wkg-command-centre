@@ -12,13 +12,13 @@ import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
   activeKioskCountFragment,
   buildAmountModeCondition,
-  buildExclusionCondition,
   buildDateCondition,
   buildDimensionFilters,
   buildMaturityCondition,
   buildSalesTxnCondition,
   combineConditions,
 } from "@/lib/analytics/queries/shared";
+import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 import { wrapAnalyticsQuery } from "@/lib/analytics/cached-query";
 import { getPreviousPeriodDates, calculatePeriodChange } from "@/lib/analytics/metrics";
 import type {
@@ -39,9 +39,11 @@ async function buildHotelGroupWhere(
   filters: AnalyticsFilters,
   userCtx: UserCtx,
 ): Promise<SQL | undefined> {
-  const [scopeCondition, exclusionCondition] = await Promise.all([
+  // Phase 1 #6 / Phase 9.1 CR-03 — active-location predicate replaces
+  // outlet_code exclusion. Aligns with every sibling under queries/.
+  const [scopeCondition, activeLocationCondition] = await Promise.all([
     scopedSalesCondition(dbAny, userCtx),
-    buildExclusionCondition(),
+    buildActiveLocationCondition(),
   ]);
 
   const dateCondition = buildDateCondition(filters);
@@ -52,7 +54,7 @@ async function buildHotelGroupWhere(
   return combineConditions([
     dateCondition,
     scopeCondition,
-    exclusionCondition,
+    activeLocationCondition,
     maturityCondition,
     ...dimensionConditions,
   ]);

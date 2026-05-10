@@ -15,6 +15,7 @@ import {
 } from "@/app/(app)/settings/data-import/sales/pipeline";
 import { ETL_AZURE_LOCK_KEY, withAdvisoryLock } from "./advisory-lock";
 import { getRateForDate } from "@/lib/fx/rate-lookup";
+import { getFxAlertRecipient } from "@/lib/fx/alert-recipient";
 import { inngest } from "@/inngest/client";
 
 /**
@@ -186,7 +187,11 @@ export async function runAzureEtl(
                 name: "email/send.requested",
                 data: {
                   kind: "fx_rate_stale",
-                  to: process.env.FX_ALERT_TO ?? "vedant.kalbag@weknowgroup.com",
+                  // Phase 9.1 CR-02 — FX_ALERT_TO required; throws at call site
+                  // if unset (no hardcoded prod admin literal in source). Set on
+                  // Vercel preview AND production env vars per 09.1-HUMAN-UAT.md
+                  // step 4.
+                  to: getFxAlertRecipient(),
                   subject: `Sales ETL halted: stale FX rate for ${pair.currency}`,
                   template: "plain-text",
                   templateProps: {

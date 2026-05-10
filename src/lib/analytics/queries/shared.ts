@@ -28,6 +28,20 @@ import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
  * Caller contract is preserved: returns `undefined` if no exclusions
  * apply (so the caller's `combineConditions` sees a no-op), otherwise
  * returns a `salesRecords.location_id = ANY(...)` predicate.
+ *
+ * @deprecated Phase 9.1 CR-03 — the alias name no longer reflects the
+ * predicate's behaviour (it returns an *active*-location filter, not an
+ * *exclusion*). New callers MUST import `buildActiveLocationCondition`
+ * from `@/lib/analytics/active-locations` directly. The remaining external
+ * callers as of 2026-05-10 are:
+ *   - src/app/(app)/analytics/commission/where-builder.ts
+ *   - src/app/(app)/analytics/commission/__tests__/scoping.test.ts (mock)
+ *   - src/lib/analytics/queries/regions.test.ts (mock)
+ *   - src/lib/analytics/queries/__tests__/kiosks-subquery.test.ts (mock)
+ *   - src/lib/analytics/queries/__tests__/sales-txn-count-sweep.test.ts (mock)
+ *   - src/lib/analytics/queries/heat-map.test.ts (mock)
+ *   - src/lib/analytics/queries/portfolio.test.ts (mock)
+ * — a future plan should migrate where-builder.ts + delete this alias.
  */
 export async function buildExclusionCondition(): Promise<SQL | undefined> {
   return buildActiveLocationCondition();

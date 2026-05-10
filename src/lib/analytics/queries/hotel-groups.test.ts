@@ -24,6 +24,18 @@ vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
   };
 });
 
+// Phase 9.1 CR-03 — hotel-groups.ts now imports buildActiveLocationCondition
+// directly from @/lib/analytics/active-locations (not via the legacy alias in
+// shared.ts). Mock here to short-circuit the active-locations DB lookup the
+// same way regions.test.ts does — keeps mockExecute call counts stable.
+vi.mock("@/lib/analytics/active-locations", () => ({
+  getActiveLocationIds: vi.fn().mockResolvedValue([]),
+  buildActiveLocationCondition: vi.fn().mockResolvedValue(undefined),
+  buildActiveLocationConditionForRawContext: vi
+    .fn()
+    .mockResolvedValue(undefined),
+}));
+
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
 import { getHotelGroupsList, getHotelGroupDetail } from "./hotel-groups";
