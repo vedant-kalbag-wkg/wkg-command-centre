@@ -132,9 +132,12 @@ export async function getPortfolioSummary(
   `);
 
   const row = rows[0]!;
-  // D-12 — public `totalRevenue` is GBP-bound; renderer dispatch (09.1-07) reads
-  // currency_key + total_revenue_native to flip to native for single-currency
-  // cohorts at render time.
+  // D-12 — portfolio-level aggregates are always GBP. The SQL fetches
+  // currency_key + total_revenue_native for shape-symmetry with dimension-page
+  // queries (HotelGroupDetail, RegionDetail, LocationGroupDetail) where the
+  // D-10 native/GBP renderer dispatch fires, but the PortfolioSummary type
+  // intentionally drops them: a portfolio rollup is by definition cross-cohort,
+  // so it ranks/displays in the GBP base only.
   const totalRevenue = Number(row.total_revenue_gbp);
   const totalTransactions = Number(row.total_transactions);
 
@@ -206,13 +209,15 @@ export async function getCategoryPerformance(
 
   return rows.map((row) => ({
     categoryName: row.category_name,
-    // D-12 — internal binding to GBP; renderer dispatch (09.1-07) reads
-    // currency_key + revenue_native to render native for single-currency cohorts.
+    // D-12 — portfolio-level aggregate; binds GBP only. revenue_native and
+    // currency_key are fetched for SQL shape-symmetry with dimension queries
+    // but intentionally dropped here — cross-category ranking compares
+    // like-for-like in the GBP base.
     revenue: Number(row.revenue_gbp),
     transactions: Number(row.transactions),
     quantity: Number(row.quantity),
     // D-11 — AVG of revenue is treated like SUM: dual-emit native + GBP siblings.
-    // Public field reads GBP-side so cross-category averages compare like-for-like.
+    // D-12 binding: portfolio-level avgValue reads GBP for cross-category parity.
     avgValue: Number(row.avg_value_gbp),
   }));
 }
@@ -290,8 +295,9 @@ export async function getTopProducts(
       rank: idx + 1,
       productName: row.product_name,
       categoryName: row.product_name,
-      // D-12 — public `revenue` reads GBP; renderer dispatch (09.1-07) layers
-      // currency_key + revenue_native for the auto-pick.
+      // D-12 — portfolio-level Top Products ranking is always GBP. revenue_native
+      // and currency_key are fetched for shape-symmetry with dimension-page
+      // dual-emit queries but intentionally dropped at this level.
       revenue: Number(row.revenue_gbp),
       transactions: Number(row.transactions),
       quantity: Number(row.quantity),
@@ -333,7 +339,10 @@ export async function getTopProducts(
     rank: idx + 1,
     productName: row.product_name,
     categoryName: row.product_name, // products table has no category — product name IS the category
-    // D-12 — GBP-bound for cross-product ranking; renderer reads currency_key.
+    // D-12 — portfolio-level cross-product ranking is always GBP.
+    // revenue_native + currency_key fetched for shape-symmetry with dimension
+    // queries but intentionally dropped here (no per-product native render at
+    // the portfolio rollup).
     revenue: Number(row.revenue_gbp),
     transactions: Number(row.transactions),
     quantity: Number(row.quantity),
