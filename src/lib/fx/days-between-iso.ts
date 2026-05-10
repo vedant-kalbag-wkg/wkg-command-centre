@@ -12,6 +12,15 @@
  *
  * Both inputs MUST be `YYYY-MM-DD` (zero-padded, no time component, no zone
  * suffix). Throws on malformed input naming the value.
+ *
+ * @param isoFrom ISO YYYY-MM-DD start date.
+ * @param isoTo ISO YYYY-MM-DD end date.
+ * @returns Signed integer day delta `isoTo - isoFrom`. Callers MUST pass
+ *   `isoFrom <= isoTo` if they expect a non-negative result; the function
+ *   does not assert ordering because every current call site (rate-lookup,
+ *   backfill) enforces it via the upstream SQL `lte` predicate. A reversed
+ *   pair returns a negative integer rather than throwing — interpret the
+ *   sign at the call site.
  */
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
