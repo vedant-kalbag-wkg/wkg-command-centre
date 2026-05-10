@@ -23,6 +23,7 @@ import { and, desc, eq, lte } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { exchangeRates } from "@/db/schema";
+import { daysBetweenIso } from "@/lib/fx/days-between-iso";
 
 export type RateLookupResult = {
   rate: number;
@@ -36,8 +37,6 @@ export type RateLookupResult = {
 // route through the singleton (which points at the prod-shape pool).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = typeof defaultDb | any;
-
-const MS_PER_DAY = 86_400_000;
 
 /**
  * Look up the GBP rate for `currency` on `isoDate`.
@@ -85,7 +84,10 @@ export async function getRateForDate(
   // because the SQL `lte` already enforced it; the cost is one string compare.
   if (row.rateDate > isoDate) return null;
 
-  const staleDays = Math.floor((Date.parse(isoDate) - Date.parse(row.rateDate)) / MS_PER_DAY);
+  // Phase 9.1 gap closure (CR-04): pure-string-day arithmetic so a future
+  // change feeding inputs through a localised Date intermediate cannot
+  // produce a 23h/25h DST boundary that miscompares against `> 7`.
+  const staleDays = daysBetweenIso(row.rateDate, isoDate);
 
   return {
     rate: Number(row.rateToGbp),

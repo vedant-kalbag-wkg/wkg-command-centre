@@ -179,4 +179,48 @@ describe("getRateForDate", () => {
     const r = await getRateForDate("USD", "2024-01-01");
     expect(r).toBeNull();
   });
+
+  // ─── Phase 9.1 gap closure (CR-04) — staleDays via daysBetweenIso ─────────
+  //
+  // Pre-fix: staleDays computed as `Math.floor((Date.parse(a) - Date.parse(b))
+  // / MS_PER_DAY)`. Today the arithmetic happens to land on the right integer
+  // because `Date.parse("YYYY-MM-DD")` returns UTC midnight in V8, but a
+  // future change feeding the inputs through a localised Date intermediate
+  // would produce 23h/25h boundaries that miscompare against `> 7` for D-07.
+  //
+  // Post-fix: shared `daysBetweenIso` helper does pure-string-day arithmetic
+  // via Date.UTC, eliminating the DST footgun entirely. These specs pin the
+  // wiring at the call site so a refactor that drops the helper trips here.
+  //
+  // Note: the SEED only carries one USD rate (2026-05-08), and the unit-test
+  // mock cannot filter by currency (drizzle's WHERE clause is opaque to it).
+  // The DST coverage below relies on the helper itself being zone-blind by
+  // construction — pure unit tests for daysBetweenIso live in
+  // `days-between-iso.test.ts`, which exercises 27 Mar / 28 Mar (spring-
+  // forward) and 30 Oct / 31 Oct (fall-back) explicitly. The two specs below
+  // pin the rate-lookup → daysBetweenIso wiring against future regression by
+  // re-asserting the same `delta from 2026-05-08` invariants the existing
+  // suite checks, but explicitly tagged CR-04 so a future "drop the helper"
+  // refactor trips here.
+  describe("staleDays via daysBetweenIso (CR-04)", () => {
+    it("same-day rate: staleDays = 0 (helper-mediated)", async () => {
+      const r = await getRateForDate("USD", "2026-05-08");
+      expect(r?.staleDays).toBe(0);
+    });
+
+    it("D-07 ceiling boundary: 7-day-old rate returns staleDays = 7 (helper-mediated)", async () => {
+      // 2026-05-08 → 2026-05-15 spans BST (already in DST). The helper's
+      // zone-blind Date.UTC arithmetic produces exactly 7 regardless of any
+      // wall-clock interval ambiguity that a Date intermediate would
+      // introduce. A future refactor that drops daysBetweenIso would surface
+      // here under any DST-adjacent lookup.
+      const r = await getRateForDate("USD", "2026-05-15");
+      expect(r?.staleDays).toBe(7);
+    });
+
+    it("D-07 just-past boundary: 8-day-old rate returns staleDays = 8 (helper-mediated)", async () => {
+      const r = await getRateForDate("USD", "2026-05-16");
+      expect(r?.staleDays).toBe(8);
+    });
+  });
 });

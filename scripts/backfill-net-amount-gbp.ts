@@ -29,6 +29,8 @@
  */
 import { Pool, type PoolClient } from "pg";
 
+import { daysBetweenIso } from "@/lib/fx/days-between-iso";
+
 const CHUNK = 1000;
 
 type SalesRow = {
@@ -43,8 +45,6 @@ type RateLookupResult = {
   rateDate: string;
   staleDays: number;
 };
-
-const MS_PER_DAY = 86_400_000;
 
 async function lookupRate(
   client: PoolClient,
@@ -64,9 +64,10 @@ async function lookupRate(
   );
   if (rows.length === 0) return null;
   const r = rows[0];
-  const staleDays = Math.floor(
-    (Date.parse(isoDate) - Date.parse(r.rate_date)) / MS_PER_DAY,
-  );
+  // Phase 9.1 gap closure (CR-04): pure-string-day arithmetic via the shared
+  // helper. Mirrors the rate-lookup.ts call site so the two staleDays
+  // computations cannot drift in a future refactor.
+  const staleDays = daysBetweenIso(r.rate_date, isoDate);
   return {
     rate: Number(r.rate_to_gbp),
     rateDate: r.rate_date,
