@@ -878,3 +878,79 @@ describe("FX-03 / D-10 — formatCell auto-pick (plan 09.1-07)", () => {
     expect(result.rows[0].cells["count_net_amount"].value).toBe(10);
   });
 });
+
+// ─── Phase 9.1 gap closure (WR-09) — currency_key symmetry ──────────────────
+//
+// Pre-fix: the comment block at currency_key emission only said "apply the
+// same FILTER as booking_fee CASE expression bakes" — leaving open whether
+// net_amount should also have a filter. The intentional asymmetry (booking_fee
+// filters because its SUM wraps a CASE WHEN; net_amount doesn't filter because
+// its SUM is raw) is load-bearing — emitting a filter on net_amount would
+// drop legitimate cross-currency sales rows from COUNT(DISTINCT currency)
+// and produce a misleading single-currency key for a multi-currency cohort.
+//
+// Post-fix: tightened comment + these two specs pin the SQL shape so a future
+// refactor that "tidies up" the asymmetric handling trips here.
+describe("WR-09 currency_key symmetry", () => {
+  it("booking_fee currency_key applies the IS_FEE filter (rowset matches the SUM's non-zero population)", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "booking_fee", aggregation: "sum" }],
+    });
+    // FILTER (WHERE is_weknow_fee = true) must wrap BOTH the COUNT(DISTINCT)
+    // and the MIN() inside the currency_key CASE — together they identify
+    // the single shared currency only across rows that contribute non-zero
+    // to the booking_fee SUM. Without the filter, an EUR sales row sitting
+    // alongside a GBP fee row would inflate COUNT(DISTINCT) to 2 and drop
+    // currency_key to NULL even though the fee SUM is GBP-only.
+    expect(sql).toMatch(
+      /COUNT\(DISTINCT sales_records\.currency\) FILTER \(WHERE sales_records\.is_weknow_fee = true\)/,
+    );
+    expect(sql).toMatch(
+      /MIN\(sales_records\.currency\) FILTER \(WHERE sales_records\.is_weknow_fee = true\)/,
+    );
+  });
+
+  it("net_amount currency_key does NOT apply any filter (SUM is unfiltered, key must match)", () => {
+    const sql = buildPivotSQL({
+      rowFields: ["hotel_name"],
+      columnFields: [],
+      values: [{ field: "net_amount", aggregation: "sum" }],
+    });
+    // The unfiltered shape: COUNT(DISTINCT ...) = 1 with no FILTER clause.
+    // If a future change adds a FILTER here, a cross-currency-on-non-fee-rows
+    // cohort that the SUM correctly aggregates as multi-currency would drop
+    // its currency_key to NULL — which the renderer ALREADY handles, but
+    // the contract change risks subtle disagreements between the SUM's
+    // population and the key's population on cohorts that mix fee and
+    // non-fee rows.
+    expect(sql).toMatch(/COUNT\(DISTINCT sales_records\.currency\)\s*=\s*1/);
+    expect(sql).not.toMatch(
+      /COUNT\(DISTINCT sales_records\.currency\) FILTER/,
+    );
+    expect(sql).not.toMatch(/MIN\(sales_records\.currency\) FILTER/);
+  });
+
+  it("comment block flags the asymmetry as intentional (WR-09 / Phase 9.1)", () => {
+    // The comment is the operator-facing guardrail. If a refactor strips
+    // the explanation, the next reviewer might "fix" the asymmetry by
+    // making the two paths uniform — silently breaking one of the two
+    // population-tracking contracts. Pinning a marker here forces a
+    // deliberate ack-or-replace.
+    //
+    // Read the source and check for the WR-09 marker. We don't import fs
+    // statically (project convention is async-only); use require for the
+    // sync read path that vitest is fine with.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("node:fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("node:path");
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "./pivot-engine.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/WR-09/);
+    expect(src).toMatch(/asymmetry is intentional/i);
+  });
+});

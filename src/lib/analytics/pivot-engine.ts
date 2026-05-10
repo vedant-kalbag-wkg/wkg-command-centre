@@ -391,9 +391,24 @@ export function buildPivotSQL(
         `${v.aggregation.toUpperCase()}(COALESCE(${gbpExpr}, 0)) AS "${gbpAlias(v.aggregation, v.field)}"`,
       );
       // currency_key resolver per D-10: single-currency cohort → ISO code,
-      // multi → NULL. Apply the same FILTER (WHERE) shape that the
-      // booking_fee CASE expression bakes into its predicate so the key
-      // tracks fee-only vs sales-only cohorts correctly.
+      // multi → NULL. The FILTER predicate MUST track exactly the population
+      // of rows the SUM "sees with non-zero contribution" (Phase 9.1 / WR-09):
+      //
+      //   - booking_fee: the SUM expression at line 87 wraps the value in a
+      //     CASE WHEN ${IS_FEE_RAW_SQL} THEN ... ELSE 0 END — non-fee rows are
+      //     in the rowset but contribute 0. currency_key MUST apply the same
+      //     filter so a non-fee EUR row in a GBP-fee cohort doesn't pollute
+      //     COUNT(DISTINCT currency) and force currency_key to NULL incorrectly.
+      //
+      //   - net_amount: the SUM is unfiltered (raw native, no CASE WHEN). Every
+      //     row in the rowset contributes its native amount. currency_key
+      //     MUST be unfiltered to match — so cross-currency cohorts correctly
+      //     resolve to NULL (multi).
+      //
+      // The asymmetry is intentional and load-bearing — see pivot-engine.test.ts
+      // "WR-09 currency_key symmetry" describe block. A future "tidy-up"
+      // refactor that makes the two paths uniform will silently break one
+      // of these contracts; the unit tests catch that drift.
       const keyFilter =
         v.field === "booking_fee" ? ` FILTER (WHERE ${IS_FEE_RAW_SQL})` : "";
       selectParts.push(

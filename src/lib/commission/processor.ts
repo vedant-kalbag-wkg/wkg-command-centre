@@ -218,6 +218,16 @@ export async function calculateCommissionsForRecords(
     // normalised at sale-time BoE rates. Pre-FX, a EUR-paying kiosk would
     // hit the £10k tier at €11.5k of native sales; post-fix the boundary is
     // crossed at £10k of GBP-equivalent sales.
+    //
+    // Phase 9.1 gap closure (WR-05): the "exclude this batch" subquery
+    // previously emitted N bind parameters via sql.join(salesRecordIds.map(...))
+    // — a heavy-month recalc with 95k+ records hit Postgres's 65,535 bind
+    // ceiling and silently failed over the parameter-list overflow. Switched
+    // to a single uuid[] bind via `= ANY(...)`, which has no per-element
+    // bind cost. Semantic equivalence: `NOT (x = ANY(arr))` ≡ `x NOT IN
+    // (...arr)` over a non-NULL array (NULL handling matches the pre-fix
+    // shape — both return NULL for NULL ids, which the surrounding AND
+    // treats as not-true).
     const [cumRow] = await db
       .select({
         total: sql<string>`coalesce(sum(${salesRecords.netAmountGbp}), 0)`,
@@ -231,10 +241,7 @@ export async function calculateCommissionsForRecords(
           eq(salesRecords.netsuiteCode, "9991"),
           sql`${salesRecords.transactionDate} >= ${mStart}::date`,
           sql`${salesRecords.transactionDate} < ${mEnd}::date`,
-          sql`${salesRecords.id} NOT IN (${sql.join(
-            salesRecordIds.map((id) => sql`${id}::uuid`),
-            sql`, `,
-          )})`,
+          sql`NOT (${salesRecords.id} = ANY(${sql.param(salesRecordIds)}::uuid[]))`,
         ),
       );
 
