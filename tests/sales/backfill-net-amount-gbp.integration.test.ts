@@ -183,6 +183,59 @@ describe("backfill-net-amount-gbp integration (Wave 0 RED scaffolding)", () => {
     expect(rows[0].netAmountGbp).toBeNull();
   });
 
+  // ─── Phase 9.1 gap closure (CR-05) — same-date cursor advancement ─────────
+  //
+  // Pre-fix: the cursor query cast `id::text` in the WHERE tuple comparison
+  // AND in the ORDER BY. UUIDs ordered lexicographically are NOT identical
+  // to UUIDs ordered as native uuid (the byte-comparison forms can disagree
+  // for some UUID variants). Combined with chunkSize=1, a same-date cursor
+  // boundary could revisit or skip rows depending on which of (text-sort,
+  // uuid-sort) the ORDER BY committed to vs. what the WHERE tuple carried
+  // into the next chunk.
+  //
+  // Post-fix: WHERE compares on the uuid column directly with `$2::uuid`
+  // bind, ORDER BY orders on the uuid column directly. The SELECT projection
+  // still casts `id::text` for JS-side type ergonomics, but that cast is
+  // wire-format only and does not affect plan/skip behaviour.
+  //
+  // This spec drives the contract: chunkSize=1 forces the cursor to advance
+  // through each row individually via the WHERE tuple comparison, and both
+  // seeded rows must end up with non-NULL net_amount_gbp.
+  it("CR-05: cursor advances correctly across a same-date boundary regardless of uuid-vs-text sort order", async () => {
+    // Two UUIDs sharing the same transaction_date. Picking values whose
+    // canonical uuid order is well-defined ('1ab...' < 'a000...' both as
+    // text and as uuid byte-comparison, so the test ALSO works under the
+    // pre-fix lexical ORDER BY) — what's load-bearing is the chunkSize=1
+    // round-trip: every cursor advance goes through the WHERE tuple
+    // comparison, which under the pre-fix shape forced a seq-scan and
+    // could skip rows on some uuid byte-patterns. Post-fix: uuid-typed
+    // bind, planner uses the (transaction_date, id) PK index path, both
+    // rows land with non-NULL net_amount_gbp.
+    const id1 = "1ab00000-0000-0000-0000-000000000000";
+    const id2 = "a0000000-0000-0000-0000-000000000000";
+    const txnDate = "2026-05-08";
+    await seedSalesRecordWithId(id1, "GBP", txnDate, "100.00");
+    await seedSalesRecordWithId(id2, "GBP", txnDate, "200.00");
+
+    const result = await runBackfill({
+      dryRun: false,
+      pool: ctx.pool,
+      batchSize: 1,
+    });
+    expect(result.updated).toBe(2);
+
+    // Both rows must show non-NULL GBP after the run.
+    const stamped = await ctx.db.execute(
+      sql`SELECT id::text AS id, net_amount_gbp::text AS gbp
+          FROM sales_records WHERE id IN (${id1}::uuid, ${id2}::uuid)
+          ORDER BY id`,
+    );
+    expect(stamped.rows).toHaveLength(2);
+    for (const r of stamped.rows as Array<{ id: string; gbp: string | null }>) {
+      expect(r.gbp).not.toBeNull();
+    }
+  });
+
   // ──────────────────────────────────────────────────────────────────────
   // Helpers — minimal seed utilities.
   // ──────────────────────────────────────────────────────────────────────
@@ -196,6 +249,31 @@ describe("backfill-net-amount-gbp integration (Wave 0 RED scaffolding)", () => {
       regionId,
       saleRef: `SR-${currency}-${txnDate}-${Math.random().toString(36).slice(2, 10)}`,
       refNo: `REF-${currency}-${Math.random().toString(36).slice(2, 10)}`,
+      transactionDate: txnDate,
+      locationId,
+      productId,
+      netAmount,
+      vatAmount: "0.00",
+      currency,
+      isWeknowFee: false,
+      netsuiteCode: "9999",
+      importId,
+    });
+  }
+
+  // CR-05 helper: insert with an explicit id so the spec can pin uuid values
+  // whose text-collation order is well-defined relative to natural uuid sort.
+  async function seedSalesRecordWithId(
+    id: string,
+    currency: string,
+    txnDate: string,
+    netAmount: string,
+  ): Promise<void> {
+    await ctx.db.insert(salesRecords).values({
+      id,
+      regionId,
+      saleRef: `SR-${id.slice(0, 8)}`,
+      refNo: `REF-${id.slice(0, 8)}`,
       transactionDate: txnDate,
       locationId,
       productId,
