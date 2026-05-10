@@ -26,13 +26,39 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 ## Current Position
 
 Phase: 10
-Status: Ready to execute
+Status: Ready to plan (no `phases/10-*/` directory yet — run `/gsd-plan-phase 10` to scaffold)
 Last activity: 2026-05-10
+
+## Pending v1.1 close-out actions (from completed phases)
+
+These are tracked but do not block Phase 10 starting. Pick up when their
+preconditions surface — see each phase's `deferred-items.md` for the
+canonical entry.
+
+- **DEFERRED-08.02-01** — `src/lib/rbac.test.ts` fails when `RESEND_API_KEY`
+  is unset (`new Resend(...)` at module scope in `src/lib/email.ts`). Fix
+  is lazy construction inside each send helper. Tracked in
+  `phases/08-email-infrastructure/deferred-items.md`. Workaround:
+  `RESEND_API_KEY=re_test_key npx vitest run`.
+- **Phase 8 DNS-cutover items (1, 4, 8)** — sandbox UAT used Resend's
+  shared sender (`onboarding@resend.dev`); the throwaway-user invite +
+  arbitrary-recipient EMAIL-03 path needs DNS records on
+  `command.weknowgroup.com` before it can be re-tested. Tracked in
+  `phases/08-email-infrastructure/08-HUMAN-UAT.md`.
+- **DEFERRED-09.1-01** — `analytics-currency-render` Test 1 (single-
+  currency native render) deferred until a preview/staging env has
+  non-GBP sales data. Renderer dispatch is unit-tested; only the live
+  visual confirmation is missing. Tracked in
+  `phases/09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep/deferred-items.md`.
+- **DEFERRED-09.1-02** — `exchange_rates` table on prod is empty until
+  the BoE Inngest cron fires at 06:00 Europe/London. Default path: wait;
+  manual seed only if a non-GBP import lands first. Tracked in same
+  deferred-items.md.
 
 ## v1.1 Phase Index
 
 - ✓ Phase 7: Data Foundation Rebuild — DATA-01..05 — **MERGED 2026-05-08** (PR #36, squash `05fbf07`; full review loop: PR #34 merge → PR #35 revert → PR #36 with 4 fix commits)
-- → Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (code-complete; awaiting operator UAT)
+- ✓ Phase 8: Email Infrastructure — EMAIL-01..04 — **MERGED 2026-05-09** (PR #37, commit `693e28d`; sandbox UAT complete via `onboarding@resend.dev`. 3 items remain `deferred-to-dns-cutover` — pickup when DNS records on `command.weknowgroup.com` are added; tracked in `phases/08-email-infrastructure/deferred-items.md` + `08-HUMAN-UAT.md`)
 - ✓ Phase 9: POC Underperformance Alerts — POC-ALERT-01 — **MERGED 2026-05-09** (PR #38; 3-round Claude review loop closed, all CR-01..03 + WR-03 + revenue/percentile float bugs + cosmetic nits fixed)
 - ✓ Phase 9.1 (INSERTED): Multi-currency analytics — forex normalisation to GBP base reporting — FX-01..04 — **MERGED 2026-05-10** (PR #40, squash `ca62db3`; 2-round Claude review loop: round 1 closed 4 medium + 3 nit; round 2 closed 2 observations including commission_ledger.gross_amount → gross_amount_gbp rename via migration 0049). Prod migrations 0046–0049 applied + 95,103-row GBP-identity backfill 2026-05-10.
 - Phase 10: Access Control Extended — AUTH-06..07 — branch `gsd/phase-10-access-control-extended`
