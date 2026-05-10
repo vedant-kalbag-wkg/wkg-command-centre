@@ -9,43 +9,15 @@ import {
 } from "@/db/schema";
 import { sql, inArray, type SQL } from "drizzle-orm";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
-import { buildActiveLocationCondition } from "@/lib/analytics/active-locations";
 
-/**
- * Phase 07-06 — `buildExclusionCondition` now delegates to
- * `buildActiveLocationCondition` (which scans `kiosks` via
- * `kiosk_assignments` for per-kiosk outlet codes matching exclusions).
- *
- * Pre-07-06 this helper produced a `NOT (locations.outlet_code = ... OR ...)`
- * predicate that callers ANDed into a WHERE clause that already INNER JOINed
- * `locations`. The locations.outlet_code column is gone (migration 0040)
- * and outlet codes now live on kiosks. Rather than duplicate the
- * kiosk-scan logic here, we delegate to the (cached) active-locations
- * helper — semantically identical: a sales row is in scope iff its
- * location's currently-assigned kiosks have no outlet code matching an
- * exclusion in the same region.
- *
- * Caller contract is preserved: returns `undefined` if no exclusions
- * apply (so the caller's `combineConditions` sees a no-op), otherwise
- * returns a `salesRecords.location_id = ANY(...)` predicate.
- *
- * @deprecated Phase 9.1 CR-03 — the alias name no longer reflects the
- * predicate's behaviour (it returns an *active*-location filter, not an
- * *exclusion*). New callers MUST import `buildActiveLocationCondition`
- * from `@/lib/analytics/active-locations` directly. The remaining external
- * callers as of 2026-05-10 are:
- *   - src/app/(app)/analytics/commission/where-builder.ts
- *   - src/app/(app)/analytics/commission/__tests__/scoping.test.ts (mock)
- *   - src/lib/analytics/queries/regions.test.ts (mock)
- *   - src/lib/analytics/queries/__tests__/kiosks-subquery.test.ts (mock)
- *   - src/lib/analytics/queries/__tests__/sales-txn-count-sweep.test.ts (mock)
- *   - src/lib/analytics/queries/heat-map.test.ts (mock)
- *   - src/lib/analytics/queries/portfolio.test.ts (mock)
- * — a future plan should migrate where-builder.ts + delete this alias.
- */
-export async function buildExclusionCondition(): Promise<SQL | undefined> {
-  return buildActiveLocationCondition();
-}
+// Phase 9.1 / PR #40 review (Nit #7): the legacy `buildExclusionCondition`
+// alias was retired here. It was a Phase 07-06 carry-over that delegated to
+// `buildActiveLocationCondition` after the locations.outlet_code column was
+// dropped (migration 0040) and outlet codes moved to kiosks. The remaining
+// production caller (`commission/where-builder.ts`) was migrated to import
+// `buildActiveLocationCondition` from `@/lib/analytics/active-locations`
+// directly. Test mocks were similarly cleaned up. Search history for the
+// rationale if you find pre-9.1 code referencing the old name.
 
 export function buildDateCondition(filters: AnalyticsFilters): SQL {
   return sql`${salesRecords.transactionDate} >= ${filters.dateFrom} AND ${salesRecords.transactionDate} <= ${filters.dateTo}`;

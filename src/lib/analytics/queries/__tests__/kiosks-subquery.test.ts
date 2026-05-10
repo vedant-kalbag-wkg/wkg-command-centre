@@ -70,17 +70,10 @@ vi.mock("@/lib/analytics/active-locations", () => ({
   buildActiveLocationConditionForRawContext: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/analytics/queries/shared")>();
-  return {
-    ...actual,
-    // hotel-groups.ts uses the legacy outlet-exclusion helper; short-circuit
-    // to keep the test off the DB. Other helpers stay real so the kiosks
-    // subquery body actually renders into the captured SQL.
-    buildExclusionCondition: vi.fn().mockResolvedValue(undefined),
-  };
-});
+// PR #40 review (Nit #7): the legacy `buildExclusionCondition` mock was a
+// no-op holdover from before hotel-groups.ts switched to
+// `buildActiveLocationCondition`. The active-locations mock above already
+// covers the predicate; no shared.ts override needed.
 
 const filters = {
   dateFrom: "2025-01-01",

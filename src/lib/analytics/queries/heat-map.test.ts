@@ -16,7 +16,6 @@ vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/analytics/queries/shared")>();
   return {
     ...actual,
-    buildExclusionCondition: vi.fn().mockResolvedValue(undefined),
     buildDateCondition: vi.fn().mockReturnValue(undefined),
     buildDimensionFilters: vi.fn().mockReturnValue([]),
     buildMaturityCondition: vi.fn().mockReturnValue(undefined),
@@ -24,10 +23,9 @@ vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
   };
 });
 
-// Phase 1 #6: new request-scoped active-location helper. Under test we don't
-// care which IDs get fetched — `combineConditions` is stubbed to undefined
-// anyway — so just short-circuit it to a no-op condition. Returning
-// undefined keeps parity with the previous `buildExclusionCondition` mock.
+// Phase 1 #6: request-scoped active-location helper. Under test we don't care
+// which IDs get fetched — `combineConditions` is stubbed to undefined anyway
+// — so just short-circuit it to a no-op condition.
 vi.mock("@/lib/analytics/active-locations", () => ({
   getActiveLocationIds: vi.fn().mockResolvedValue([]),
   buildActiveLocationCondition: vi.fn().mockResolvedValue(undefined),

@@ -24,7 +24,6 @@ vi.mock("@/lib/analytics/queries/shared", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/analytics/queries/shared")>();
   return {
     ...actual,
-    buildExclusionCondition: vi.fn().mockResolvedValue(undefined),
     buildDateCondition: vi.fn().mockReturnValue(undefined),
     buildDimensionFilters: vi.fn().mockReturnValue([]),
     buildMaturityCondition: vi.fn().mockReturnValue(undefined),
