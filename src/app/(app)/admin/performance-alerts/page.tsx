@@ -28,10 +28,10 @@ export default async function AdminPerformanceAlertsPage() {
   // write an audit_logs row but no state rows, so the dashboard would render
   // "—" for "Last run" while the recent-runs list below contradicted it.
   const [latestRow] = await db
-    .select({ ts: sql<Date | null>`MAX(${auditLogs.createdAt})` })
+    .select({ ts: sql<Date | string | null>`MAX(${auditLogs.createdAt})` })
     .from(auditLogs)
     .where(eq(auditLogs.entityType, "performance_alert_run"));
-  const latestRunAt = latestRow?.ts ?? null;
+  const latestRunAt = toDate(latestRow?.ts ?? null);
 
   // Phase 9.1 / D-16 — FX stale-rate signal. The BoE daily fetch Inngest
   // function writes a row per (currency, rate_date) tuple; the canonical
@@ -40,10 +40,17 @@ export default async function AdminPerformanceAlertsPage() {
   // > 24h old (cron failed or disabled), the page renders an inline banner
   // above the latest-run Card so an admin notices before the 7-day hard-fail
   // threshold fires in sales ETL.
+  //
+  // Phase 9.1 UAT discovery (2026-05-10): drizzle's `sql<Date | null>` template
+  // does NOT parse the aggregate result via the column-level timestamp parser
+  // — node-postgres returns the raw `timestamptz` string, not a Date. The
+  // earlier `.getTime()` call therefore threw `not a function` during SSR and
+  // crashed the route the moment any row existed in `exchange_rates`. The
+  // `toDate` helper at the bottom of this file normalises both shapes.
   const [latestFxRow] = await db
-    .select({ ts: sql<Date | null>`MAX(${exchangeRates.fetchedAt})` })
+    .select({ ts: sql<Date | string | null>`MAX(${exchangeRates.fetchedAt})` })
     .from(exchangeRates);
-  const latestFxFetchAt = latestFxRow?.ts ?? null;
+  const latestFxFetchAt = toDate(latestFxRow?.ts ?? null);
   const fxStale =
     !latestFxFetchAt ||
     Date.now() - latestFxFetchAt.getTime() > FX_STALE_THRESHOLD_MS;
@@ -209,4 +216,19 @@ function humaniseAge(date: Date): string {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   return `${days}d`;
+}
+
+/**
+ * Phase 9.1 UAT discovery (2026-05-10) — node-postgres returns raw
+ * `timestamptz` strings for SQL aggregate expressions wrapped in
+ * `sql<Date | null>...`, because drizzle's runtime parser only kicks in for
+ * column-level reads (where it knows the column type). The previous
+ * `.getTime()` call on the result therefore crashed SSR with a TypeError
+ * the moment `exchange_rates` had any row. `toDate` normalises both shapes
+ * — it's the single boundary every aggregate-timestamp on this page now
+ * passes through, so no other render path is silently broken.
+ */
+function toDate(v: Date | string | null): Date | null {
+  if (v === null) return null;
+  return v instanceof Date ? v : new Date(v);
 }
