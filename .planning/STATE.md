@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves: 09.1-01 Wave 0 fixtures + RED tests; 09.1-02 schema substrate (exchange_rates table, sales_records.net_amount_gbp NULLABLE, EmailKind extended); 09.1-03 FX library (boe-fetch + rate-lookup + currencies); 09.1-04 Inngest cron `fx-rates.fetch-daily` + serve registration; 09.1-05 ETL stamping + backfill script + migration 0048 NOT NULL flip operator-gated; 09.1-06 analytics SQL audit dual-emit (41 sites / 13 files) with saved-pivot back-compat (D-17); 09.1-07 renderer dispatch + tooltips + classifier/commission swaps + admin stale-rate banner; 09.1-08 doc surgery (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook. Awaiting operator UAT against preview alias per CLAUDE.md gate (`PLAYWRIGHT_BASE_URL=<preview-alias> npx playwright test tests/fx-normalisation/`); list-pass is NOT sufficient evidence."
-last_updated: "2026-05-10T15:40:00.000Z"
-last_activity: "2026-05-10 — Phase 9.1 UAT complete; 2 production defects found + fixed on branch (BoE series codes shipped wrong rates for 21/26 currencies; admin/performance-alerts SSR crash on aggregate timestamp). FX scope reduced 26 → 16 currencies (all probed live). Ready to merge after operator review of scope reduction."
+stopped_at: "Phase 9.1 (Multi-currency forex normalisation) MERGED 2026-05-10 (PR #40, squash `ca62db3`). 11 plans (8 original + 3 gap-closure rounds) + 2 PR-review-fix commit waves. Schema delta on prod: migrations 0046 (exchange_rates table), 0047 (sales_records.net_amount_gbp NULLABLE), backfill of 95,103 GBP-identity rows, 0048 (NOT NULL flip), 0049 (commission_ledger.gross_amount → gross_amount_gbp rename) — all applied 2026-05-10 directly post-merge. exchange_rates table seeded by next BoE Inngest cron run at 06:00 Europe/London. Phase 10 (Access Control Extended, CASL) is next."
+last_updated: "2026-05-10T11:05:00.000Z"
+last_activity: "2026-05-10 — Phase 9.1 MERGED to main (PR #40). Two Claude review rounds: round 1 closed 4 medium + 3 nit findings (.returning() upsert, per-chunk backfill commit, portfolio D-12 comments, dropped-currency contingency, daysBetweenIso JSDoc, NOK fixture, buildExclusionCondition retired); round 2 closed 2 observations (pipeline tx pass-through, commission_ledger.gross_amount → gross_amount_gbp rename via migration 0049). Migrations + backfill applied to prod Neon."
 progress:
   total_phases: 6
   completed_phases: 3
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 **Core value:** Operations and IT teams can accurately track, plan, and report on every kiosk deployment across all regions from a single tool that models the business's actual data structure — with analytics that Monday.com cannot produce.
-**Current focus:** Phase 9 merged 2026-05-09 (PR #38). Phase 9.1 (Multi-currency forex normalisation, INSERTED — tracks GitHub issue #39) is the next planning target.
+**Current focus:** Phase 9.1 merged 2026-05-10 (PR #40). Phase 10 (Access Control Extended via CASL) is the next planning target.
 
 ## Current Position
 
@@ -34,7 +34,7 @@ Last activity: 2026-05-10
 - ✓ Phase 7: Data Foundation Rebuild — DATA-01..05 — **MERGED 2026-05-08** (PR #36, squash `05fbf07`; full review loop: PR #34 merge → PR #35 revert → PR #36 with 4 fix commits)
 - → Phase 8: Email Infrastructure — EMAIL-01..04 — branch `gsd/phase-08-email-infrastructure` (code-complete; awaiting operator UAT)
 - ✓ Phase 9: POC Underperformance Alerts — POC-ALERT-01 — **MERGED 2026-05-09** (PR #38; 3-round Claude review loop closed, all CR-01..03 + WR-03 + revenue/percentile float bugs + cosmetic nits fixed)
-- Phase 9.1 (INSERTED): Multi-currency analytics — forex normalisation to GBP base reporting — TBD requirements (FX-01..04 likely) — branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep` — tracks GitHub issue #39, surfaced from PR #38 code review
+- ✓ Phase 9.1 (INSERTED): Multi-currency analytics — forex normalisation to GBP base reporting — FX-01..04 — **MERGED 2026-05-10** (PR #40, squash `ca62db3`; 2-round Claude review loop: round 1 closed 4 medium + 3 nit; round 2 closed 2 observations including commission_ledger.gross_amount → gross_amount_gbp rename via migration 0049). Prod migrations 0046–0049 applied + 95,103-row GBP-identity backfill 2026-05-10.
 - Phase 10: Access Control Extended — AUTH-06..07 — branch `gsd/phase-10-access-control-extended`
 - Phase 11: Tooling, Polish & Tech-Debt Close-out — TEST-01, MONDAY-01, REF-01, INFRA-01, POLISH-01..02, DEBT-01..02 — branch `gsd/phase-11-tooling-polish-debt`
 

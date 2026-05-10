@@ -225,4 +225,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-10 — Phase 9.1 (Multi-currency forex normalisation) automated verification passed 16/16; HUMAN-UAT operator gate pending against preview alias before merge*
+*Last updated: 2026-05-10 — Phase 9.1 MERGED to main (PR #40, squash `ca62db3`). 2-round Claude review loop closed 4 medium + 3 nit + 2 follow-up observations. Prod migrations 0046–0049 applied + 95,103-row GBP-identity backfill 2026-05-10. Phase 10 (CASL) is next.*
