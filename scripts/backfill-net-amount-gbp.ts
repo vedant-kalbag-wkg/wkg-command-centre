@@ -118,98 +118,127 @@ export async function runBackfill(
   let totalUpdated = 0;
 
   try {
-    await client.query("BEGIN");
-
-    // Cache rate lookups within a run — typically a backfill spans a small
-    // number of (currency, date) combos relative to the row count.
+    // PR #40 review (Medium #2): commit per chunk rather than wrapping the
+    // entire backfill in one transaction. A full-portfolio backfill can hold
+    // a write transaction open for minutes on production-shape Neon, which
+    // accumulates WAL, blocks autovacuum on referenced pages, and risks a
+    // transaction-timeout abort that forces a restart from scratch. Per-chunk
+    // commits cap the open-transaction window at one chunk (~1k rows) and let
+    // the backfill resume from the cursor on retry. dryRun preserves the
+    // "no writes" contract by rolling back each chunk individually.
+    //
+    // Cache rate lookups across chunks — typically a backfill spans a small
+    // number of (currency, date) combos relative to the row count. Living
+    // outside the per-chunk transaction is intentional: a rate row was
+    // committed by the BoE cron well before this script runs, so lookupRate
+    // sees the same view of `exchange_rates` regardless of which chunk-tx
+    // is active.
     const rateCache = new Map<string, { rate: number; staleDays: number }>();
 
     let cursorDate: string | null = null;
     let cursorId: string | null = null;
 
     while (true) {
-      // Phase 9.1 gap closure (CR-05): the cursor query previously cast
-      // `id::text` in the WHERE tuple AND in ORDER BY. That collated UUIDs
-      // lexicographically, defeating planner use of the (transaction_date,
-      // id) PK index path and risking row-skips when text-collation order
-      // disagreed with natural uuid sort. Fix: compare and order on the
-      // uuid column directly; bind the cursor id with `$2::uuid` so pg
-      // coerces the JS string. The SELECT projection keeps `id::text AS
-      // id` so the JS `SalesRow.id` type stays string for downstream
-      // consumers; that cast is purely a wire-format choice and does not
-      // affect plan/skip behaviour.
-      const result: { rows: SalesRow[] } =
-        cursorDate && cursorId
-          ? await client.query<SalesRow>(
-              `SELECT id::text AS id,
-                      currency,
-                      net_amount::text AS net_amount,
-                      transaction_date::text AS transaction_date
-               FROM sales_records
-               WHERE net_amount_gbp IS NULL
-                 AND (transaction_date, id) > ($1::date, $2::uuid)
-               ORDER BY transaction_date, id
-               LIMIT $3`,
-              [cursorDate, cursorId, chunkSize],
-            )
-          : await client.query<SalesRow>(
-              `SELECT id::text AS id,
-                      currency,
-                      net_amount::text AS net_amount,
-                      transaction_date::text AS transaction_date
-               FROM sales_records
-               WHERE net_amount_gbp IS NULL
-               ORDER BY transaction_date, id
-               LIMIT $1`,
-              [chunkSize],
-            );
+      await client.query("BEGIN");
+      let chunkRowCount = 0;
+      try {
+        // Phase 9.1 gap closure (CR-05): the cursor query previously cast
+        // `id::text` in the WHERE tuple AND in ORDER BY. That collated UUIDs
+        // lexicographically, defeating planner use of the (transaction_date,
+        // id) PK index path and risking row-skips when text-collation order
+        // disagreed with natural uuid sort. Fix: compare and order on the
+        // uuid column directly; bind the cursor id with `$2::uuid` so pg
+        // coerces the JS string. The SELECT projection keeps `id::text AS
+        // id` so the JS `SalesRow.id` type stays string for downstream
+        // consumers; that cast is purely a wire-format choice and does not
+        // affect plan/skip behaviour.
+        const result: { rows: SalesRow[] } =
+          cursorDate && cursorId
+            ? await client.query<SalesRow>(
+                `SELECT id::text AS id,
+                        currency,
+                        net_amount::text AS net_amount,
+                        transaction_date::text AS transaction_date
+                 FROM sales_records
+                 WHERE net_amount_gbp IS NULL
+                   AND (transaction_date, id) > ($1::date, $2::uuid)
+                 ORDER BY transaction_date, id
+                 LIMIT $3`,
+                [cursorDate, cursorId, chunkSize],
+              )
+            : await client.query<SalesRow>(
+                `SELECT id::text AS id,
+                        currency,
+                        net_amount::text AS net_amount,
+                        transaction_date::text AS transaction_date
+                 FROM sales_records
+                 WHERE net_amount_gbp IS NULL
+                 ORDER BY transaction_date, id
+                 LIMIT $1`,
+                [chunkSize],
+              );
 
-      const rows: SalesRow[] = result.rows;
-      if (rows.length === 0) break;
-
-      const ids: string[] = [];
-      const stamps: string[] = [];
-      for (const row of rows) {
-        const key = `${row.currency}|${row.transaction_date}`;
-        let cached = rateCache.get(key);
-        if (!cached) {
-          const looked = await lookupRate(client, row.currency, row.transaction_date);
-          if (!looked) {
-            throw new Error(
-              `Backfill halt: no FX rate exists for ${row.currency} on or before ${row.transaction_date} (first affected row id ${row.id})`,
-            );
-          }
-          if (looked.staleDays > 7) {
-            throw new Error(
-              `Backfill halt: stale FX rate for ${row.currency} on ${row.transaction_date} (staleDays=${looked.staleDays} > 7; first affected row id ${row.id})`,
-            );
-          }
-          cached = { rate: looked.rate, staleDays: looked.staleDays };
-          rateCache.set(key, cached);
+        const rows: SalesRow[] = result.rows;
+        if (rows.length === 0) {
+          await client.query("ROLLBACK");
+          break;
         }
-        // D-04 GBP identity (preserves precision exactly).
-        // D-05 non-GBP: net_amount / rate_to_gbp (BoE quotes are foreign-per-GBP).
-        const stamp =
-          row.currency === "GBP"
-            ? row.net_amount
-            : (Number(row.net_amount) / cached.rate).toFixed(2);
-        ids.push(row.id);
-        stamps.push(stamp);
+
+        const ids: string[] = [];
+        const stamps: string[] = [];
+        for (const row of rows) {
+          const key = `${row.currency}|${row.transaction_date}`;
+          let cached = rateCache.get(key);
+          if (!cached) {
+            const looked = await lookupRate(client, row.currency, row.transaction_date);
+            if (!looked) {
+              throw new Error(
+                `Backfill halt: no FX rate exists for ${row.currency} on or before ${row.transaction_date} (first affected row id ${row.id})`,
+              );
+            }
+            if (looked.staleDays > 7) {
+              throw new Error(
+                `Backfill halt: stale FX rate for ${row.currency} on ${row.transaction_date} (staleDays=${looked.staleDays} > 7; first affected row id ${row.id})`,
+              );
+            }
+            cached = { rate: looked.rate, staleDays: looked.staleDays };
+            rateCache.set(key, cached);
+          }
+          // D-04 GBP identity (preserves precision exactly).
+          // D-05 non-GBP: net_amount / rate_to_gbp (BoE quotes are foreign-per-GBP).
+          const stamp =
+            row.currency === "GBP"
+              ? row.net_amount
+              : (Number(row.net_amount) / cached.rate).toFixed(2);
+          ids.push(row.id);
+          stamps.push(stamp);
+        }
+
+        await client.query(
+          `UPDATE sales_records SET net_amount_gbp = data.gbp::numeric
+           FROM (
+             SELECT unnest($1::uuid[]) AS id,
+                    unnest($2::numeric[]) AS gbp
+           ) AS data
+           WHERE sales_records.id = data.id`,
+          [ids, stamps],
+        );
+
+        if (dryRun) {
+          await client.query("ROLLBACK");
+        } else {
+          await client.query("COMMIT");
+        }
+
+        chunkRowCount = rows.length;
+        cursorDate = rows[rows.length - 1].transaction_date;
+        cursorId = rows[rows.length - 1].id;
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
       }
 
-      await client.query(
-        `UPDATE sales_records SET net_amount_gbp = data.gbp::numeric
-         FROM (
-           SELECT unnest($1::uuid[]) AS id,
-                  unnest($2::numeric[]) AS gbp
-         ) AS data
-         WHERE sales_records.id = data.id`,
-        [ids, stamps],
-      );
-
-      totalUpdated += rows.length;
-      cursorDate = rows[rows.length - 1].transaction_date;
-      cursorId = rows[rows.length - 1].id;
+      totalUpdated += chunkRowCount;
       // CLI progress logging — quiet in tests (the integration suite asserts
       // on the return shape, not stdout).
       if (process.env.NODE_ENV !== "test") {
@@ -218,15 +247,6 @@ export async function runBackfill(
         );
       }
     }
-
-    if (dryRun) {
-      await client.query("ROLLBACK");
-    } else {
-      await client.query("COMMIT");
-    }
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
   } finally {
     client.release();
     if (ownsPool) {
