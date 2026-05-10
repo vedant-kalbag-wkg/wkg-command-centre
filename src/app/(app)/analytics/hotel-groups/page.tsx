@@ -15,6 +15,7 @@ import { GroupMetrics } from "./group-metrics";
 import { HotelList } from "./hotel-list";
 import { TemporalCharts } from "./temporal-charts";
 import type { HotelGroupData, HotelGroupDetail } from "@/lib/analytics/types";
+import { isUuid } from "@/lib/uuid";
 
 function parseIdParam(value: string | null): string[] {
   if (!value) return [];
@@ -28,7 +29,11 @@ export default function HotelGroupsPage() {
   const filters = useAnalyticsFilters();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialUrlGroupIds = parseIdParam(searchParams?.get("group") ?? null);
+  // Phase 9.1 CR-01 / WR-04 — drop non-UUID URL params before they reach the
+  // SQL builder. Renders the standard EmptyState for malformed inputs.
+  const initialUrlGroupIds = parseIdParam(
+    searchParams?.get("group") ?? null,
+  ).filter(isUuid);
   const [groups, setGroups] = useState<HotelGroupData[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(
     initialUrlGroupIds,

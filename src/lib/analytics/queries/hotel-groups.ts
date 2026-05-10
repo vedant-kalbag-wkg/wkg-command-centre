@@ -84,10 +84,13 @@ function baseFromLocationsOnly(): SQL {
 }
 
 function inSelectedHotelGroupsCondition(idList: SQL): SQL {
+  // Phase 9.1 CR-01 — `idList` is now a parameter-bound `sql.param(ids)::uuid[]`
+  // fragment, so the EXISTS predicate uses `= ANY(...)` rather than `IN (...)`.
+  // Drizzle's pg adapter throws on uuid cast for any non-UUID slip-through.
   return sql`EXISTS (
     SELECT 1 FROM ${locationHotelGroupMemberships}
     WHERE ${locationHotelGroupMemberships.locationId} = ${salesRecords.locationId}
-      AND ${locationHotelGroupMemberships.hotelGroupId} IN ${idList}
+      AND ${locationHotelGroupMemberships.hotelGroupId} = ANY(${idList})
   )`;
 }
 
@@ -234,7 +237,10 @@ export async function getHotelGroupDetail(
   userCtx: UserCtx,
 ): Promise<HotelGroupDetail> {
   const whereClause = await buildHotelGroupWhere(filters, userCtx);
-  const idList = sql.raw(`(${groupIds.map((id) => `'${id}'`).join(",")})`);
+  // Phase 9.1 CR-01 — parameter-bound `::uuid[]` cast replaces sql.raw
+  // string-concat interpolation. Consumed by inSelectedHotelGroupsCondition
+  // via `= ANY(...)`.
+  const idList = sql`${sql.param(groupIds)}::uuid[]`;
   // D5 Part E — replaces the previous `hotel_groups.id IN (...)` filter that
   // sat on top of an INNER JOIN through location_hotel_group_memberships.
   // EXISTS dedupes per-location sales across multiple selected groups; see

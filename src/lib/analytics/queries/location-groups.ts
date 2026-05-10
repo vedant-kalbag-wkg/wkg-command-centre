@@ -6,7 +6,7 @@ import {
   locationGroupMemberships,
   locationGroups,
 } from "@/db/schema";
-import { sql, type SQL } from "drizzle-orm";
+import { inArray, sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
@@ -158,19 +158,24 @@ export async function getLocationGroupDetail(
 ): Promise<LocationGroupDetail> {
   const whereClause = await buildLocationGroupWhere(filters, userCtx);
   const activeIds = await getActiveLocationIds();
-  const groupIdList = sql.raw(`(${groupIds.map((id) => `'${id}'`).join(",")})`);
-  const groupFilter = sql`${locationGroups.id} IN ${groupIdList}`;
+  // Phase 9.1 CR-01 — replace sql.raw IN-list interpolation with parameter-safe
+  // bind. The CTE-style helpers (locationGroupRoomsSubquery /
+  // locationGroupKiosksSubquery) concatenate this fragment after
+  // `lgm.location_group_id`, producing `lgm.location_group_id = ANY($1::uuid[])`
+  // — drizzle's pg adapter throws on the uuid cast for any non-UUID value.
+  const groupIdList = sql`${sql.param(groupIds)}::uuid[]`;
+  const groupFilter = inArray(locationGroups.id, groupIds);
   const fullWhere = combineConditions([whereClause, groupFilter]);
   const amountMode = buildAmountModeCondition(filters);
   const salesTxn = buildSalesTxnCondition();
   // Task 2.1: scoped scalar subquery — sums rooms for active members of the
   // selected groups exactly once each (vs SUM(DISTINCT) which dedupes by VALUE).
   const totalRoomsExpr = locationGroupRoomsSubquery(
-    sql`IN ${groupIdList}`,
+    sql`= ANY(${groupIdList})`,
     activeIds,
   );
   const totalKiosksExpr = locationGroupKiosksSubquery(
-    sql`IN ${groupIdList}`,
+    sql`= ANY(${groupIdList})`,
     activeIds,
   );
 

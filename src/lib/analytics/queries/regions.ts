@@ -11,7 +11,7 @@ import {
   hotelGroups,
   locationGroups,
 } from "@/db/schema";
-import { sql, type SQL } from "drizzle-orm";
+import { inArray, sql, type SQL } from "drizzle-orm";
 import { scopedSalesCondition } from "@/lib/scoping/scoped-query";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
 import {
@@ -180,7 +180,11 @@ export async function getRegionDetail(
   userCtx: UserCtx,
 ): Promise<RegionDetail> {
   const whereClause = await buildRegionWhere(filters, userCtx);
-  const regionFilter = sql`${regions.id} IN ${sql.raw(`(${regionIds.map((id) => `'${id}'`).join(",")})`)}`;
+  // Phase 9.1 CR-01 — replace sql.raw IN-list interpolation with parameter-safe
+  // inArray(). Page-level filter (analytics/regions/page.tsx) gates ids through
+  // isUuid before they reach this builder; drizzle's pg adapter additionally
+  // throws on uuid bind-cast for any non-UUID value that slips through.
+  const regionFilter = inArray(regions.id, regionIds);
   const fullWhere = combineConditions([whereClause, regionFilter]);
   const amountMode = buildAmountModeCondition(filters);
   const salesTxn = buildSalesTxnCondition();
@@ -212,11 +216,12 @@ export async function getRegionDetail(
   const currencyKey = summary.currency_key;
   const transactions = Number(summary.transactions);
 
-  // Get location IDs in this region for sub-queries
+  // Get location IDs in this region for sub-queries.
+  // Phase 9.1 CR-01 — parameter-safe inArray() replaces sql.raw interpolation.
   const locationIdsInRegion = sql`
     SELECT ${locationRegionMemberships.locationId}
     FROM ${locationRegionMemberships}
-    WHERE ${locationRegionMemberships.regionId} IN ${sql.raw(`(${regionIds.map((id) => `'${id}'`).join(",")})`)}
+    WHERE ${inArray(locationRegionMemberships.regionId, regionIds)}
   `;
 
   // Hotel group breakdown within region
