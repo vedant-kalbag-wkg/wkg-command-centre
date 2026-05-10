@@ -187,7 +187,7 @@ export async function calculateCommissionsForRecords(
   const ledgerRows: Array<{
     salesRecordId: string;
     locationProductId: string;
-    grossAmount: string;
+    grossAmountGbp: string;
     commissionableAmount: string;
     commissionAmount: string;
     tierBreakdown: Array<{
@@ -286,13 +286,14 @@ export async function calculateCommissionsForRecords(
       ledgerRows.push({
         salesRecordId: rec.id,
         locationProductId: lp.id,
-        // commissionLedger.grossAmount column still exists — store the
-        // commission base. Per D-15, the ledger now stores the GBP value so
-        // the dashboard "Total Commission" / "Commissionable Revenue" tiles
+        // Per D-15, the ledger stores the GBP commission base so the
+        // dashboard "Total Commission" / "Commissionable Revenue" tiles
         // (always-GBP per D-15) read directly from this column without an
-        // extra FX conversion at read-time. Not renaming the column this
-        // phase (out of scope; would need a migration).
-        grossAmount: netGbp.toFixed(2),
+        // extra FX conversion at read-time. PR #40 review (observation A)
+        // renamed the underlying column from `gross_amount` to
+        // `gross_amount_gbp` so the name reflects the semantics — see
+        // migration 0049.
+        grossAmountGbp: netGbp.toFixed(2),
         commissionableAmount: result.commissionableAmount.toFixed(2),
         commissionAmount: result.commissionAmount.toFixed(2),
         tierBreakdown: result.tierBreakdown,
@@ -359,7 +360,7 @@ export async function recalculateCommissions(
         id: commissionLedger.id,
         salesRecordId: commissionLedger.salesRecordId,
         locationProductId: commissionLedger.locationProductId,
-        grossAmount: commissionLedger.grossAmount,
+        grossAmountGbp: commissionLedger.grossAmountGbp,
         commissionableAmount: commissionLedger.commissionableAmount,
         commissionAmount: commissionLedger.commissionAmount,
         tierBreakdown: commissionLedger.tierBreakdown,
@@ -380,7 +381,7 @@ export async function recalculateCommissions(
     const reversals = existing.map((entry) => ({
       salesRecordId: entry.salesRecordId,
       locationProductId: entry.locationProductId,
-      grossAmount: entry.grossAmount,
+      grossAmountGbp: entry.grossAmountGbp,
       commissionableAmount: entry.commissionableAmount,
       commissionAmount: (
         -Math.abs(Number(entry.commissionAmount))

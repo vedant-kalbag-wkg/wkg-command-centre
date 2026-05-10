@@ -148,15 +148,17 @@ describe("commission processor — booking-fee semantics (integration)", () => {
     const entries = await ctx.db
       .select({
         salesRecordId: commissionLedger.salesRecordId,
-        grossAmount: commissionLedger.grossAmount,
+        grossAmountGbp: commissionLedger.grossAmountGbp,
         commissionAmount: commissionLedger.commissionAmount,
       })
       .from(commissionLedger);
 
     expect(entries).toHaveLength(1);
     expect(entries[0].salesRecordId).toBe(feeRow.id);
-    // net=100 stored in grossAmount column (column not renamed this phase).
-    expect(Number(entries[0].grossAmount)).toBeCloseTo(100);
+    // net=100 stored in grossAmountGbp column (PR #40 review observation A —
+    // renamed from gross_amount in migration 0049 to match the GBP semantics
+    // FX-04 introduced).
+    expect(Number(entries[0].grossAmountGbp)).toBeCloseTo(100);
     // 10% flat tier → 10.00 commission.
     expect(Number(entries[0].commissionAmount)).toBeCloseTo(10);
   });
@@ -278,7 +280,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
 
     const entries = await ctx.db
       .select({
-        grossAmount: commissionLedger.grossAmount,
+        grossAmountGbp: commissionLedger.grossAmountGbp,
         commissionAmount: commissionLedger.commissionAmount,
         isReversal: commissionLedger.isReversal,
       })
@@ -291,7 +293,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
       );
 
     expect(entries).toHaveLength(1);
-    expect(Number(entries[0].grossAmount)).toBeCloseTo(200);
+    expect(Number(entries[0].grossAmountGbp)).toBeCloseTo(200);
     // 10% flat tier → 20.00.
     expect(Number(entries[0].commissionAmount)).toBeCloseTo(20);
   });
@@ -358,7 +360,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
 
     const entries = await ctx.db
       .select({
-        grossAmount: commissionLedger.grossAmount,
+        grossAmountGbp: commissionLedger.grossAmountGbp,
         commissionAmount: commissionLedger.commissionAmount,
       })
       .from(commissionLedger)
@@ -372,7 +374,7 @@ describe("commission processor — booking-fee semantics (integration)", () => {
     // Two ledger rows; commission base stored in GBP-normalised units per D-15.
     expect(entries).toHaveLength(2);
     const gbpTotal = entries.reduce(
-      (sum, e) => sum + Number(e.grossAmount),
+      (sum, e) => sum + Number(e.grossAmountGbp),
       0,
     );
     // £850 (EUR-normalised) + £500 (native GBP) = £1350 — matches hand-calc.

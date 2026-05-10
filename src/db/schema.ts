@@ -464,7 +464,12 @@ export const commissionLedger = pgTable(
       .references(() => salesRecords.id, { onDelete: "cascade" }),
     locationProductId: uuid("location_product_id")
       .references(() => locationProducts.id, { onDelete: "set null" }),
-    grossAmount: numeric("gross_amount", { precision: 12, scale: 2 }).notNull(),
+    // Phase 9.1 / PR #40 review (observation A) — renamed from `gross_amount`
+    // to make the GBP-normalised semantics explicit. FX-04 stores the GBP
+    // commission base here (D-15), and the dashboard "Total Commission" /
+    // "Commissionable Revenue" tiles read from this column directly without
+    // an FX round-trip. See migration 0049.
+    grossAmountGbp: numeric("gross_amount_gbp", { precision: 12, scale: 2 }).notNull(),
     commissionableAmount: numeric("commissionable_amount", { precision: 12, scale: 2 }).notNull(),
     commissionAmount: numeric("commission_amount", { precision: 12, scale: 2 }).notNull(),
     tierBreakdown: jsonb("tier_breakdown")
