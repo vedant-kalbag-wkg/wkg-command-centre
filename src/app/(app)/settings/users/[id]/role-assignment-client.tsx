@@ -106,95 +106,105 @@ export function RoleAssignmentClient({
   const availableRoles = allRoles.filter((r) => !assignedRoleIds.has(r.id));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Roles {isLoading && <Loader2 className="inline h-4 w-4 animate-spin ml-2" />}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          {assignments.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No roles assigned. Pick a role below.
-            </p>
-          )}
-          {assignments.map((a) => (
-            <div
-              key={a.userRoleId}
-              className="flex items-center justify-between border rounded-md p-3"
-            >
-              <div>
-                <div className="font-medium">{a.roleDisplayName}</div>
-                <div className="text-xs text-muted-foreground">
-                  {a.roleKind} &middot; {a.scopes.length} scope(s) &middot; assigned{" "}
-                  {new Date(a.assignedAt).toLocaleDateString()}
+    <section role="region" aria-label="Role assignment">
+      <Card>
+        <CardHeader>
+          <CardTitle>Roles {isLoading && <Loader2 className="inline h-4 w-4 animate-spin ml-2" />}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {assignments.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No roles assigned. Pick a role below.
+              </p>
+            )}
+            {assignments.map((a) => (
+              <div
+                key={a.userRoleId}
+                className="flex items-center justify-between border rounded-md p-3"
+              >
+                <div>
+                  <div className="font-medium">{a.roleDisplayName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {a.roleKind} &middot; {a.scopes.length} scope(s) &middot; assigned{" "}
+                    {new Date(a.assignedAt).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title="Edit scopes for this role"
+                    onClick={() =>
+                      setScopeDialog({
+                        open: true,
+                        roleId: a.roleId,
+                        label: a.roleDisplayName,
+                      })
+                    }
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={removingId === a.userRoleId}
+                    onClick={() => handleRevoke(a.userRoleId, a.roleDisplayName)}
+                  >
+                    {removingId === a.userRoleId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <X className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title="Edit scopes for this role"
-                  onClick={() =>
-                    setScopeDialog({
-                      open: true,
-                      roleId: a.roleId,
-                      label: a.roleDisplayName,
-                    })
-                  }
-                >
-                  <SlidersHorizontal className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={removingId === a.userRoleId}
-                  onClick={() => handleRevoke(a.userRoleId, a.roleDisplayName)}
-                >
-                  {removingId === a.userRoleId ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <X className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 pt-2 border-t">
-          <Select value={picker} onValueChange={(v) => setPicker(v ?? "")}>
-            <SelectTrigger className="w-[300px]">
-              <SelectValue placeholder="Pick a role to assign…" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableRoles.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  {r.displayName} ({r.kind})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleAssign} disabled={!picker || isAssigning}>
-            {isAssigning ? <Loader2 className="h-4 w-4 animate-spin" /> : "Assign"}
-          </Button>
-        </div>
-        <div className="text-xs text-muted-foreground">
-          Use the <SlidersHorizontal className="inline h-3 w-3" /> icon to edit dimension
-          scopes for a specific role assignment.
-        </div>
-      </CardContent>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 pt-2 border-t">
+            <Select value={picker} onValueChange={(v) => setPicker(v ?? "")}>
+              <SelectTrigger className="w-[300px]">
+                <SelectValue placeholder="Pick a role to assign…" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRoles.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.displayName} ({r.kind})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={handleAssign}
+              disabled={!picker || isAssigning}
+              aria-label="Assign role"
+            >
+              {isAssigning ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                "Assign role"
+              )}
+            </Button>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Use the <SlidersHorizontal className="inline h-3 w-3" /> icon to edit dimension
+            scopes for a specific role assignment.
+          </div>
+        </CardContent>
 
-      {/* Per-(user, role) scope dialog */}
-      {scopeDialog.roleId && (
-        <ManageScopesDialog
-          user={user}
-          open={scopeDialog.open}
-          onOpenChange={(open) =>
-            setScopeDialog((prev) => ({ ...prev, open }))
-          }
-          roleId={scopeDialog.roleId}
-          assignmentLabel={scopeDialog.label}
-        />
-      )}
-    </Card>
+        {/* Per-(user, role) scope dialog */}
+        {scopeDialog.roleId && (
+          <ManageScopesDialog
+            user={user}
+            open={scopeDialog.open}
+            onOpenChange={(open) =>
+              setScopeDialog((prev) => ({ ...prev, open }))
+            }
+            roleId={scopeDialog.roleId}
+            assignmentLabel={scopeDialog.label}
+          />
+        )}
+      </Card>
+    </section>
   );
 }
