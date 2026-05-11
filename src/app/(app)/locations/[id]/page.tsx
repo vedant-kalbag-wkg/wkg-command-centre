@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { LocationDetailForm } from "@/components/locations/location-detail-form";
 import { getLocation } from "@/app/(app)/locations/actions";
-import { getSessionOrThrow, canAccessSensitiveFields, type Role } from "@/lib/rbac";
+import { getUserCtx } from "@/lib/auth/get-user-ctx";
+import { readableFields } from "@/lib/casl/fields";
 import { LocationAdminPanel } from "./location-admin-panel";
 
 interface LocationDetailPageProps {
@@ -12,9 +13,9 @@ interface LocationDetailPageProps {
 export default async function LocationDetailPage({ params }: LocationDetailPageProps) {
   const { id } = await params;
 
-  const [locationResult, session] = await Promise.all([
+  const [locationResult, ctx] = await Promise.all([
     getLocation(id),
-    getSessionOrThrow(),
+    getUserCtx(),
   ]);
 
   if ("error" in locationResult) {
@@ -22,9 +23,8 @@ export default async function LocationDetailPage({ params }: LocationDetailPageP
   }
 
   const { location } = locationResult;
-  const userType =
-    (session.user as { userType?: "internal" | "external" }).userType ?? "internal";
-  const role = (session.user.role as Role | null) ?? "viewer";
+  const allowed = new Set(readableFields(ctx.ability, "Location"));
+  const canSeeSensitive = allowed.has("bankingDetails");
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
@@ -36,9 +36,9 @@ export default async function LocationDetailPage({ params }: LocationDetailPageP
         <div className="mx-auto max-w-3xl space-y-6">
           <LocationDetailForm
             location={location}
-            canSeeSensitive={canAccessSensitiveFields({ userType, role })}
+            canSeeSensitive={canSeeSensitive}
           />
-          {role === "admin" && (
+          {ctx.role === "admin" && (
             <LocationAdminPanel
               locationId={location.id}
               isSilenced={location.alertSilencedAt !== null}
