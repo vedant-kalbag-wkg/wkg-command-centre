@@ -1,21 +1,35 @@
 ---
 phase: 10
 name: access-control-extended
-status: OPEN_THREATS
-threats_open: 4
-threats_mitigated: 10
+status: CLEAN
+threats_open: 0
+threats_mitigated: 14
 asvs_level: 2
 audited_at: 2026-05-10
 auditor: claude-sonnet-4-6 (adversarial stance)
+remediation_committed: 2026-05-11
 ---
 
 # Phase 10 — Security Audit
 
-## OPEN_THREATS
+## STATUS: CLEAN (post-remediation)
 
 **Phase:** 10 — access-control-extended
-**Closed:** 10/14 | **Open:** 4/14
+**Closed:** 14/14 | **Open:** 0/14
 **ASVS Level:** 2
+
+The original audit (2026-05-10) flagged 4 BLOCKER threats that mapped 1:1 to 10-REVIEW.md
+findings CR-01..CR-04 + WR-02. All five are now fixed in commits below — the OPEN rows in the
+threat table remain for historical traceability, but the "Status" column should be read as
+**RESOLVED via fix commit** for those rows:
+
+| Original Open Threat | Fix Commit | Notes |
+|---|---|---|
+| T-10-03 (CR-03 admin-name reservation) | `7bdd50a` | RESERVED_ROLE_NAMES guard added; role-mirror writes `null` for custom roles |
+| T-10-04 (CR-01 lockout-guard coverage) | `3b9530b` | WHERE widened to `system OR name='admin'` |
+| T-10-05 (CR-04 scope-remove TOCTOU) | `d355ddb` | Wrapped in `db.transaction` with `FOR UPDATE` |
+| T-10-08 (WR-02 audit atomicity) | `d355ddb` | Same transaction now covers audit-log write |
+| T-10-10 (CR-02 0051 idempotency) | `2998eec` | Added migration 0053 with UNIQUE(role_id,action,subject) |
 
 ---
 
