@@ -139,10 +139,10 @@ Plans:
 - [x] 10-08-playwright-uat-and-doc-closeout-PLAN.md — Wave 6 preview Playwright UAT + ops runbook + ROADMAP/REQUIREMENTS/STATE close-out
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 10-09-PLAN.md — Wave 7 (gap closure A): migrations/meta/_journal.json sync — register tags 0050..0053 so drizzle-kit migrate applies Phase 10 SQL on fresh deploys (PROD BLOCKER from 10-UAT-AUTONOMOUS.md)
-- [ ] 10-10-PLAN.md — Wave 7 (gap closure B): canonical seeder — delete broken scripts/seed-test-users.ts (uses auth.api.signUpEmail which disableSignUp:true blocks); rename scripts/seed-test-users-direct.ts → seed-test-users.ts
-- [ ] 10-11-PLAN.md — Wave 7 (gap closure D): a11y selector alignment — Create role button always-renders (disabled-not-hidden); role-assignment block wrapped in section[role=region]; Assign button widened to "Assign role"
-- [ ] 10-12-PLAN.md — Wave 7 (gap closure C): Merge button CASL gate — <Can I="merge" a="Location"> added on /locations/[id]
+- [x] 10-09-PLAN.md — Wave 7 (gap closure A): migrations/meta/_journal.json sync — register tags 0050..0053 so drizzle-kit migrate applies Phase 10 SQL on fresh deploys (PROD BLOCKER from 10-UAT-AUTONOMOUS.md)
+- [x] 10-10-PLAN.md — Wave 7 (gap closure B): canonical seeder — delete broken scripts/seed-test-users.ts (uses auth.api.signUpEmail which disableSignUp:true blocks); rename scripts/seed-test-users-direct.ts → seed-test-users.ts
+- [x] 10-11-PLAN.md — Wave 7 (gap closure D): a11y selector alignment — Create role button always-renders (disabled-not-hidden); role-assignment block wrapped in section[role=region]; Assign button widened to "Assign role"
+- [x] 10-12-PLAN.md — Wave 7 (gap closure C): Merge button CASL gate — <Can I="merge" a="Location"> added on /locations/[id]
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 10-13-PLAN.md — Wave 8 (gap closure verification): live Playwright run against Vercel preview alias; closeout 10-VERIFICATION.md + deferred-items.md + 10-HUMAN-UAT.md + STATE.md
@@ -171,7 +171,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
 | 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
-| 10. Access Control Extended | 8/8 | Complete    | 2026-05-11 |
+| 10. Access Control Extended | 12/13 | In Progress|  |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 
 ## Out of Scope
