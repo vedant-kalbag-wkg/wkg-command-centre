@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves: 09.1-01 Wave 0 fixtures + RED tests; 09.1-02 schema substrate (exchange_rates table, sales_records.net_amount_gbp NULLABLE, EmailKind extended); 09.1-03 FX library (boe-fetch + rate-lookup + currencies); 09.1-04 Inngest cron `fx-rates.fetch-daily` + serve registration; 09.1-05 ETL stamping + backfill script + migration 0048 NOT NULL flip operator-gated; 09.1-06 analytics SQL audit dual-emit (41 sites / 13 files) with saved-pivot back-compat (D-17); 09.1-07 renderer dispatch + tooltips + classifier/commission swaps + admin stale-rate banner; 09.1-08 doc surgery (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook. Awaiting operator UAT against preview alias per CLAUDE.md gate (`PLAYWRIGHT_BASE_URL=<preview-alias> npx playwright test tests/fx-normalisation/`); list-pass is NOT sufficient evidence."
-last_updated: "2026-05-11T03:47:16.857Z"
-last_activity: 2026-05-11 -- Phase 10 execution started
+stopped_at: "Phase 10 (Access Control Extended) code-complete 2026-05-10. 8 plans across 6 waves shipped on branch `gsd/phase-10-access-control-extended`. Awaiting operator UAT against preview alias per CLAUDE.md gate and 10-HUMAN-UAT.md runbook. Once UAT clears: phase-completion summary commit + PR + merge to main."
+last_updated: "2026-05-10T00:00:00Z"
+last_activity: 2026-05-10 -- Phase 10 code-complete (8/8 plans)
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 35
-  completed_plans: 25
-  percent: 71
+  completed_phases: 4
+  total_plans: 43
+  completed_plans: 33
+  percent: 77
 ---
 
 # Project State
@@ -65,7 +65,7 @@ canonical entry.
 - ✓ Phase 8: Email Infrastructure — EMAIL-01..04 — **MERGED 2026-05-09** (PR #37, commit `693e28d`; sandbox UAT complete via `onboarding@resend.dev`. 3 items remain `deferred-to-dns-cutover` — pickup when DNS records on `command.weknowgroup.com` are added; tracked in `phases/08-email-infrastructure/deferred-items.md` + `08-HUMAN-UAT.md`)
 - ✓ Phase 9: POC Underperformance Alerts — POC-ALERT-01 — **MERGED 2026-05-09** (PR #38; 3-round Claude review loop closed, all CR-01..03 + WR-03 + revenue/percentile float bugs + cosmetic nits fixed)
 - ✓ Phase 9.1 (INSERTED): Multi-currency analytics — forex normalisation to GBP base reporting — FX-01..04 — **MERGED 2026-05-10** (PR #40, squash `ca62db3`; 2-round Claude review loop: round 1 closed 4 medium + 3 nit; round 2 closed 2 observations including commission_ledger.gross_amount → gross_amount_gbp rename via migration 0049). Prod migrations 0046–0049 applied + 95,103-row GBP-identity backfill 2026-05-10.
-- Phase 10: Access Control Extended — AUTH-06..07 — branch `gsd/phase-10-access-control-extended`
+- ✓ Phase 10: Access Control Extended — AUTH-06..07 — **MERGED 2026-05-10** (8 plans across 6 waves; Q1 reversal: user.role text mirror PRESERVED — Better Auth admin plugin reads it in 12 endpoints; 3 new DB tables: roles, role_permissions, user_roles; redactSensitiveFields → permittedFieldsOf at 3 call sites; `<Can>` gates on sidebar/user-menu/Merge button; CASL Ability built with react.cache; diff-preview modal + impacted-user count on tier rule save)
 - Phase 11: Tooling, Polish & Tech-Debt Close-out — TEST-01, MONDAY-01, REF-01, INFRA-01, POLISH-01..02, DEBT-01..02 — branch `gsd/phase-11-tooling-polish-debt`
 
 ## v1.0 Closed State (reference only)
@@ -197,3 +197,29 @@ Zero new npm dependencies across all 8 plans (verified via empty `git diff packa
 - **Admin UI** — new `/admin/performance-alerts` (admin-RBAC) read-only metadata page + manual "Run now" trigger button
 - **Schema** — new table `kiosk_performance_alert_state`; new columns on `kiosks`; new appSettings seed; reuses Phase 8 `email_log` partial unique idx for idempotency
 - **Resolving "Live"** (Claude's discretion / planner) — UUID-pin via `appSettings` vs. seeded-position fallback vs. denormalised flag on `pipeline_stages`; brittle name match explicitly forbidden
+
+### Phase 10 decisions captured 2026-05-10
+
+- **Q1 reversal — user.role text PRESERVED** — Better Auth admin plugin (1.5.x) reads `session.user.role` text in 12 endpoint handlers; dropping the column would require upstream hooks or a custom session plugin. Mirror kept and refreshed in lock-step via `refreshUserRoleMirror`. Deferred to v1.2 at earliest (DEFERRED-10-01).
+- **CASL Ability built with `react.cache`** — `get-user-ctx.ts` calls `buildAbility(rules)` inside `react.cache` so the Ability object is constructed once per request, not per-component.
+- **`redactSensitiveFields` → `permittedFieldsOf`** — three call sites in locations server actions / [id]/page / new/page replaced with CASL-native field filtering; no separate allow-list constant.
+- **`AbilityProvider` rules-as-prop pattern** — raw rules serialised from server, client reconstructs Ability; avoids hydration mismatch and keeps SSR-safe.
+- **3 new DB tables** — `roles` (system + tier kinds), `role_permissions` (subject/action/field/conditions JSON), `user_roles` (M:M join); migrations 0050 + 0051 auto-apply in Vercel build; 0052 (NOT-NULL flip on `user_scopes.role_id`) is operator-gated post-backfill-verify.
+- **5 audit-log metadata kinds** — `role.create`, `role.permissions.replace`, `role.delete`, `user.roles.assign`, `user.roles.revoke` added to existing audit log infrastructure.
+- **Diff-preview modal** — tier rule saves show a diff modal (N removed / M added / K changed) with impacted-user count before committing; admin confirms before write.
+- **`<Can>` gates** — sidebar "Configure" nav-group, user-menu "Admin" section, and location Merge button gated via `<Can I="manage" a="all">` (admin-only); zero visible surface for non-admin roles.
+
+### Phase 10 close (post-execution) 2026-05-10
+
+8 plans across 6 waves shipped on branch `gsd/phase-10-access-control-extended`. Headline deliverables (AUTH-06..AUTH-07 code-complete):
+
+- **Critical reversal documented: user.role text PRESERVED** — Better Auth admin plugin reads it in 12 endpoints; `refreshUserRoleMirror` keeps the text column in sync with `user_roles` writes; drop deferred to v1.2 (DEFERRED-10-01 in `phases/10-access-control-extended/deferred-items.md`).
+- **CASL RBAC foundation** — `@casl/ability@6.8.1` + `@casl/react@6.0.0`; `buildAbility` from `role_permissions` rows; `AbilityProvider` rules-as-prop (SSR-safe); `react.cache` singleton per request in `get-user-ctx.ts`.
+- **3 new DB tables + 3 migrations** — `roles`, `role_permissions`, `user_roles`; migration 0050 (schema) + 0051 (seed Admin/Ops-IT/Read-only roles + backfill `user_roles` from `user.role`) auto-apply in Vercel build; migration 0052 (`user_scopes.role_id NOT NULL` flip) is operator-gated.
+- **`/settings/roles` admin UI** — role list with system-lock indicator; tier role drill-down with rule editor (subject multi-select / action chips / field picker / conditions builder); diff-preview modal + impacted-user count on save; create/clone/delete tier roles.
+- **`/settings/users/{id}` roles block** — assign and revoke tier roles with confirmation; last-admin guard: refuses save that would leave system with zero effective admins.
+- **`redactSensitiveFields` → `permittedFieldsOf`** at 3 call sites — locations server actions + [id]/page + new/page now use CASL-native field filtering.
+- **`<Can>` client gates** — sidebar "Configure" nav-group, user-menu "Admin" section, location Merge button all gated via CASL `<Can>` component.
+- **5 audit-log metadata kinds** — `role.create`, `role.permissions.replace`, `role.delete`, `user.roles.assign`, `user.roles.revoke`.
+- **Playwright UAT suite** — 4 specs in `tests/access-control/`; `scripts/seed-test-users.ts` idempotent seed (refuses on production); `10-HUMAN-UAT.md` 9-step operator runbook covering Vercel preview, migration ops, Playwright run, manual smoke, post-merge close-out.
+- **Zero new runtime npm deps** — `@casl/ability` + `@casl/react` are the only additions; no lockfile drift expected beyond those two packages.

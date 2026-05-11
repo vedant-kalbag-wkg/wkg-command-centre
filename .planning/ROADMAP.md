@@ -18,7 +18,7 @@ Source documents: `PROJECT.md` (current milestone section), `REQUIREMENTS.md`, `
 - [x] **Phase 8: Email Infrastructure** — Resend transport, self-serve change-password, forgot-password deliverability UAT, transactional alerts substrate via Inngest. **MERGED 2026-05-09** (PR #37, commit `693e28d`). Sandbox UAT complete via `onboarding@resend.dev`; 3 DNS-cutover-deferred items pick up when `command.weknowgroup.com` DNS records are added (see `phases/08-email-infrastructure/deferred-items.md` + `08-HUMAN-UAT.md`).
 - [x] **Phase 9: POC Underperformance Alerts** — Weekly Inngest cron emails kiosk POCs when their `Live` kiosks fall into bottom outlet-tier; admin per-kiosk silencing; `/admin/performance-alerts` dashboard with manual run trigger (merged 2026-05-09, PR #38)
 - [x] **Phase 9.1: Multi-currency analytics — forex normalisation to GBP base reporting** (INSERTED) — Adds `exchange_rates` table populated daily from Bank of England spot rates via Inngest cron, denormalises `net_amount_gbp` onto `sales_records` at ingest with carry-forward + 7-day staleness ceiling, swaps every analytics aggregate to dual-emit native + GBP for auto-pick rendering, switches the Phase 9 POC classifier and commission processor to GBP-normalised revenue for cross-portfolio ranking. **MERGED 2026-05-10** (PR #40, squash `ca62db3`; 2-round Claude review loop closed 4 medium + 3 nit + 2 follow-up observations incl. migration 0049 commission_ledger column rename). Prod migrations 0046–0049 applied + 95,103-row GBP-identity backfill 2026-05-10. Tracks GitHub issue #39. Two deferred items in `phases/09.1-…/deferred-items.md`.
-- [ ] **Phase 10: Access Control Extended** — CASL `Ability` migration; configurable Ops/IT/Read-only tier rules in DB JSON; admin UI for tier editing without deploy; custom granular roles authorable in admin UI
+- [x] **Phase 10: Access Control Extended** — CASL `Ability` migration; configurable Ops/IT/Read-only tier rules in DB JSON; admin UI for tier editing without deploy; custom granular roles authorable in admin UI. **MERGED 2026-05-10** (8 plans across 6 waves; Q1 reversal: user.role text mirror PRESERVED — Better Auth admin plugin reads it in 12 endpoints; 3 new DB tables: roles, role_permissions, user_roles; redactSensitiveFields → permittedFieldsOf at 3 call sites; <Can> gates on sidebar/user-menu/Merge button; CASL Ability built with react.cache; diff-preview modal + impacted-user count on tier rule save)
 - [ ] **Phase 11: Tooling, Polish & Tech-Debt Close-out** — Staging orphan-rate baseline, Monday drift detection, analytics `useEffect → loadData()` migration, GitHub auto-delete-merged-branches, tab hover/loading polish, calendar empty-state overlay, bulk-action type-safety, Drizzle 0.45.2 patch audit
 
 ## Phase Details
@@ -125,7 +125,7 @@ Plans:
 - [x] 10-05-settings-roles-admin-ui-PLAN.md — Wave 3 /settings/roles list + drill-in + diff-preview + impacted-users
 - [x] 10-06-user-role-assignment-ui-and-removeuser-wrap-PLAN.md — Wave 4 /settings/users/[id]/page.tsx + role-actions + deleteUser lockout wrap
 - [x] 10-07-client-can-gates-and-ability-provider-PLAN.md — Wave 5 layout AbilityProvider + 3 <Can> client gates
-- [ ] 10-08-playwright-uat-and-doc-closeout-PLAN.md — Wave 6 preview Playwright UAT + ops runbook + ROADMAP/REQUIREMENTS/STATE close-out
+- [x] 10-08-playwright-uat-and-doc-closeout-PLAN.md — Wave 6 preview Playwright UAT + ops runbook + ROADMAP/REQUIREMENTS/STATE close-out
 
 ### Phase 11: Tooling, Polish & Tech-Debt Close-out
 **Goal**: Close every outstanding non-trivial item batched at v1.1 close: staging orphan-rate baseline, Monday drift detection, analytics `useEffect → loadData()` migration, GitHub auto-delete-merged-branches, tab hover/loading polish, calendar empty-state overlay, bulk-action type-safety, Drizzle 0.45.2 patch audit. v1.1 reaches a clean operational baseline before v1.2 / v2.0 scope.
@@ -151,7 +151,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
 | 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
-| 10. Access Control Extended | 7/8 | In Progress|  |
+| 10. Access Control Extended | 8/8 | Complete | 2026-05-10 |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 
 ## Out of Scope
