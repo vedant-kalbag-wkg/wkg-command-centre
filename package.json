@@ -71,6 +71,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@casl/ability": "^6.8.1",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@testcontainers/postgresql": "^11.14.0",
