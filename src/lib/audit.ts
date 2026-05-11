@@ -10,7 +10,7 @@ export async function writeAuditLog(
   entry: {
     actorId: string;
     actorName: string;
-    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation" | "app_setting" | "location_flag" | "experiment_cohort" | "action_item" | "commission_ledger" | "product_code_fallback" | "cache" | "system" | "performance_alert_run" | "performance_alert_run_request" | "fx_rate_fetch_run";
+    entityType: "kiosk" | "location" | "installation" | "user" | "sales_import" | "analytics_preset" | "outlet_exclusion" | "business_event" | "event_category" | "impersonation" | "app_setting" | "location_flag" | "experiment_cohort" | "action_item" | "commission_ledger" | "product_code_fallback" | "cache" | "system" | "performance_alert_run" | "performance_alert_run_request" | "fx_rate_fetch_run" | "role" | "role_permission" | "user_role";
     entityId: string;
     entityName: string;
     action:
@@ -35,7 +35,8 @@ export async function writeAuditLog(
       | "monday_import_triggered"
       | "trigger"
       | "silence_alerts"
-      | "unsilence_alerts";
+      | "unsilence_alerts"
+      | "permissions_replace";
     field?: string;
     oldValue?: string;
     newValue?: string;
