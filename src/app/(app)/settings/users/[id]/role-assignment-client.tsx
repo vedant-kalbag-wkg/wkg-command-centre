@@ -135,6 +135,7 @@ export function RoleAssignmentClient({
                     variant="ghost"
                     size="sm"
                     title="Edit scopes for this role"
+                    aria-label="Add scope"
                     onClick={() =>
                       setScopeDialog({
                         open: true,
@@ -143,7 +144,7 @@ export function RoleAssignmentClient({
                       })
                     }
                   >
-                    <SlidersHorizontal className="h-4 w-4" />
+                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
@@ -163,7 +164,7 @@ export function RoleAssignmentClient({
           </div>
           <div className="flex items-center gap-2 pt-2 border-t">
             <Select value={picker} onValueChange={(v) => setPicker(v ?? "")}>
-              <SelectTrigger className="w-[300px]">
+              <SelectTrigger className="w-[300px]" aria-label="Role">
                 <SelectValue placeholder="Pick a role to assign…" />
               </SelectTrigger>
               <SelectContent>
