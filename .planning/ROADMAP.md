@@ -115,17 +115,37 @@ Plans:
   3. `redactSensitiveFields` replaced by `permittedFieldsOf(ability, 'read', subject)` drop-in across all call sites
   4. Admin can create / edit / clone custom granular roles (subjects × actions × fields × conditions) and assign per-user
   5. Existing 3-role coverage (Admin / Ops-IT / Read-only) preserved as default tier definitions; no behavioural regression for current users
-**Plans**: 8 plans
+**Plans**: 13 plans (8 original + 5 gap closure)
 
 Plans:
+**Wave 1**
 - [x] 10-01-wave-0-test-scaffolds-PLAN.md — Wave 1 RED test scaffolds (16 files)
 - [x] 10-02-schema-migrations-and-audit-extension-PLAN.md — Wave 1 schema (3 tables) + 3 migrations + audit union widen + CASL deps
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [x] 10-03-casl-core-ability-builder-PLAN.md — Wave 2 buildAbility (react.cache) + types/subjects/fields/external-invariant/seed/role-mirror/lockout-guard/ability-context
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [x] 10-04-rbac-shim-and-call-site-cutover-PLAN.md — Wave 3 rbac.ts shim + 3 redactSensitiveFields call sites (location-products-client owned by 10-07)
 - [x] 10-05-settings-roles-admin-ui-PLAN.md — Wave 3 /settings/roles list + drill-in + diff-preview + impacted-users
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [x] 10-06-user-role-assignment-ui-and-removeuser-wrap-PLAN.md — Wave 4 /settings/users/[id]/page.tsx + role-actions + deleteUser lockout wrap
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [x] 10-07-client-can-gates-and-ability-provider-PLAN.md — Wave 5 layout AbilityProvider + 3 <Can> client gates
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [x] 10-08-playwright-uat-and-doc-closeout-PLAN.md — Wave 6 preview Playwright UAT + ops runbook + ROADMAP/REQUIREMENTS/STATE close-out
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 10-09-PLAN.md — Wave 7 (gap closure A): migrations/meta/_journal.json sync — register tags 0050..0053 so drizzle-kit migrate applies Phase 10 SQL on fresh deploys (PROD BLOCKER from 10-UAT-AUTONOMOUS.md)
+- [ ] 10-10-PLAN.md — Wave 7 (gap closure B): canonical seeder — delete broken scripts/seed-test-users.ts (uses auth.api.signUpEmail which disableSignUp:true blocks); rename scripts/seed-test-users-direct.ts → seed-test-users.ts
+- [ ] 10-11-PLAN.md — Wave 7 (gap closure D): a11y selector alignment — Create role button always-renders (disabled-not-hidden); role-assignment block wrapped in section[role=region]; Assign button widened to "Assign role"
+- [ ] 10-12-PLAN.md — Wave 7 (gap closure C): Merge button CASL gate — <Can I="merge" a="Location"> added on /locations/[id]
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 10-13-PLAN.md — Wave 8 (gap closure verification): live Playwright run against Vercel preview alias; closeout 10-VERIFICATION.md + deferred-items.md + 10-HUMAN-UAT.md + STATE.md
 
 ### Phase 11: Tooling, Polish & Tech-Debt Close-out
 **Goal**: Close every outstanding non-trivial item batched at v1.1 close: staging orphan-rate baseline, Monday drift detection, analytics `useEffect → loadData()` migration, GitHub auto-delete-merged-branches, tab hover/loading polish, calendar empty-state overlay, bulk-action type-safety, Drizzle 0.45.2 patch audit. v1.1 reaches a clean operational baseline before v1.2 / v2.0 scope.
