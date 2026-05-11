@@ -81,6 +81,13 @@ export function RoleListClient({
   const [createRules, setCreateRules] = useState<DraftRule[]>([]);
   const [createSubmitting, setCreateSubmitting] = useState(false);
 
+  // Out-of-band success message — Sonner v2 toasts have aria-live but no
+  // role="status", so page.getByRole("status") in role-editor.spec.ts:83
+  // (and edit-tier.spec.ts:74) never matches. Mirror the success text into
+  // a sr-only live region held at parent scope so it survives the dialog
+  // unmount triggered by setCreateOpen(false).
+  const [createdMessage, setCreatedMessage] = useState<string | null>(null);
+
   // Clone dialog state
   const [cloneName, setCloneName] = useState("");
   const [cloneDisplayName, setCloneDisplayName] = useState("");
@@ -96,7 +103,18 @@ export function RoleListClient({
   // ── Create ─────────────────────────────────────────────────────────
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!createName.trim() || !createDisplayName.trim()) return;
+    const trimmedDisplayName = createDisplayName.trim();
+    if (!trimmedDisplayName) return;
+    // Derive a slug-style name from displayName when the user did not type
+    // an explicit Role name — collapses the form to the common case of
+    // "I just want a role called X" and matches role-editor.spec.ts:32
+    // which only fills Display name.
+    const effectiveName =
+      createName.trim() ||
+      trimmedDisplayName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
     // Drop any incomplete draft rules; the DB stores one action per row,
     // so each draft maps 1:1 to a RawRule with no fields/conditions.
     const rules: RawRule[] = createRules
@@ -111,15 +129,17 @@ export function RoleListClient({
     setCreateSubmitting(true);
     try {
       const result = await createRole({
-        name: createName.trim(),
-        displayName: createDisplayName.trim(),
+        name: effectiveName,
+        displayName: trimmedDisplayName,
         description: createDescription.trim() || undefined,
         rules,
       });
       if ("error" in result) {
         toast.error(result.error);
       } else {
-        toast.success(`Role "${createDisplayName.trim()}" created.`);
+        const successMessage = `Role created — ${trimmedDisplayName}`;
+        toast.success(successMessage);
+        setCreatedMessage(successMessage);
         setCreateOpen(false);
         setCreateName("");
         setCreateDisplayName("");
@@ -493,11 +513,7 @@ export function RoleListClient({
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  createSubmitting ||
-                  !createName.trim() ||
-                  !createDisplayName.trim()
-                }
+                disabled={createSubmitting || !createDisplayName.trim()}
               >
                 {createSubmitting ? "Creating…" : "Create"}
               </Button>
@@ -565,6 +581,13 @@ export function RoleListClient({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Out-of-band live region — see createdMessage comment above. */}
+      {createdMessage && (
+        <div role="status" aria-live="polite" className="sr-only">
+          {createdMessage}
+        </div>
+      )}
     </>
   );
 }
