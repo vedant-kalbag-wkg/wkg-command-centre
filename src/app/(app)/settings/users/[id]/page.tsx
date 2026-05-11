@@ -8,6 +8,7 @@ import { listUserRoles } from "./role-actions";
 import { listScopes } from "./scopes-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { RoleAssignmentClient } from "./role-assignment-client";
+import type { UserListItem } from "@/app/(app)/settings/users/actions";
 
 export default async function UserDetailPage({
   params,
@@ -31,6 +32,15 @@ export default async function UserDetailPage({
 
   const allRoles = "roles" in rolesResult ? rolesResult.roles : [];
 
+  const targetUser: UserListItem = {
+    id: target.id,
+    name: target.name ?? "",
+    email: target.email,
+    role: (target.role as string) ?? "member",
+    banned: !!(target.banned),
+    createdAt: new Date(target.createdAt),
+  };
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <PageHeader
@@ -40,6 +50,7 @@ export default async function UserDetailPage({
       <div className="flex-1 overflow-auto p-4 md:p-6 space-y-6">
         <RoleAssignmentClient
           userId={id}
+          user={targetUser}
           initialAssignments={assignmentsResult}
           allRoles={allRoles}
           initialScopes={scopesResult}

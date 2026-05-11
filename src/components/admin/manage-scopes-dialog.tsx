@@ -45,6 +45,10 @@ interface ManageScopesDialogProps {
   user: UserListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When provided, scopes are filtered + bound to this role assignment. */
+  roleId?: string;
+  /** Human-readable label shown in the dialog title (e.g. role display name). */
+  assignmentLabel?: string;
 }
 
 function formatDate(date: Date): string {
@@ -64,6 +68,8 @@ export function ManageScopesDialog({
   user,
   open,
   onOpenChange,
+  roleId,
+  assignmentLabel,
 }: ManageScopesDialogProps) {
   const [scopes, setScopes] = useState<UserScopeRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -78,7 +84,7 @@ export function ManageScopesDialog({
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
-      const rows = await listScopes(user.id);
+      const rows = await listScopes(user.id, roleId);
       setScopes(rows);
     } catch (error) {
       const message =
@@ -87,7 +93,7 @@ export function ManageScopesDialog({
     } finally {
       setIsLoading(false);
     }
-  }, [user.id]);
+  }, [user.id, roleId]);
 
   useEffect(() => {
     if (open) {
@@ -96,6 +102,12 @@ export function ManageScopesDialog({
   }, [open, refresh]);
 
   async function handleAdd() {
+    if (!roleId) {
+      // addScope now requires a roleId — guard is defensive but should never
+      // be reached because the Add form is hidden when roleId is absent.
+      toast.error("Cannot add scope: no role assignment context");
+      return;
+    }
     const trimmed = newDimensionId.trim();
     if (!trimmed) {
       toast.error("Dimension ID is required");
@@ -103,7 +115,7 @@ export function ManageScopesDialog({
     }
     setIsAdding(true);
     try {
-      await addScope(user.id, newDimensionType, trimmed);
+      await addScope(user.id, roleId, newDimensionType, trimmed);
       toast.success("Scope added");
       setNewDimensionId("");
       await refresh();
@@ -137,7 +149,9 @@ export function ManageScopesDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[640px]">
         <DialogHeader>
-          <DialogTitle>Manage scopes</DialogTitle>
+          <DialogTitle>
+            Manage scopes{assignmentLabel ? ` — ${assignmentLabel}` : ""}
+          </DialogTitle>
           <DialogDescription>
             Add or remove dimension scopes for {displayName}. Scopes constrain
             which records this user can read in analytics queries.
@@ -199,8 +213,10 @@ export function ManageScopesDialog({
             )}
           </div>
 
-          {/* Add scope form */}
-          <div className="grid gap-3 rounded-lg border p-3">
+          {/* Add scope form — only shown when a roleId is provided (new per-(user,role) path).
+               Legacy callers (user-table.tsx) omit roleId, so we hide this section to avoid
+               calling addScope without the now-required roleId argument. */}
+          {roleId && <div className="grid gap-3 rounded-lg border p-3">
             <div className="text-sm font-medium">Add scope</div>
             <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
               <div className="grid gap-1.5">
@@ -252,7 +268,7 @@ export function ManageScopesDialog({
                 Add
               </Button>
             </div>
-          </div>
+          </div>}
         </div>
 
         <DialogFooter>

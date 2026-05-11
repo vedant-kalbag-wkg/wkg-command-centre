@@ -31,18 +31,22 @@ async function getActorFromSession(): Promise<Actor> {
   };
 }
 
-export async function listScopes(userId: string): Promise<UserScopeRow[]> {
+export async function listScopes(
+  userId: string,
+  roleId?: string,
+): Promise<UserScopeRow[]> {
   const actor = await getActorFromSession();
-  return _listScopesForActor(prodDb, actor, userId);
+  return _listScopesForActor(prodDb, actor, userId, roleId);
 }
 
 export async function addScope(
   userId: string,
+  roleId: string,
   dimensionType: DimensionType,
   dimensionId: string,
 ): Promise<void> {
   const actor = await getActorFromSession();
-  await _addScopeForActor(prodDb, actor, userId, dimensionType, dimensionId);
+  await _addScopeForActor(prodDb, actor, userId, roleId, dimensionType, dimensionId);
 }
 
 export async function removeScope(scopeId: string): Promise<void> {

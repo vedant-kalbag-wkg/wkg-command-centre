@@ -9,6 +9,8 @@ import {
 import {
   user,
   userScopes,
+  roles,
+  userRoles,
   auditLogs,
   hotelGroups,
   providers as providersTable,
@@ -52,6 +54,9 @@ describe('userScopes CRUD actions (integration)', () => {
   // Target users for scope manipulation
   const externalUserId = randomUUID();
   const internalUserId = randomUUID();
+
+  // A role used to bind userRoles rows (required since _addScopeForActor v2 verifies assignment).
+  let testRoleId: string;
 
   // Dimension IDs (real rows so unique constraint behaviour is faithful)
   let hgAId: string;
@@ -119,6 +124,18 @@ describe('userScopes CRUD actions (integration)', () => {
     hgAId = hgA.id;
     hgBId = hgB.id;
     providerId = prov.id;
+
+    // Seed a role and bind it to both target users so _addScopeForActor v2
+    // can verify the userRoles assignment exists before inserting a scope.
+    const [testRole] = await ctx.db
+      .insert(roles)
+      .values({ name: 'test-role', kind: 'system', displayName: 'Test Role' })
+      .returning();
+    testRoleId = testRole.id;
+    await ctx.db.insert(userRoles).values([
+      { userId: internalUserId, roleId: testRoleId },
+      { userId: externalUserId, roleId: testRoleId },
+    ]);
   }, 180_000);
 
   afterAll(async () => {
@@ -140,6 +157,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -160,6 +178,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -167,6 +186,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgBId,
     );
@@ -205,6 +225,7 @@ describe('userScopes CRUD actions (integration)', () => {
         ctx.db,
         viewerActor,
         internalUserId,
+        testRoleId,
         'hotel_group',
         hgAId,
       ),
@@ -217,6 +238,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -240,6 +262,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       externalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -267,6 +290,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       externalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -274,6 +298,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       externalUserId,
+      testRoleId,
       'provider',
       providerId,
     );
@@ -300,6 +325,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -329,6 +355,7 @@ describe('userScopes CRUD actions (integration)', () => {
         ctx.db,
         adminActor,
         internalUserId,
+        testRoleId,
         // @ts-expect-error — intentionally bad input to exercise runtime guard
         'bogus',
         hgAId,
@@ -345,6 +372,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -352,6 +380,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -373,6 +402,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -404,6 +434,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'provider',
       providerId,
     );
@@ -445,6 +476,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );
@@ -452,6 +484,7 @@ describe('userScopes CRUD actions (integration)', () => {
       ctx.db,
       adminActor,
       internalUserId,
+      testRoleId,
       'hotel_group',
       hgAId,
     );

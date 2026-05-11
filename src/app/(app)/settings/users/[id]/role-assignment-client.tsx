@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { toast } from "sonner";
-import { Loader2, X } from "lucide-react";
+import { Loader2, SlidersHorizontal, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,14 +14,19 @@ import {
 import { listUserRoles, assignRole, revokeRole } from "./role-actions";
 import type { UserRoleAssignment } from "./role-internal";
 import type { RoleListItem } from "@/app/(app)/settings/roles/editor-internal";
+import { ManageScopesDialog } from "@/components/admin/manage-scopes-dialog";
+import type { UserListItem } from "@/app/(app)/settings/users/actions";
 
 export function RoleAssignmentClient({
   userId,
+  user,
   initialAssignments,
   allRoles,
   initialScopes,
 }: {
   userId: string;
+  /** Full UserListItem passed down from the RSC page — needed by ManageScopesDialog. */
+  user: UserListItem;
   initialAssignments: UserRoleAssignment[];
   allRoles: RoleListItem[];
   initialScopes: unknown[];
@@ -31,8 +36,13 @@ export function RoleAssignmentClient({
   const [removingId, setRemovingId] = React.useState<string | null>(null);
   const [picker, setPicker] = React.useState<string>("");
   const [isAssigning, setIsAssigning] = React.useState(false);
+  const [scopeDialog, setScopeDialog] = React.useState<{
+    open: boolean;
+    roleId: string | null;
+    label: string;
+  }>({ open: false, roleId: null, label: "" });
 
-  // initialScopes retained for future Task 4 extension (per-(user, role) scopes)
+  // initialScopes retained for future extension
   void initialScopes;
 
   const refresh = React.useCallback(async () => {
@@ -119,18 +129,34 @@ export function RoleAssignmentClient({
                   {new Date(a.assignedAt).toLocaleDateString()}
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={removingId === a.userRoleId}
-                onClick={() => handleRevoke(a.userRoleId, a.roleDisplayName)}
-              >
-                {removingId === a.userRoleId ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <X className="h-4 w-4" />
-                )}
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Edit scopes for this role"
+                  onClick={() =>
+                    setScopeDialog({
+                      open: true,
+                      roleId: a.roleId,
+                      label: a.roleDisplayName,
+                    })
+                  }
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={removingId === a.userRoleId}
+                  onClick={() => handleRevoke(a.userRoleId, a.roleDisplayName)}
+                >
+                  {removingId === a.userRoleId ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
             </div>
           ))}
         </div>
@@ -152,11 +178,23 @@ export function RoleAssignmentClient({
           </Button>
         </div>
         <div className="text-xs text-muted-foreground">
-          To bind scopes (regions, hotel groups, etc.) to a role assignment, use the existing
-          Scopes dialog below. Per-(user, role) scope binding is captured by the assignment
-          audit log.
+          Use the <SlidersHorizontal className="inline h-3 w-3" /> icon to edit dimension
+          scopes for a specific role assignment.
         </div>
       </CardContent>
+
+      {/* Per-(user, role) scope dialog */}
+      {scopeDialog.roleId && (
+        <ManageScopesDialog
+          user={user}
+          open={scopeDialog.open}
+          onOpenChange={(open) =>
+            setScopeDialog((prev) => ({ ...prev, open }))
+          }
+          roleId={scopeDialog.roleId}
+          assignmentLabel={scopeDialog.label}
+        />
+      )}
     </Card>
   );
 }
