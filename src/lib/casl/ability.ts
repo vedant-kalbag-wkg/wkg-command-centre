@@ -19,19 +19,20 @@ export const buildAbility = cache(async (userId: string): Promise<AppAbility> =>
     .limit(1);
 
   const builder = new AbilityBuilder<AppAbility>(createMongoAbility);
-  const userType = (u?.userType ?? "internal") as "internal" | "external" | "system";
-
-  // 2. System short-circuit (userType OR text-mirror == 'system'). ETL
-  //    cron and scripts pass through here when running with a system
-  //    identity; they always get manage all without DB roundtrip.
-  if (userType === "system" || (u?.role as string) === "system") {
-    builder.can("manage", "all");
-    return builder.build();
-  }
 
   if (!u) {
     // Unknown user — empty ability + external invariant for safety
     applyExternalUserInvariant(builder, "external");
+    return builder.build();
+  }
+
+  const userType = u.userType as "internal" | "external" | "system";
+
+  // 2. System short-circuit (userType OR text-mirror == 'system'). ETL
+  //    cron and scripts pass through here when running with a system
+  //    identity; they always get manage all without DB roundtrip.
+  if (userType === "system" || (u.role as string) === "system") {
+    builder.can("manage", "all");
     return builder.build();
   }
 

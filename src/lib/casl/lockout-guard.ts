@@ -1,4 +1,4 @@
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { roles, user, userRoles } from "@/db/schema";
 
 type AnyDb = any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -45,7 +45,7 @@ export async function assertAtLeastOneEffectiveAdmin(
     .where(
       and(
         // Either a system-kind role or one literally named "admin"
-        eq(roles.kind, "system"),
+        or(eq(roles.kind, "system"), eq(roles.name, "admin")),
         eq(user.banned, false),
       ),
     );
