@@ -72,12 +72,18 @@ test.describe("user role assignment — /settings/users/[id]", () => {
     // Click "Assign role" button in the role-assignment block
     await page.getByRole("button", { name: /assign role/i }).click();
 
-    // Pick Ops-IT from the role selector
-    await page.getByLabel(/role/i).selectOption({ label: "ops-it" });
+    // Pick Ops-IT from the role selector.
+    // Radix Select is not a native <select> — Playwright's selectOption
+    // API is incompatible; use the canonical click + option-click pattern.
+    // Plan 10-15 / gap-closure-round-3.
+    await page.getByLabel(/role/i).click();
+    await page.getByRole("option", { name: /ops.?it/i }).click();
 
     // Add scope: region = south-west
     await page.getByRole("button", { name: /add scope/i }).click();
-    await page.getByLabel(/dimension type/i).selectOption("region");
+    // Same Radix limitation on the Dimension type select inside ManageScopesDialog.
+    await page.getByLabel(/dimension type/i).click();
+    await page.getByRole("option", { name: /region/i }).click();
     await page.getByLabel(/dimension (id|value)/i).fill("south-west");
 
     // Submit
