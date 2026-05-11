@@ -115,7 +115,7 @@ Plans:
   3. `redactSensitiveFields` replaced by `permittedFieldsOf(ability, 'read', subject)` drop-in across all call sites
   4. Admin can create / edit / clone custom granular roles (subjects × actions × fields × conditions) and assign per-user
   5. Existing 3-role coverage (Admin / Ops-IT / Read-only) preserved as default tier definitions; no behavioural regression for current users
-**Plans**: 13 plans (8 original + 5 gap closure)
+**Plans**: 14 plans (8 original + 6 gap closure)
 
 Plans:
 **Wave 1**
@@ -146,6 +146,7 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 10-13-PLAN.md — Wave 8 (gap closure verification): live Playwright run against Vercel preview alias; closeout 10-VERIFICATION.md + deferred-items.md + 10-HUMAN-UAT.md + STATE.md
+- [x] 10-14-PLAN.md — Wave 8 (gap closure round 2 — source fixes): null-guard derived fields on /locations/[id] RSC (cluster A); RuleRow row+remove a11y; Create role Description Textarea; role picker + Add scope aria-labels (unblocks resumed 10-13)
 
 ### Phase 11: Tooling, Polish & Tech-Debt Close-out
 **Goal**: Close every outstanding non-trivial item batched at v1.1 close: staging orphan-rate baseline, Monday drift detection, analytics `useEffect → loadData()` migration, GitHub auto-delete-merged-branches, tab hover/loading polish, calendar empty-state overlay, bulk-action type-safety, Drizzle 0.45.2 patch audit. v1.1 reaches a clean operational baseline before v1.2 / v2.0 scope.
