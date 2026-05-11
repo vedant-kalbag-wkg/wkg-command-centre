@@ -50,8 +50,8 @@ Turn v1.0's MVP into the day-to-day ops platform the team operates from by:
 
 ## D. Access control extended
 
-- [ ] **AUTH-06** — Configurable Ops/IT/Read-only RBAC tiers via CASL. Rules stored as JSON in DB; admin UI for editing tier permissions without deploy. `redactSensitiveFields` migrates to `permittedFieldsOf(ability, 'read', subject)`. Existing `userScopes` preserved (feeds CASL `conditions`).
-- [ ] **AUTH-07** — Custom granular roles authorable in admin UI. Per-role rule set (subjects × actions × fields × conditions). Role assignment per-user; UI for creating/editing/cloning roles.
+- [x] **AUTH-06** — Configurable Ops/IT/Read-only RBAC tiers via CASL. Rules stored as JSON in DB; admin UI for editing tier permissions without deploy. `redactSensitiveFields` migrates to `permittedFieldsOf(ability, 'read', subject)`. Existing `userScopes` preserved (feeds CASL `conditions`).
+- [x] **AUTH-07** — Custom granular roles authorable in admin UI. Per-role rule set (subjects × actions × fields × conditions). Role assignment per-user; UI for creating/editing/cloning roles.
 
 ## E. Test coverage + tooling
 
