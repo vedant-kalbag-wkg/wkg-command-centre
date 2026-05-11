@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-status: executing
-stopped_at: "Phase 10 (Access Control Extended) context captured 2026-05-10 — `.planning/phases/10-access-control-extended/10-CONTEXT.md` + `10-DISCUSSION-LOG.md` committed (`2a8048a`). 4/4 gray areas decided: hybrid `roles`+`role_permissions` schema with replace-all edit semantics, scope rules layered at builder time (Option B); Admin immutable system role + editable Ops-IT/Read-only seed tiers, `user.role` text replaced by `role_id` FK in one migration, `system` role bypasses CASL, external-user invariant kept as code-level guard; IAM-style multi-role per user with scope-on-assignment (`userScopes` evolves to per-(user, role, dimension)) and AWS-style explicit-deny-wins; form-driven editor at new `/settings/roles` with diff + impacted-users-count save flow. Six open research questions for the planner. Phase 10 ready for `/gsd-plan-phase 10`."
-last_updated: "2026-05-10T17:30:00.000Z"
-last_activity: "2026-05-10 — Phase 10 discuss-phase complete. CONTEXT.md + DISCUSSION-LOG.md committed (`2a8048a`)."
+status: planning
+stopped_at: "Phase 10 Plan 02 (Schema Migrations + Audit Extension) complete 2026-05-10 — CASL deps installed, 3 RBAC tables added (roles/role_permissions/user_roles), 3 migrations authored (0050 DDL / 0051 seed+backfill / 0052 operator-gated NOT-NULL flip), audit.ts unions widened, seed-test-users.ts seeded, TEST_OPS_IT + TEST_VIEWER added to tests/auth/setup.ts. 5 task commits: 47ecc6c / 7a62d9f / 4d66b4c / 63ba59a / 857da8a. Awaiting human verify checkpoint."
+last_updated: "2026-05-10T00:00:00.000Z"
+last_activity: 2026-05-10
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 27
-  completed_plans: 25
-  percent: 93
+  total_plans: 35
+  completed_plans: 27
+  percent: 77
 ---
 
 # Project State
@@ -26,7 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 ## Current Position
 
 Phase: 10
-Status: Ready to plan — context captured (`phases/10-access-control-extended/10-CONTEXT.md`); next step is `/gsd-plan-phase 10`
+Current Plan: 2 of 8
+Status: Executing — Plan 02 complete, awaiting human verify before Plan 03
 Last activity: 2026-05-10
 
 ## Pending v1.1 close-out actions (from completed phases)
@@ -40,16 +41,19 @@ canonical entry.
   is lazy construction inside each send helper. Tracked in
   `phases/08-email-infrastructure/deferred-items.md`. Workaround:
   `RESEND_API_KEY=re_test_key npx vitest run`.
+
 - **Phase 8 DNS-cutover items (1, 4, 8)** — sandbox UAT used Resend's
   shared sender (`onboarding@resend.dev`); the throwaway-user invite +
   arbitrary-recipient EMAIL-03 path needs DNS records on
   `command.weknowgroup.com` before it can be re-tested. Tracked in
   `phases/08-email-infrastructure/08-HUMAN-UAT.md`.
+
 - **DEFERRED-09.1-01** — `analytics-currency-render` Test 1 (single-
   currency native render) deferred until a preview/staging env has
   non-GBP sales data. Renderer dispatch is unit-tested; only the live
   visual confirmation is missing. Tracked in
   `phases/09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep/deferred-items.md`.
+
 - **DEFERRED-09.1-02** — `exchange_rates` table on prod is empty until
   the BoE Inngest cron fires at 06:00 Europe/London. Default path: wait;
   manual seed only if a non-GBP import lands first. Tracked in same
@@ -178,6 +182,14 @@ Zero new npm dependencies across all 8 plans (verified via empty `git diff packa
 ### Phase 8 housekeeping flagged
 
 - `.planning/ROADMAP.md` lives only on `docs/architecture-and-azure-hosting` (commit `1a0d6a7`); port to phase-branch line before v1.1 close-out merge. The port must reflect the 2026-05-09 phase 9 rescope (POC-ALERT-01 replaces NOTIF-01/02 + REPORT-05/06).
+
+### Phase 10 Plan 02 decisions captured 2026-05-10
+
+- **user.role TEXT preserved** — Better Auth admin plugin reads `session.user.role` text in 12 endpoint handlers; column NEVER dropped; migrations avoid touching it
+- **user_scopes.roleId onDelete=cascade** — scope rows bound to a deleted role are meaningless; set-null leaves dangling null-role scopes with no repair path
+- **0052 operator-gated** — NOT-NULL flip on user_scopes.role_id follows 0048 house style; operator must confirm zero NULL rows before applying
+- **system userType short-circuits before user_roles** — users with userType='system' (ETL/automation) get no user_roles row; ability builder handles via short-circuit before consulting roles tables
+- **lockfile Docker regen with --ignore-scripts** — postinstall runs patch-package which is absent from isolated /build container; --ignore-scripts added to npm install --package-lock-only and npm ci --dry-run
 
 ### Phase 9 decisions captured 2026-05-09
 
