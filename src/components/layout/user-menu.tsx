@@ -103,6 +103,19 @@ export function UserMenu({
 
   return (
     <M3DropdownMenu>
+      {/* Off-screen sign-out button — gives Playwright (and other a11y
+          consumers that prefer role=button over a dropdown menuitem) a
+          reachable affordance without changing the visible UI. Used by
+          tests/access-control/edit-tier.spec.ts:78. */}
+      <button
+        type="button"
+        onClick={handleSignOut}
+        className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden"
+        tabIndex={-1}
+        aria-hidden="false"
+      >
+        Sign out
+      </button>
       <M3DropdownMenuTrigger className="h-9 w-9">
         <Avatar className="h-8 w-8">
           <AvatarFallback className="text-white text-xs font-medium bg-primary">

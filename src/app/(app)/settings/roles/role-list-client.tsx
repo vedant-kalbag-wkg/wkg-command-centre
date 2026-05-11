@@ -372,11 +372,10 @@ export function RoleListClient({
               </Label>
               <Input
                 id="create-name"
-                placeholder="e.g. regional_manager"
+                placeholder="leave blank to derive from display name"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
                 pattern="[a-z0-9_-]+"
-                required
               />
             </div>
 
