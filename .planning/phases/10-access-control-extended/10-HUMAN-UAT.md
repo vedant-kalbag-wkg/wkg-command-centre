@@ -126,10 +126,19 @@ TEST_VIEWER_PASSWORD="<choose a strong password>" \
   npx tsx scripts/seed-test-users.ts
 ```
 
-Expected output: `Seeded ops-it.test@weknowgroup.com (userId=..., role=member)` and similar
-for viewer. Script REFUSES if NODE_ENV=production OR DATABASE_URL contains 'wkg-command-centre'.
-For preview the URL contains the project name but not 'wkg-command-centre' (preview projects
-have alias-derived URLs). If the refusal triggers spuriously, double-check you're targeting
+The seeder writes directly to the `user` and `account` tables via
+`auth.$context.password.hash()` because `src/lib/auth.ts` sets `disableSignUp: true`, which
+blocks the Better Auth sign-up endpoint. `scripts/seed-test-users.ts` is the single
+canonical seeder for test and preview DBs.
+
+Expected output (first run): `Created ops-it.test@weknowgroup.com (userId=..., role=member)`
+and similar for viewer. On a re-run against the same DB the seeder is idempotent and prints
+`Updated existing ...` (re-hashes the password so a known credential is always settable)
+or `Added credential account for existing ...` (if the user row pre-existed without a
+credential account). Script REFUSES if NODE_ENV=production OR DATABASE_URL contains
+'wkg-command-centre' or 'wkg-kiosk-tool' (current + historical prod project aliases).
+For preview the URL contains the project name but not those hints (preview projects have
+alias-derived URLs). If the refusal triggers spuriously, double-check you're targeting
 the preview DB, NOT the prod project's DB.
 
 Add the same env vars to Vercel preview (so server-side rendering can match the credential
