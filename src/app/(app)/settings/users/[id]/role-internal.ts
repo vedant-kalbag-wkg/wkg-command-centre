@@ -17,7 +17,6 @@
  *      `role-actions.ts` are reachable from the network.
  */
 
-import { db as defaultDb } from "@/db";
 import { roles, userRoles, userScopes, user } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import { refreshUserRoleMirror } from "@/lib/casl/role-mirror";
@@ -172,17 +171,13 @@ export async function _assignRoleForActor(
       })
       .returning({ id: userRoles.id });
 
-    const userRoleId =
-      inserted[0]?.id ??
-      (
-        await tx
-          .select({ id: userRoles.id })
-          .from(userRoles)
-          .where(
-            and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)),
-          )
-          .limit(1)
-      )[0].id;
+    const fallback = await tx
+      .select({ id: userRoles.id })
+      .from(userRoles)
+      .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
+      .limit(1);
+    const userRoleId = inserted[0]?.id ?? fallback[0]?.id;
+    if (!userRoleId) throw new Error("Failed to resolve userRoleId after upsert");
 
     // Insert per-(user, role, dim) scopes.
     if (scopes.length > 0) {
@@ -318,6 +313,3 @@ export async function _revokeRoleForActor(
   });
 }
 
-// Suppress unused import warning — defaultDb import is needed for type
-// compatibility in schema operations even when not referenced directly.
-void defaultDb;
