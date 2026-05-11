@@ -17,7 +17,7 @@
  *      `scopes-actions.ts` are reachable from the network.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { user, userScopes, userRoles } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import type { DimensionType } from "@/lib/scoping/scoped-query";
@@ -110,38 +110,40 @@ export async function _addScopeForActor(
     throw new Error("Cannot bind scope: this role is not assigned to the user");
   }
 
-  await db
-    .insert(userScopes)
-    .values({
-      userId,
-      roleId,
-      dimensionType,
-      dimensionId,
-      createdBy: actor.id,
-    })
-    .onConflictDoNothing({
-      target: [
-        userScopes.userId,
-        userScopes.roleId,
-        userScopes.dimensionType,
-        userScopes.dimensionId,
-      ],
-    });
+  await db.transaction(async (tx: AnyDb) => {
+    await tx
+      .insert(userScopes)
+      .values({
+        userId,
+        roleId,
+        dimensionType,
+        dimensionId,
+        createdBy: actor.id,
+      })
+      .onConflictDoNothing({
+        target: [
+          userScopes.userId,
+          userScopes.roleId,
+          userScopes.dimensionType,
+          userScopes.dimensionId,
+        ],
+      });
 
-  await writeAuditLog(
-    {
-      actorId: actor.id,
-      actorName: actor.name,
-      entityType: "user",
-      entityId: userId,
-      entityName: "",
-      action: "assign",
-      field: "userScopes",
-      newValue: `${dimensionType}:${dimensionId}`,
-      metadata: { kind: "user.scope.bind", role_id: roleId },
-    },
-    db,
-  );
+    await writeAuditLog(
+      {
+        actorId: actor.id,
+        actorName: actor.name,
+        entityType: "user",
+        entityId: userId,
+        entityName: "",
+        action: "assign",
+        field: "userScopes",
+        newValue: `${dimensionType}:${dimensionId}`,
+        metadata: { kind: "user.scope.bind", role_id: roleId },
+      },
+      tx,
+    );
+  });
 }
 
 export async function _removeScopeForActor(
@@ -176,41 +178,45 @@ export async function _removeScopeForActor(
     roleId: string | null;
   };
 
-  const targetUser = await db
-    .select({ userType: user.userType })
-    .from(user)
-    .where(eq(user.id, row.userId))
-    .limit(1);
+  await db.transaction(async (tx: AnyDb) => {
+    const targetUser = await tx
+      .select({ userType: user.userType })
+      .from(user)
+      .where(eq(user.id, row.userId))
+      .limit(1);
 
-  if (targetUser.length > 0 && targetUser[0].userType === "external") {
-    const remaining = await db
-      .select({ id: userScopes.id })
-      .from(userScopes)
-      .where(eq(userScopes.userId, row.userId));
-    if (remaining.length <= 1) {
-      throw new Error(
-        "Cannot remove last scope from external user — external users must have at least one scope row",
+    if (targetUser.length > 0 && targetUser[0].userType === "external") {
+      // Lock the scope rows for this user to prevent concurrent removes from
+      // racing past the guard. FOR UPDATE ensures only one tx proceeds at a time.
+      const remaining = await tx.execute(
+        sql`SELECT id FROM user_scopes WHERE user_id = ${row.userId} FOR UPDATE`,
       );
+      const remainingRows = (remaining as { rows?: unknown[] }).rows ?? (remaining as unknown[]);
+      if (remainingRows.length <= 1) {
+        throw new Error(
+          "Cannot remove last scope from external user — external users must have at least one scope row",
+        );
+      }
     }
-  }
 
-  await db.delete(userScopes).where(and(eq(userScopes.id, scopeId)));
+    await tx.delete(userScopes).where(and(eq(userScopes.id, scopeId)));
 
-  await writeAuditLog(
-    {
-      actorId: actor.id,
-      actorName: actor.name,
-      entityType: "user",
-      entityId: row.userId,
-      entityName: "",
-      action: "unassign",
-      field: "userScopes",
-      oldValue: `${row.dimensionType}:${row.dimensionId}`,
-      metadata: {
-        kind: "user.scope.unbind",
-        ...(row.roleId ? { role_id: row.roleId } : {}),
+    await writeAuditLog(
+      {
+        actorId: actor.id,
+        actorName: actor.name,
+        entityType: "user",
+        entityId: row.userId,
+        entityName: "",
+        action: "unassign",
+        field: "userScopes",
+        oldValue: `${row.dimensionType}:${row.dimensionId}`,
+        metadata: {
+          kind: "user.scope.unbind",
+          ...(row.roleId ? { role_id: row.roleId } : {}),
+        },
       },
-    },
-    db,
-  );
+      tx,
+    );
+  });
 }
