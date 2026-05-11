@@ -1,0 +1,152 @@
+(node:83508) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:83508) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+[globalSetup] TEST_LOCATION_ID=23376a11-601f-4206-b218-66b1c9436175
+[globalSetup] TEST_OPS_IT_ROLE_ID=794aa7db-578f-4968-b270-733a23195b8b
+[globalSetup] TEST_VIEWER_USER_ID=6l-vzsppStvTPWWpfkhpK
+
+Running 8 tests using 1 worker
+
+  ✓  1 tests/access-control/can-component.spec.ts:39:7 › <Can> component — visibility gating › viewer does NOT see Merge button on /locations/[id] (9.8s)
+  ✘  2 tests/access-control/can-component.spec.ts:60:7 › <Can> component — visibility gating › admin sees Merge button on /locations/[id] (10.5s)
+  ✓  3 tests/access-control/can-component.spec.ts:78:7 › <Can> component — visibility gating › viewer does NOT see Configure nav-group in sidebar (6.1s)
+  ✘  4 tests/access-control/edit-tier.spec.ts:39:7 › edit tier role — /settings/roles/[id] › admin modifies Ops-IT rule, sees diff modal with impacted count, saves, ops-it user sees effect (11.6s)
+  ✓  5 tests/access-control/role-editor.spec.ts:15:7 › role editor — /settings/roles › admin can navigate to /settings/roles and see Roles heading (5.9s)
+  ✘  6 tests/access-control/role-editor.spec.ts:32:7 › role editor — /settings/roles › admin creates a custom role and sees toast + new row (30.1s)
+  ✓  7 tests/access-control/user-role-assignment.spec.ts:41:7 › user role assignment — /settings/users/[id] › admin can navigate to viewer user profile and see role-assignment block (6.3s)
+  ✘  8 tests/access-control/user-role-assignment.spec.ts:61:7 › user role assignment — /settings/users/[id] › admin assigns Ops-IT role to viewer user with south-west scope (30.0s)
+
+
+  1) tests/access-control/can-component.spec.ts:60:7 › <Can> component — visibility gating › admin sees Merge button on /locations/[id] 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('button', { name: /merge/i })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByRole('button', { name: /merge/i })[22m
+
+
+      71 |     await expect(
+      72 |       page.getByRole("button", { name: /merge/i }),
+    > 73 |     ).toBeVisible();
+         |       ^
+      74 |
+      75 |     expect(pageErrors).toEqual([]);
+      76 |   });
+        at /Users/vedant/Work/WeKnowGroup/wkg-kiosk-tool/tests/access-control/can-component.spec.ts:73:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    playwright-output/access-control-can-compone-099ac-rge-button-on-locations-id-/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: playwright-output/access-control-can-compone-099ac-rge-button-on-locations-id-/error-context.md
+
+  2) tests/access-control/edit-tier.spec.ts:39:7 › edit tier role — /settings/roles/[id] › admin modifies Ops-IT rule, sees diff modal with impacted count, saves, ops-it user sees effect 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('status').filter({ hasText: /saved/i })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByRole('status').filter({ hasText: /saved/i })[22m
+
+
+      73 |     await expect(
+      74 |       page.getByRole("status").filter({ hasText: /saved/i }),
+    > 75 |     ).toBeVisible();
+         |       ^
+      76 |
+      77 |     // Log out
+      78 |     await page.getByRole("button", { name: /sign out|log out/i }).click();
+        at /Users/vedant/Work/WeKnowGroup/wkg-kiosk-tool/tests/access-control/edit-tier.spec.ts:75:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    playwright-output/access-control-edit-tier-e-26040-ves-ops-it-user-sees-effect/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: playwright-output/access-control-edit-tier-e-26040-ves-ops-it-user-sees-effect/error-context.md
+
+  3) tests/access-control/role-editor.spec.ts:32:7 › role editor — /settings/roles › admin creates a custom role and sees toast + new row 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - waiting for getByRole('button', { name: /add rule/i })[22m
+
+
+      66 |     // NOT as a labelled select. This selector has no fix at this
+      67 |     // component layer; the spec re-shape is needed.
+    > 68 |     await page.getByRole("button", { name: /add rule/i }).click();
+         |                                                           ^
+      69 |
+      70 |     // Radix Select replacement for selectOption — applies only to the
+      71 |     // Subject Select at role-editor-client.tsx:534-549 (line 51 in this
+        at /Users/vedant/Work/WeKnowGroup/wkg-kiosk-tool/tests/access-control/role-editor.spec.ts:68:59
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    playwright-output/access-control-role-editor-e4d2f-role-and-sees-toast-new-row/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: playwright-output/access-control-role-editor-e4d2f-role-and-sees-toast-new-row/error-context.md
+
+  4) tests/access-control/user-role-assignment.spec.ts:61:7 › user role assignment — /settings/users/[id] › admin assigns Ops-IT role to viewer user with south-west scope 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - waiting for getByRole('button', { name: /assign role/i })[22m
+    [2m    - locator resolved to <button disabled tabindex="0" type="button" data-disabled="" data-slot="button" aria-label="Assign role" class="group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria…>Assign role</button>[22m
+    [2m  - attempting click action[22m
+    [2m    2 × waiting for element to be visible, enabled and stable[22m
+    [2m      - element is not enabled[22m
+    [2m    - retrying click action[22m
+    [2m    - waiting 20ms[22m
+    [2m    2 × waiting for element to be visible, enabled and stable[22m
+    [2m      - element is not enabled[22m
+    [2m    - retrying click action[22m
+    [2m      - waiting 100ms[22m
+    [2m    49 × waiting for element to be visible, enabled and stable[22m
+    [2m       - element is not enabled[22m
+    [2m     - retrying click action[22m
+    [2m       - waiting 500ms[22m
+
+
+      71 |
+      72 |     // Click "Assign role" button in the role-assignment block
+    > 73 |     await page.getByRole("button", { name: /assign role/i }).click();
+         |                                                              ^
+      74 |
+      75 |     // Pick Ops-IT from the role selector.
+      76 |     // Radix Select is not a native <select> — Playwright's selectOption
+        at /Users/vedant/Work/WeKnowGroup/wkg-kiosk-tool/tests/access-control/user-role-assignment.spec.ts:73:62
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    playwright-output/access-control-user-role-a-12b9c--user-with-south-west-scope/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: playwright-output/access-control-user-role-a-12b9c--user-with-south-west-scope/error-context.md
+
+  4 failed
+    tests/access-control/can-component.spec.ts:60:7 › <Can> component — visibility gating › admin sees Merge button on /locations/[id] 
+    tests/access-control/edit-tier.spec.ts:39:7 › edit tier role — /settings/roles/[id] › admin modifies Ops-IT rule, sees diff modal with impacted count, saves, ops-it user sees effect 
+    tests/access-control/role-editor.spec.ts:32:7 › role editor — /settings/roles › admin creates a custom role and sees toast + new row 
+    tests/access-control/user-role-assignment.spec.ts:61:7 › user role assignment — /settings/users/[id] › admin assigns Ops-IT role to viewer user with south-west scope 
+  4 passed (1.9m)
