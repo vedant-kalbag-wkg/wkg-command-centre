@@ -18,7 +18,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { user, userScopes } from "@/db/schema";
+import { user, userScopes, userRoles } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import type { DimensionType } from "@/lib/scoping/scoped-query";
 
@@ -66,10 +66,14 @@ export async function _listScopesForActor(
   db: AnyDb,
   actor: Actor,
   userId: string,
+  roleId?: string,
 ): Promise<UserScopeRow[]> {
   if (actor.role !== "admin") {
     throw new Error("Forbidden");
   }
+  const condition = roleId
+    ? and(eq(userScopes.userId, userId), eq(userScopes.roleId, roleId))
+    : eq(userScopes.userId, userId);
   const rows = await db
     .select({
       id: userScopes.id,
@@ -79,7 +83,7 @@ export async function _listScopesForActor(
       createdAt: userScopes.createdAt,
     })
     .from(userScopes)
-    .where(eq(userScopes.userId, userId));
+    .where(condition);
   return rows as UserScopeRow[];
 }
 
@@ -87,6 +91,7 @@ export async function _addScopeForActor(
   db: AnyDb,
   actor: Actor,
   userId: string,
+  roleId: string,
   dimensionType: DimensionType,
   dimensionId: string,
 ): Promise<void> {
@@ -95,10 +100,21 @@ export async function _addScopeForActor(
   }
   assertValidDimensionType(dimensionType);
 
+  // Verify the (userId, roleId) assignment exists before binding a scope to it.
+  const assignment = await db
+    .select({ id: userRoles.id })
+    .from(userRoles)
+    .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
+    .limit(1);
+  if (assignment.length === 0) {
+    throw new Error("Cannot bind scope: this role is not assigned to the user");
+  }
+
   await db
     .insert(userScopes)
     .values({
       userId,
+      roleId,
       dimensionType,
       dimensionId,
       createdBy: actor.id,
@@ -106,6 +122,7 @@ export async function _addScopeForActor(
     .onConflictDoNothing({
       target: [
         userScopes.userId,
+        userScopes.roleId,
         userScopes.dimensionType,
         userScopes.dimensionId,
       ],
@@ -121,6 +138,7 @@ export async function _addScopeForActor(
       action: "assign",
       field: "userScopes",
       newValue: `${dimensionType}:${dimensionId}`,
+      metadata: { kind: "user.scope.bind", role_id: roleId },
     },
     db,
   );
@@ -141,6 +159,7 @@ export async function _removeScopeForActor(
       userId: userScopes.userId,
       dimensionType: userScopes.dimensionType,
       dimensionId: userScopes.dimensionId,
+      roleId: userScopes.roleId,
     })
     .from(userScopes)
     .where(eq(userScopes.id, scopeId))
@@ -154,6 +173,7 @@ export async function _removeScopeForActor(
     userId: string;
     dimensionType: DimensionType;
     dimensionId: string;
+    roleId: string | null;
   };
 
   const targetUser = await db
@@ -186,6 +206,10 @@ export async function _removeScopeForActor(
       action: "unassign",
       field: "userScopes",
       oldValue: `${row.dimensionType}:${row.dimensionId}`,
+      metadata: {
+        kind: "user.scope.unbind",
+        ...(row.roleId ? { role_id: row.roleId } : {}),
+      },
     },
     db,
   );
