@@ -16,7 +16,6 @@ import {
   type TestDbContext,
 } from "../helpers/test-db";
 import { user } from "@/db/schema";
-// @ts-expect-error — Wave 0 RED: @/lib/casl/ability does not exist until Plan 10-02
 import { buildAbility } from "@/lib/casl/ability";
 // @ts-expect-error — Wave 0 RED: @/lib/casl/role-mutations does not exist until Plan 10-03
 import { createRole, assignRole } from "@/lib/casl/role-mutations";

@@ -22,6 +22,7 @@
 
 import { cache } from 'react';
 import { eq, inArray, or, type SQL, sql } from 'drizzle-orm';
+import type { AppAbility } from '@/lib/casl/types';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
   locations,
@@ -52,6 +53,7 @@ export type UserCtx = {
   id: string;
   userType: 'internal' | 'external';
   role: 'admin' | 'system' | 'member' | 'viewer' | null;
+  ability: AppAbility;
 };
 
 export type Session = {

@@ -21,7 +21,6 @@ import {
 import { user } from "@/db/schema";
 // @ts-expect-error — Wave 0 RED: @/lib/casl/role-mutations does not exist until Plan 10-03
 import { assignRole, revokeRole } from "@/lib/casl/role-mutations";
-// @ts-expect-error — Wave 0 RED: @/lib/casl/lockout-guard does not exist until Plan 10-03
 import { LOCKOUT_PREVENTION } from "@/lib/casl/lockout-guard";
 
 describe("better-auth admin plugin backwards compat (integration)", () => {

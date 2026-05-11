@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createMongoAbility } from '@casl/ability';
+import type { AppAbility } from '@/lib/casl/types';
 
 // unstable_cache requires a Next.js request/incremental-cache context that
 // vitest doesn't provide ("Invariant: incrementalCache missing in
@@ -139,7 +141,7 @@ describe('wrapAnalyticsQuery scope invariant lockstep with buildScopeFilter', ()
   // users would share an admin-visibility entry.
   it('buildScopeFilter(INTERNAL_USER_CTX_SHAPE, []) must return null', async () => {
     const { buildScopeFilter } = await import('@/lib/scoping/scoped-query');
-    const sentinel = { id: '__internal__', userType: 'internal', role: 'admin' } as const;
+    const sentinel = { id: '__internal__', userType: 'internal' as const, role: 'admin' as const, ability: createMongoAbility([]) as AppAbility };
     expect(buildScopeFilter(sentinel, [])).toBeNull();
   });
 });

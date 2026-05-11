@@ -14,6 +14,8 @@
  * spread happened.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createMongoAbility } from "@casl/ability";
+import type { AppAbility } from "@/lib/casl/types";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
 
 const buildDimensionFiltersSpy = vi.fn((_f: AnalyticsFilters) => {});
@@ -70,6 +72,7 @@ const userCtx = {
   id: "test-user",
   userType: "internal" as const,
   role: "admin" as const,
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 const baseFilters: AnalyticsFilters = {

@@ -23,6 +23,7 @@ import { LOCATION_TYPES, type LocationType } from "@/lib/analytics/types";
 import { eq, isNull, and, desc, inArray, sql } from "drizzle-orm";
 import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
+import { buildAbility } from "@/lib/casl/ability";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -1026,6 +1027,7 @@ export async function listRegionOptions(): Promise<Array<{ id: string; name: str
         (session.user as { userType?: "internal" | "external" }).userType ??
         "internal",
       role: (session.user.role as UserCtx["role"]) ?? null,
+      ability: await buildAbility(session.user.id),
     };
     // Only show regions that have at least one location the user is allowed
     // to see (Task 3.9). Admin/system users get all regions because the
