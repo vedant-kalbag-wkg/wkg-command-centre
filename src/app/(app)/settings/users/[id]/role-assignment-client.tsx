@@ -177,7 +177,7 @@ export function RoleAssignmentClient({
             </Select>
             <Button
               onClick={handleAssign}
-              disabled={!picker || isAssigning}
+              disabled={isAssigning}
               aria-label="Assign role"
             >
               {isAssigning ? (
