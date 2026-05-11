@@ -17,10 +17,14 @@ export function AbilityProvider({
   rules: RawRuleOf<AppAbility>[];
   children: ReactNode;
 }) {
-  const ability = useMemo(
-    () => createMongoAbility<AppAbility>(rules),
-    [rules],
-  );
+  // Stabilise the dependency on the serialised content of rules, not the
+  // array reference. RSC passes a fresh array object on every render even
+  // when the rules are unchanged; comparing by JSON string prevents
+  // unnecessary ability reconstruction and downstream re-renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rulesKey = useMemo(() => JSON.stringify(rules), [JSON.stringify(rules)]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ability = useMemo(() => createMongoAbility<AppAbility>(rules), [rulesKey]);
   return (
     <AbilityContext.Provider value={ability}>
       {children}
