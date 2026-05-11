@@ -676,6 +676,13 @@ export function RoleEditorClient({ role }: { role: RoleDetail }) {
     newRules: RawRule[];
   } | null>(null);
 
+  // Plan 10-15 / Cluster 2 — Sonner v2 toasts have aria-live but no role="status",
+  // so page.getByRole("status") never matches a toast. Mirror the toast text into
+  // a parent-scope live region (held here, not inside DiffPreviewModal whose state
+  // is wiped when setPendingDiff(null) unmounts it) so screen readers + the
+  // tests/access-control/edit-tier.spec.ts:73-75 assertion both resolve.
+  const [savedMessage, setSavedMessage] = React.useState<string | null>(null);
+
   function onPreviewSave(data: FormValues) {
     const newRules = data.rules.flatMap(rowToRawRules);
     const diff = computeDiff(role.rules, newRules);
@@ -773,11 +780,19 @@ export function RoleEditorClient({ role }: { role: RoleDetail }) {
           diff={pendingDiff.diff}
           newRules={pendingDiff.newRules}
           assignedUserCount={role.assignedUserCount}
-          onSuccess={() => {
+          onSuccess={(msg) => {
             reset({ rules: pendingDiff.newRules.map(rawRuleToRow) });
             setPendingDiff(null);
+            if (msg) setSavedMessage(msg);
           }}
         />
+      )}
+
+      {/* Out-of-band live region — see savedMessage comment above. */}
+      {savedMessage && (
+        <div role="status" aria-live="polite" className="sr-only">
+          {savedMessage}
+        </div>
       )}
     </div>
   );

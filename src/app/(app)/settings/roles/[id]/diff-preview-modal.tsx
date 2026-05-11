@@ -53,7 +53,14 @@ export function DiffPreviewModal({
   diff: Diff;
   newRules: RawRule[];
   assignedUserCount: number;
-  onSuccess: () => void;
+  /**
+   * Called after the server confirms the save. Receives the human-readable
+   * success message so the parent can render a role="status" live region —
+   * Sonner v2 sets only aria-live="polite" (no role="status") on its toast
+   * <li>, so an out-of-band status region is needed for assistive tech and
+   * for the edit-tier.spec.ts:73-75 assertion to resolve.
+   */
+  onSuccess: (savedMessage?: string) => void;
 }) {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -72,10 +79,12 @@ export function DiffPreviewModal({
         toast.error(result.error);
         return;
       }
+      let savedMessage: string | undefined;
       if ("success" in result) {
-        toast.success(`Saved. ${result.impactedUserCount} user(s) impacted.`);
+        savedMessage = `Saved. ${result.impactedUserCount} user(s) impacted.`;
+        toast.success(savedMessage);
       }
-      onSuccess();
+      onSuccess(savedMessage);
       onOpenChange(false);
     } finally {
       setIsSubmitting(false);
