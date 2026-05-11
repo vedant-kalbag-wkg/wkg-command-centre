@@ -1225,6 +1225,11 @@ export const rolePermissions = pgTable(
   },
   (t) => ({
     byRole: index("role_permissions_role_idx").on(t.roleId),
+    uniqRoleActionSubject: unique("role_permissions_role_id_action_subject_unique").on(
+      t.roleId,
+      t.action,
+      t.subject,
+    ),
   }),
 );
 
