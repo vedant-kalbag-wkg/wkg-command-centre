@@ -63,6 +63,7 @@ export default async function LocationDetailPage({ params }: LocationDetailPageP
             <div className="flex items-center justify-end">
               <Button
                 variant="outline"
+                nativeButton={false}
                 render={<Link href={`/locations?merge=${location.id}`} />}
               >
                 Merge
