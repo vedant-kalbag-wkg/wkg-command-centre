@@ -115,7 +115,7 @@ Plans:
   3. `redactSensitiveFields` replaced by `permittedFieldsOf(ability, 'read', subject)` drop-in across all call sites
   4. Admin can create / edit / clone custom granular roles (subjects × actions × fields × conditions) and assign per-user
   5. Existing 3-role coverage (Admin / Ops-IT / Read-only) preserved as default tier definitions; no behavioural regression for current users
-**Plans**: 14 plans (8 original + 6 gap closure)
+**Plans**: 15 plans (8 original + 7 gap closure)
 
 Plans:
 **Wave 1**
@@ -148,6 +148,9 @@ Plans:
 - [ ] 10-13-PLAN.md — Wave 8 (gap closure verification): live Playwright run against Vercel preview alias; closeout 10-VERIFICATION.md + deferred-items.md + 10-HUMAN-UAT.md + STATE.md
 - [x] 10-14-PLAN.md — Wave 8 (gap closure round 2 — source fixes): null-guard derived fields on /locations/[id] RSC (cluster A); RuleRow row+remove a11y; Create role Description Textarea; role picker + Add scope aria-labels (unblocks resumed 10-13)
 
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 10-15-PLAN.md — Wave 9 (gap closure round 3 — final source fixes): T1 ability-eval gap (Branch A: migration 0055 backfills missing user_roles row for admin); T2 diff-modal copy alignment (`user(s) impacted` on single source line); T3 Playwright globalSetup populates TEST_LOCATION_ID/TEST_OPS_IT_ROLE_ID/TEST_VIEWER_USER_ID from preview DB via pg; T4 replace selectOption() on Radix Selects with canonical click + option-click pattern (unblocks resumed 10-13 toward ≥7/8 PASS)
+
 ### Phase 11: Tooling, Polish & Tech-Debt Close-out
 **Goal**: Close every outstanding non-trivial item batched at v1.1 close: staging orphan-rate baseline, Monday drift detection, analytics `useEffect → loadData()` migration, GitHub auto-delete-merged-branches, tab hover/loading polish, calendar empty-state overlay, bulk-action type-safety, Drizzle 0.45.2 patch audit. v1.1 reaches a clean operational baseline before v1.2 / v2.0 scope.
 **Depends on**: Phases 7-10 (touches code shipped in each)
@@ -172,7 +175,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
 | 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
-| 10. Access Control Extended | 12/13 | In Progress|  |
+| 10. Access Control Extended | 13/15 | In Progress — Wave 9 (10-15) planned to close remaining 4 Playwright failures (ability-eval + dialog copy + test infra + Radix selectOption); resumed 10-13 unblocks once 10-15 ships and preview rebuilds | — |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 
 ## Out of Scope
