@@ -9,10 +9,9 @@ export function AppShellV2({
   user: { name: string; email: string; role: string };
   children: React.ReactNode;
 }) {
-  const isAdmin = user.role === "admin";
   return (
     <SidebarProvider>
-      <AppSidebar isAdmin={isAdmin} />
+      <AppSidebar />
       <SidebarInset className="min-w-0">
         <AppTopBar user={user} />
         <main className="flex-1 min-w-0 overflow-x-clip">{children}</main>

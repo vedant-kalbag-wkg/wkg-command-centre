@@ -9,6 +9,7 @@ import {
   ScrollText,
   Users,
 } from "lucide-react";
+import { Can } from "@/lib/casl/ability-context";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -95,8 +96,6 @@ export function UserMenu({
   const router = useRouter();
   const pathname = usePathname();
 
-  const isAdmin = user.role === "admin";
-
   const handleSignOut = async () => {
     await signOut();
     router.push("/login");
@@ -124,26 +123,24 @@ export function UserMenu({
             <RoleBadge role={user.role} />
           </div>
         </div>
-        {isAdmin && (
-          <>
-            <M3DropdownMenuSeparator />
-            <M3DropdownMenuLabel>Admin</M3DropdownMenuLabel>
-            {systemAdminItems.map((item) => {
-              const Icon = item.icon;
-              const active = isItemActive(item.href, pathname);
-              return (
-                <M3DropdownMenuItem
-                  key={item.href}
-                  onSelect={() => router.push(item.href)}
-                  className={cn(active && "text-primary")}
-                >
-                  <Icon className="h-5 w-5 text-muted-foreground" />
-                  {item.label}
-                </M3DropdownMenuItem>
-              );
-            })}
-          </>
-        )}
+        <Can I="manage" a="all">
+          <M3DropdownMenuSeparator />
+          <M3DropdownMenuLabel>Admin</M3DropdownMenuLabel>
+          {systemAdminItems.map((item) => {
+            const Icon = item.icon;
+            const active = isItemActive(item.href, pathname);
+            return (
+              <M3DropdownMenuItem
+                key={item.href}
+                onSelect={() => router.push(item.href)}
+                className={cn(active && "text-primary")}
+              >
+                <Icon className="h-5 w-5 text-muted-foreground" />
+                {item.label}
+              </M3DropdownMenuItem>
+            );
+          })}
+        </Can>
         <M3DropdownMenuSeparator />
         <M3DropdownMenuItem
           onSelect={handleSignOut}
