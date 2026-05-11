@@ -56,8 +56,12 @@ export async function refreshUserRoleMirror(
       } else if (nameSet.has("read-only")) {
         mirroredRole = "viewer";
       } else {
-        // Custom roles — keep the first found name, or null
-        mirroredRole = assignments[0]?.name ?? null;
+        // Custom roles — mirror as null. Writing the raw custom role name is
+        // unsafe: a custom role named "admin" would mirror to user.role="admin"
+        // granting manage:all via the system short-circuit in ability.ts.
+        // Custom roles carry no text-mirror privilege; ability is derived from
+        // user_roles + role_permissions at build time.
+        mirroredRole = null;
       }
     }
   }

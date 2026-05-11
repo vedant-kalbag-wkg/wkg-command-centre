@@ -17,7 +17,7 @@
  *      `actions.ts` are reachable from the network.
  */
 
-import { roles, rolePermissions, userRoles, user } from "@/db/schema";
+import { roles, rolePermissions, userRoles } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import {
   assertAtLeastOneEffectiveAdmin,
@@ -55,6 +55,23 @@ export type RoleDetail = {
   rules: RawRule[];
   assignedUserCount: number;
 };
+
+/**
+ * Role names that cannot be used for custom roles.
+ * These names are reserved by the system to prevent privilege escalation:
+ * - "admin" mirrors to user.role = "admin" which grants manage:all in ability.ts
+ * - "system" is the system kind sentinel
+ * - "ops-it" and "read-only" are the tier role names
+ */
+export const RESERVED_ROLE_NAMES = new Set(["admin", "system", "ops-it", "read-only"]);
+
+function assertNotReservedName(name: string): void {
+  if (RESERVED_ROLE_NAMES.has(name)) {
+    throw new Error(
+      `Role name "${name}" is reserved and cannot be used for custom roles.`,
+    );
+  }
+}
 
 function assertNotSystem(role: { kind: string }, op: string): void {
   if (role.kind === "system") {
@@ -172,6 +189,7 @@ export async function _createRoleForActor(
   },
 ): Promise<{ id: string }> {
   if (actor.role !== "admin") throw new Error("Forbidden");
+  assertNotReservedName(input.name);
   validateRules(input.rules);
 
   return await db.transaction(async (tx: AnyDb) => {
@@ -391,7 +409,3 @@ export async function _cloneRoleForActor(
 // Re-export LOCKOUT_PREVENTION so callers in actions.ts can import it
 // from a single module without also needing to import from lockout-guard.
 export { LOCKOUT_PREVENTION };
-
-// Suppress unused import warning — user import is needed for type
-// compatibility in schema operations even when not referenced directly.
-void user;
