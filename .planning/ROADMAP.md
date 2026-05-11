@@ -118,7 +118,7 @@ Plans:
 **Plans**: 8 plans
 
 Plans:
-- [ ] 10-01-wave-0-test-scaffolds-PLAN.md — Wave 1 RED test scaffolds (16 files)
+- [x] 10-01-wave-0-test-scaffolds-PLAN.md — Wave 1 RED test scaffolds (16 files)
 - [x] 10-02-schema-migrations-and-audit-extension-PLAN.md — Wave 1 schema (3 tables) + 3 migrations + audit union widen + CASL deps
 - [ ] 10-03-casl-core-ability-builder-PLAN.md — Wave 2 buildAbility (react.cache) + types/subjects/fields/external-invariant/seed/role-mirror/lockout-guard/ability-context
 - [ ] 10-04-rbac-shim-and-call-site-cutover-PLAN.md — Wave 3 rbac.ts shim + 3 redactSensitiveFields call sites (location-products-client owned by 10-07)
@@ -151,7 +151,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
 | 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
-| 10. Access Control Extended | 1/8 | In Progress|  |
+| 10. Access Control Extended | 2/8 | In Progress|  |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 
 ## Out of Scope
