@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: milestone
 status: executing
 stopped_at: "Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves: 09.1-01 Wave 0 fixtures + RED tests; 09.1-02 schema substrate (exchange_rates table, sales_records.net_amount_gbp NULLABLE, EmailKind extended); 09.1-03 FX library (boe-fetch + rate-lookup + currencies); 09.1-04 Inngest cron `fx-rates.fetch-daily` + serve registration; 09.1-05 ETL stamping + backfill script + migration 0048 NOT NULL flip operator-gated; 09.1-06 analytics SQL audit dual-emit (41 sites / 13 files) with saved-pivot back-compat (D-17); 09.1-07 renderer dispatch + tooltips + classifier/commission swaps + admin stale-rate banner; 09.1-08 doc surgery (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook. Awaiting operator UAT against preview alias per CLAUDE.md gate (`PLAYWRIGHT_BASE_URL=<preview-alias> npx playwright test tests/fx-normalisation/`); list-pass is NOT sufficient evidence."
-last_updated: "2026-05-11T07:56:39.265Z"
+last_updated: "2026-05-11T08:15:03.549Z"
 last_activity: 2026-05-11
 progress:
   total_phases: 6
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 
 ## Current Position
 
-Phase: 10 (access-control-extended) — EXECUTING
-Plan: 2 of 8
+Phase: 11
+Plan: Not started
 Status: Ready to execute
 Last activity: 2026-05-11
 
