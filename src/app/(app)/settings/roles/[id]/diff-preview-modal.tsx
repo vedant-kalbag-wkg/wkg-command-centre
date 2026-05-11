@@ -92,9 +92,8 @@ export function DiffPreviewModal({
           <DialogTitle>Confirm rule changes</DialogTitle>
           <DialogDescription>
             {diff.added.length} added, {diff.removed.length} removed,{" "}
-            {diff.changed.length} changed. This role is assigned to{" "}
-            {assignedUserCount} user(s) — changes take effect on their next
-            request.
+            {diff.changed.length} changed.{" "}
+            {assignedUserCount} user(s) impacted — changes take effect on their next request.
           </DialogDescription>
         </DialogHeader>
 
