@@ -521,7 +521,7 @@ export const userScopes = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    roleId: uuid("role_id").references(() => roles.id, { onDelete: "set null" }),
+    roleId: uuid("role_id").references(() => roles.id, { onDelete: "cascade" }),
     dimensionType: text("dimension_type", {
       enum: [
         "hotel_group",
