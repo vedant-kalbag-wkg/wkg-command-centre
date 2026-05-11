@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { ShieldPlus, Pencil, Trash2, Copy } from "lucide-react";
+import { ShieldPlus, Pencil, Trash2, Copy, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,9 +19,18 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { ACTIONS, KNOWN_SUBJECTS } from "@/lib/casl/types";
+import type { RawRule } from "@/lib/casl/types";
 import {
   listRoles,
   createRole,
@@ -29,6 +38,9 @@ import {
   cloneRole,
 } from "./actions";
 import type { RoleListItem } from "./editor-internal";
+
+/** Minimal in-dialog rule shape: one action per row, no fields/conditions. */
+type DraftRule = { action: string; subject: string };
 
 const LOCKOUT_PREVENTION_MSG =
   "This change would leave the system with no effective admin. Assign Admin (or a role that grants 'manage all') to at least one user before continuing.";
@@ -66,6 +78,7 @@ export function RoleListClient({
   const [createName, setCreateName] = useState("");
   const [createDisplayName, setCreateDisplayName] = useState("");
   const [createDescription, setCreateDescription] = useState("");
+  const [createRules, setCreateRules] = useState<DraftRule[]>([]);
   const [createSubmitting, setCreateSubmitting] = useState(false);
 
   // Clone dialog state
@@ -84,13 +97,24 @@ export function RoleListClient({
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!createName.trim() || !createDisplayName.trim()) return;
+    // Drop any incomplete draft rules; the DB stores one action per row,
+    // so each draft maps 1:1 to a RawRule with no fields/conditions.
+    const rules: RawRule[] = createRules
+      .filter((r) => r.action && r.subject)
+      .map((r) => ({
+        action: r.action,
+        subject: r.subject,
+        fields: null,
+        conditions: null,
+        inverted: false,
+      }));
     setCreateSubmitting(true);
     try {
       const result = await createRole({
         name: createName.trim(),
         displayName: createDisplayName.trim(),
         description: createDescription.trim() || undefined,
-        rules: [],
+        rules,
       });
       if ("error" in result) {
         toast.error(result.error);
@@ -100,6 +124,7 @@ export function RoleListClient({
         setCreateName("");
         setCreateDisplayName("");
         setCreateDescription("");
+        setCreateRules([]);
         await handleRefresh();
       }
     } finally {
@@ -334,6 +359,129 @@ export function RoleListClient({
                 required
               />
             </div>
+
+            {/* Permission rules — minimal in-dialog editor. Full rule
+                editing (fields, conditions, allow/deny) lives on the
+                /settings/roles/[id] page; this dialog only supports the
+                common case of "action × subject" allow rules at create
+                time so the role can ship usable from the create flow. */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground">
+                  Permissions{" "}
+                  <span className="font-normal">(optional)</span>
+                </Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setCreateRules((rs) => [
+                      ...rs,
+                      { action: "", subject: "" },
+                    ])
+                  }
+                  className="h-7 text-xs"
+                >
+                  <Plus className="size-3.5" aria-hidden="true" />
+                  Add rule
+                </Button>
+              </div>
+              {createRules.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">
+                  No rules yet — the role will be created with no permissions.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {createRules.map((rule, i) => {
+                    const actionId = `create-rule-${i}-action`;
+                    const subjectId = `create-rule-${i}-subject`;
+                    return (
+                      <div
+                        key={i}
+                        className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end"
+                      >
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor={actionId} className="text-xs">
+                            Action
+                          </Label>
+                          <Select
+                            value={rule.action}
+                            onValueChange={(v) =>
+                              setCreateRules((rs) =>
+                                rs.map((r, j) =>
+                                  j === i ? { ...r, action: v ?? "" } : r,
+                                ),
+                              )
+                            }
+                          >
+                            <SelectTrigger id={actionId} className="h-8 text-xs">
+                              <SelectValue placeholder="Select action…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ACTIONS.map((a) => (
+                                <SelectItem
+                                  key={a}
+                                  value={a}
+                                  className="text-xs font-mono"
+                                >
+                                  {a}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor={subjectId} className="text-xs">
+                            Subject
+                          </Label>
+                          <Select
+                            value={rule.subject}
+                            onValueChange={(v) =>
+                              setCreateRules((rs) =>
+                                rs.map((r, j) =>
+                                  j === i ? { ...r, subject: v ?? "" } : r,
+                                ),
+                              )
+                            }
+                          >
+                            <SelectTrigger id={subjectId} className="h-8 text-xs">
+                              <SelectValue placeholder="Select subject…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {KNOWN_SUBJECTS.map((s) => (
+                                <SelectItem
+                                  key={s}
+                                  value={s}
+                                  className="text-xs font-mono"
+                                >
+                                  {s}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() =>
+                            setCreateRules((rs) =>
+                              rs.filter((_, j) => j !== i),
+                            )
+                          }
+                          aria-label={`Remove rule ${i + 1}`}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="size-3.5" aria-hidden="true" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <DialogFooter>
               <Button
                 type="button"
