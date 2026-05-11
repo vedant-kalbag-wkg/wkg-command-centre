@@ -20,6 +20,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   listRoles,
@@ -64,6 +65,7 @@ export function RoleListClient({
   // Create dialog state
   const [createName, setCreateName] = useState("");
   const [createDisplayName, setCreateDisplayName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
 
   // Clone dialog state
@@ -87,6 +89,7 @@ export function RoleListClient({
       const result = await createRole({
         name: createName.trim(),
         displayName: createDisplayName.trim(),
+        description: createDescription.trim() || undefined,
         rules: [],
       });
       if ("error" in result) {
@@ -96,6 +99,7 @@ export function RoleListClient({
         setCreateOpen(false);
         setCreateName("");
         setCreateDisplayName("");
+        setCreateDescription("");
         await handleRefresh();
       }
     } finally {
@@ -296,6 +300,22 @@ export function RoleListClient({
                 value={createDisplayName}
                 onChange={(e) => setCreateDisplayName(e.target.value)}
                 required
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="create-description">
+                Description{" "}
+                <span className="text-muted-foreground text-xs font-normal">
+                  (optional)
+                </span>
+              </Label>
+              <Textarea
+                id="create-description"
+                placeholder="What does this role do? Who should have it?"
+                value={createDescription}
+                onChange={(e) => setCreateDescription(e.target.value)}
+                rows={2}
+                maxLength={500}
               />
             </div>
             <div className="flex flex-col gap-1.5">
