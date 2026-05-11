@@ -351,6 +351,34 @@
       "when": 1781200000000,
       "tag": "0049_phase_09_1_commission_ledger_gross_amount_gbp",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1781300000000,
+      "tag": "0050_phase_10_roles_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1781400000000,
+      "tag": "0051_phase_10_seed_and_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1781500000000,
+      "tag": "0052_phase_10_user_scopes_role_id_required",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1781600000000,
+      "tag": "0053_phase_10_role_permissions_unique",
+      "breakpoints": true
     }
   ]
 }
