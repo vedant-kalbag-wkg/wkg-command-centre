@@ -1,8 +1,11 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { LocationDetailForm } from "@/components/locations/location-detail-form";
+import { Button } from "@/components/ui/button";
 import { getLocation } from "@/app/(app)/locations/actions";
 import { getUserCtx } from "@/lib/auth/get-user-ctx";
+import { Can } from "@/lib/casl/ability-context";
 import { readableFields } from "@/lib/casl/fields";
 import { LocationAdminPanel } from "./location-admin-panel";
 
@@ -38,6 +41,16 @@ export default async function LocationDetailPage({ params }: LocationDetailPageP
             location={location}
             canSeeSensitive={canSeeSensitive}
           />
+          <Can I="merge" a="Location">
+            <div className="flex items-center justify-end">
+              <Button
+                variant="outline"
+                render={<Link href={`/locations?merge=${location.id}`} />}
+              >
+                Merge
+              </Button>
+            </div>
+          </Can>
           {ctx.role === "admin" && (
             <LocationAdminPanel
               locationId={location.id}
