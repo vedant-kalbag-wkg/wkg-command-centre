@@ -1,19 +1,30 @@
 /**
  * scripts/seed-test-users.ts
  *
- * Idempotent seed of test fixture users (TEST_OPS_IT, TEST_VIEWER).
+ * Canonical idempotent seed of test fixture users (TEST_OPS_IT, TEST_VIEWER)
+ * for test and Vercel-preview databases.
  *
- * Per Plan 10-01 + 10-02: tests/auth/setup.ts declares these as CONTRACTS
- * that must be honoured by the test/preview DB. This script populates the
- * `user` and `account` tables (Better Auth credential rows) so Playwright
- * specs can sign in as ops-it / viewer without manual setup.
+ * Direct-DB-insert pattern: writes the user + credential-account rows via
+ * Drizzle and hashes the password via auth.$context.password.hash() — the
+ * same primitive scripts/reset-admin-password.ts uses. This bypasses the
+ * Better Auth sign-up endpoint, which is permanently blocked by
+ * `emailAndPassword.disableSignUp: true` in src/lib/auth.ts. Without this
+ * bypass the script fails with EMAIL_PASSWORD_SIGN_UP_DISABLED on every
+ * environment (test, preview, prod), which is why an earlier signup-based
+ * version of this script was unusable and was replaced.
  *
- * SAFETY GATES:
- * - Refuses to run if NODE_ENV='production' OR if DATABASE_URL contains the
- *   string 'wkg-command-centre' (the prod project alias). The two gates are
- *   redundant — both must pass.
- * - Each user is upserted (idempotent); does not overwrite an existing
- *   password if the row already exists with a credential account.
+ * Per Plan 10-01 + 10-02: tests/auth/setup.ts declares TEST_OPS_IT and
+ * TEST_VIEWER as CONTRACTS that must be honoured by the test/preview DB.
+ * This script populates `user` and `account` (Better Auth credential
+ * provider) so Playwright specs can sign in without manual setup.
+ *
+ * SAFETY GATES (both must pass — redundant by design):
+ *   - Refuses to run if NODE_ENV='production'
+ *   - Refuses to run if DATABASE_URL contains any of: 'wkg-command-centre',
+ *     'wkg-kiosk-tool' (current + historical Vercel project aliases)
+ *
+ * Idempotent: existing rows have their password re-hashed (so a known
+ * password is always settable) but the user_id and account_id are preserved.
  *
  * Usage:
  *   DATABASE_URL='<test-or-preview-url>' npx tsx scripts/seed-test-users.ts
@@ -35,8 +46,12 @@ async function main() {
   }
   const url = process.env.DATABASE_URL ?? "";
   if (PROD_HINTS.some((h) => url.includes(h))) {
-    throw new Error(`Refusing to run: DATABASE_URL contains prod hint (${PROD_HINTS.join(",")})`);
+    throw new Error(
+      `Refusing to run: DATABASE_URL contains prod hint (${PROD_HINTS.join(",")})`,
+    );
   }
+
+  const ctx = await auth.$context;
 
   const fixtures = [
     {
@@ -54,27 +69,95 @@ async function main() {
   ];
 
   for (const f of fixtures) {
-    // Find or create the user row (idempotent on email).
-    let existing = await db.select().from(user).where(eq(user.email, f.email)).limit(1);
+    // Check if user already exists
+    let existing = await db
+      .select()
+      .from(user)
+      .where(eq(user.email, f.email))
+      .limit(1);
+
+    let userId: string;
+
     if (existing.length === 0) {
-      // Use Better Auth's signup flow to ensure password hashing matches the
-      // login path. Mirrors scripts/reset-admin-password.ts approach.
-      await auth.api.signUpEmail({
-        body: { email: f.email, password: f.password, name: f.name },
+      // Generate a random id (Better Auth uses nanoid-style text ids)
+      const { nanoid } = await import("nanoid");
+      userId = nanoid();
+      const now = new Date();
+
+      // Insert user row directly
+      await db.insert(user).values({
+        id: userId,
+        email: f.email,
+        name: f.name,
+        emailVerified: false,
+        role: f.role,
+        createdAt: now,
+        updatedAt: now,
       });
-      existing = await db.select().from(user).where(eq(user.email, f.email)).limit(1);
-    }
-    if (existing.length === 0) {
-      throw new Error(`Failed to create user ${f.email}`);
-    }
-    const userId = existing[0].id;
 
-    // Set the user.role text mirror to match. Plan 10-03's
-    // refreshUserRoleMirror will manage this at runtime — but we set it here
-    // for the seed-DB starting state.
-    await db.update(user).set({ role: f.role }).where(eq(user.id, userId));
+      // Hash password using Better Auth's internal hasher
+      const hash = await ctx.password.hash(f.password);
+      const accountId = nanoid();
 
-    console.log(`Seeded ${f.email} (userId=${userId}, role=${f.role})`);
+      // Insert credential account row
+      await db.insert(account).values({
+        id: accountId,
+        accountId: f.email,
+        providerId: "credential",
+        userId,
+        password: hash,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      console.log(`Created ${f.email} (userId=${userId}, role=${f.role})`);
+    } else {
+      userId = existing[0].id;
+
+      // Ensure role is correct
+      await db.update(user).set({ role: f.role }).where(eq(user.id, userId));
+
+      // Check if credential account exists
+      const acct = await db
+        .select()
+        .from(account)
+        .where(
+          and(
+            eq(account.userId, userId),
+            eq(account.providerId, "credential"),
+          ),
+        )
+        .limit(1);
+
+      if (acct.length === 0) {
+        // Create credential account for existing user
+        const hash = await ctx.password.hash(f.password);
+        const { nanoid } = await import("nanoid");
+        const accountId = nanoid();
+        await db.insert(account).values({
+          id: accountId,
+          accountId: f.email,
+          providerId: "credential",
+          userId,
+          password: hash,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        console.log(
+          `Added credential account for existing ${f.email} (role=${f.role})`,
+        );
+      } else {
+        // Update password to ensure it matches expected
+        const hash = await ctx.password.hash(f.password);
+        await db
+          .update(account)
+          .set({ password: hash, updatedAt: new Date() })
+          .where(eq(account.id, acct[0].id));
+        console.log(
+          `Updated existing ${f.email} (userId=${userId}, role=${f.role})`,
+        );
+      }
+    }
   }
 
   console.log("Test users seeded.");
