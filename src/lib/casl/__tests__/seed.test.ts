@@ -11,9 +11,7 @@
  * Do NOT make these pass in this plan — Wave 2 is the GREEN bar.
  */
 import { describe, it, expect } from "vitest";
-// @ts-expect-error — Wave 0 RED: @/lib/casl/fields does not exist until Plan 10-03
 import { readableFields } from "@/lib/casl/fields";
-// @ts-expect-error — Wave 0 RED: @/lib/casl/seed does not exist until Plan 10-03
 import { buildSeededAbility } from "@/lib/casl/seed";
 
 // ---------------------------------------------------------------------------

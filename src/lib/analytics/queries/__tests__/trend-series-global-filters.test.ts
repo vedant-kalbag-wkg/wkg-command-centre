@@ -13,6 +13,8 @@
  * asserted here.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createMongoAbility } from "@casl/ability";
+import type { AppAbility } from "@/lib/casl/types";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql as drizzleSql } from "drizzle-orm";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
@@ -70,6 +72,7 @@ const userCtx = {
   id: "test-user",
   userType: "internal" as const,
   role: "admin" as const,
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 const baseGlobal: AnalyticsFilters = {

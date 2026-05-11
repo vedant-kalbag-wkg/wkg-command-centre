@@ -21,6 +21,8 @@ import {
   it,
   vi,
 } from "vitest";
+import { createMongoAbility } from "@casl/ability";
+import type { AppAbility } from "@/lib/casl/types";
 
 import {
   setupTestDb,
@@ -58,6 +60,7 @@ const VALID_USER_CTX: UserCtx = {
   id: "test-user",
   userType: "internal",
   role: "admin",
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 const SQL_INJECTION_PROBE =

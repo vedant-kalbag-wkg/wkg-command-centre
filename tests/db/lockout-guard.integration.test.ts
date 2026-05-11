@@ -17,7 +17,6 @@ import {
   type TestDbContext,
 } from "../helpers/test-db";
 import { user } from "@/db/schema";
-// @ts-expect-error — Wave 0 RED: @/lib/casl/lockout-guard does not exist until Plan 10-03
 import { assertAtLeastOneEffectiveAdmin, LOCKOUT_PREVENTION } from "@/lib/casl/lockout-guard";
 // @ts-expect-error — Wave 0 RED: @/lib/casl/role-mutations does not exist until Plan 10-03
 import { assignRole, revokeRole } from "@/lib/casl/role-mutations";
@@ -65,7 +64,7 @@ describe("lockout-guard (integration)", () => {
   it("assertAtLeastOneEffectiveAdmin throws LOCKOUT_PREVENTION when excluding the only admin", async () => {
     // The only admin is adminId — excluding them should result in zero effective admins
     await expect(
-      assertAtLeastOneEffectiveAdmin(ctx.db, { excludingUserId: adminId }),
+      assertAtLeastOneEffectiveAdmin(ctx.db, { excludeUserId: adminId }),
     ).rejects.toThrow(LOCKOUT_PREVENTION);
   });
 

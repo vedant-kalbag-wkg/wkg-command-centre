@@ -11,6 +11,8 @@
  * src/lib/analytics/queries/__tests__/sales-txn-count-sweep.test.ts.
  */
 import { describe, it, expect, vi } from "vitest";
+import { createMongoAbility } from "@casl/ability";
+import type { AppAbility } from "@/lib/casl/types";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql as drizzleSql } from "drizzle-orm";
 
@@ -64,6 +66,7 @@ const userCtx = {
   id: "test-user",
   userType: "external" as const,
   role: "viewer" as const,
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 describe("commission/actions — buildCommissionWhere applies scopedSalesCondition", () => {

@@ -17,7 +17,7 @@ type CanonicalRole = "admin" | "ops-it" | "read-only";
 type LegacyRole = "member" | "viewer";
 
 type AnyRole = CanonicalRole | LegacyRole | null | undefined;
-type UserType = "internal" | "external" | null | undefined;
+type UserType = "internal" | "external" | "system" | null | undefined;
 
 /** Normalise legacy role aliases to canonical names. */
 function normaliseRole(role: AnyRole): CanonicalRole | null {

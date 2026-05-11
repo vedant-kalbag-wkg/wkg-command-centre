@@ -18,7 +18,6 @@ import {
   type TestDbContext,
 } from "../helpers/test-db";
 import { user, userScopes } from "@/db/schema";
-// @ts-expect-error — Wave 0 RED: @/lib/casl/ability does not exist until Plan 10-02
 import { buildAbility } from "@/lib/casl/ability";
 
 describe("buildAbility (integration)", () => {
@@ -76,11 +75,11 @@ describe("buildAbility (integration)", () => {
     const ability = await buildAbility(opsItUserId);
     // Within scope — should be allowed
     expect(
-      ability.can("read", { __caslSubjectType__: "Location", regionId: "south-west" } as unknown),
+      ability.can("read", { __caslSubjectType__: "Location", regionId: "south-west" } as unknown as "Location"),
     ).toBe(true);
     // Outside scope — should be denied
     expect(
-      ability.can("read", { __caslSubjectType__: "Location", regionId: "north" } as unknown),
+      ability.can("read", { __caslSubjectType__: "Location", regionId: "north" } as unknown as "Location"),
     ).toBe(false);
   });
 

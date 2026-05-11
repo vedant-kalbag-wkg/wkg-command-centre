@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { buildCsvString } from "@/lib/analytics/export/csv-builder";
 import { runExportQuery, type ExportTab } from "@/lib/analytics/export/query-runner";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
+import { buildAbility } from "@/lib/casl/ability";
 
 const VALID_TABS: ExportTab[] = [
   "portfolio",
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
       (session.user as unknown as { userType: "internal" | "external" })
         .userType ?? "internal",
     role: (session.user.role ?? null) as "admin" | "system" | "member" | "viewer" | null,
+    ability: await buildAbility(session.user.id),
   };
 
   try {

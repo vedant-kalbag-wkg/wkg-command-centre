@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { createMongoAbility } from '@casl/ability';
+import type { AppAbility } from '@/lib/casl/types';
 import { buildScopeFilter } from './scoped-query';
 
-const admin = { id: 'a1', userType: 'internal' as const, role: 'admin' as const };
-const system = { id: 's1', userType: 'internal' as const, role: 'system' as const };
-const member = { id: 'm1', userType: 'internal' as const, role: 'member' as const };
-const viewer = { id: 'v1', userType: 'internal' as const, role: 'viewer' as const };
-const external = { id: 'e1', userType: 'external' as const, role: null };
+const ability = createMongoAbility([]) as AppAbility;
+const admin = { id: 'a1', userType: 'internal' as const, role: 'admin' as const, ability };
+const system = { id: 's1', userType: 'internal' as const, role: 'system' as const, ability };
+const member = { id: 'm1', userType: 'internal' as const, role: 'member' as const, ability };
+const viewer = { id: 'v1', userType: 'internal' as const, role: 'viewer' as const, ability };
+const external = { id: 'e1', userType: 'external' as const, role: null, ability };
 
 describe('buildScopeFilter', () => {
   it('returns null (unrestricted) for internal admin with no scopes', () => {
