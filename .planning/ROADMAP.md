@@ -124,7 +124,7 @@ Plans:
 - [x] 10-04-rbac-shim-and-call-site-cutover-PLAN.md — Wave 3 rbac.ts shim + 3 redactSensitiveFields call sites (location-products-client owned by 10-07)
 - [x] 10-05-settings-roles-admin-ui-PLAN.md — Wave 3 /settings/roles list + drill-in + diff-preview + impacted-users
 - [x] 10-06-user-role-assignment-ui-and-removeuser-wrap-PLAN.md — Wave 4 /settings/users/[id]/page.tsx + role-actions + deleteUser lockout wrap
-- [ ] 10-07-client-can-gates-and-ability-provider-PLAN.md — Wave 5 layout AbilityProvider + 3 <Can> client gates
+- [x] 10-07-client-can-gates-and-ability-provider-PLAN.md — Wave 5 layout AbilityProvider + 3 <Can> client gates
 - [ ] 10-08-playwright-uat-and-doc-closeout-PLAN.md — Wave 6 preview Playwright UAT + ops runbook + ROADMAP/REQUIREMENTS/STATE close-out
 
 ### Phase 11: Tooling, Polish & Tech-Debt Close-out
@@ -151,7 +151,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
 | 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
-| 10. Access Control Extended | 6/8 | In Progress|  |
+| 10. Access Control Extended | 7/8 | In Progress|  |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 
 ## Out of Scope
