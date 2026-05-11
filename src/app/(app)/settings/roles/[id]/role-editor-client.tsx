@@ -459,8 +459,24 @@ function RuleRow({
   const conditionsJsonMode = useWatch({ control, name: `rules.${index}.conditionsJsonMode` });
   const conditionsJson = useWatch({ control, name: `rules.${index}.conditionsJson` });
 
+  // Plan 10-14 / Cluster B Task 2 — subject-first join so /kiosk.*read/i matches.
+  // Spec: edit-tier.spec.ts:58 page.getByRole('row', { name: /kiosk.*read/i }).
+  // The regex demands "kiosk" before "read"; subject-first produces "Kiosk read"
+  // which matches, action-first would produce "read Kiosk" which would NOT.
+  const accessibleName = [
+    (subject as string) ?? "",
+    ((actions as string[]) ?? []).filter(Boolean).join(" "),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim() || `rule-${index + 1}`;
+
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div
+      role="row"
+      aria-label={accessibleName}
+      className="rounded-lg border border-border bg-card"
+    >
       {/* Row header */}
       <div className="flex items-center gap-2 px-3 py-2">
         <button
@@ -503,8 +519,9 @@ function RuleRow({
           onClick={onRemove}
           className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive disabled:opacity-50 disabled:cursor-not-allowed"
           title="Remove rule"
+          aria-label="Remove"
         >
-          <Trash2 className="size-3.5" />
+          <Trash2 className="size-3.5" aria-hidden="true" />
         </button>
       </div>
 
