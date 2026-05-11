@@ -151,7 +151,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
 | 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
-| 10. Access Control Extended | 8/8 | Complete | 2026-05-10 |
+| 10. Access Control Extended | 8/8 | Complete   | 2026-05-11 |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 
 ## Out of Scope
