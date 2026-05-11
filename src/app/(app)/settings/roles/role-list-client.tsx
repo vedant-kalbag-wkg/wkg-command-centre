@@ -158,12 +158,14 @@ export function RoleListClient({
       {/* Header bar */}
       <div className="flex items-center justify-between mb-4">
         <div />
-        {canManage && (
-          <Button onClick={() => setCreateOpen(true)} className="h-9">
-            <ShieldPlus className="size-4" />
-            Create role
-          </Button>
-        )}
+        <Button
+          onClick={() => setCreateOpen(true)}
+          className="h-9"
+          disabled={!canManage}
+        >
+          <ShieldPlus className="size-4" aria-hidden="true" />
+          Create role
+        </Button>
       </div>
 
       {/* Role table */}
