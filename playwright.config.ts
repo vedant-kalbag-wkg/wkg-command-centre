@@ -10,6 +10,7 @@ export default defineConfig({
   retries: 0,
   outputDir: "./playwright-output",
   reporter: [["list"], ["html", { outputFolder: "./playwright-report", open: "never" }]],
+  globalSetup: require.resolve("./tests/global-setup"),
   use: {
     baseURL: overrideBaseURL ?? "http://localhost:3003",
     screenshot: "only-on-failure",
