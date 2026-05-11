@@ -1225,11 +1225,15 @@ export const rolePermissions = pgTable(
   },
   (t) => ({
     byRole: index("role_permissions_role_idx").on(t.roleId),
-    uniqRoleActionSubject: unique("role_permissions_role_id_action_subject_unique").on(
-      t.roleId,
-      t.action,
-      t.subject,
-    ),
+    // UNIQUE includes `inverted` because 0051 seeds two rows for read-only
+    // with the same (role_id, action='read', subject='Location') that differ
+    // only by `inverted` (the inverted=true row carries the banking-fields
+    // redact list). Migration 0053's narrower UNIQUE collapsed those two
+    // rows; migration 0054 widens to include `inverted` and restores the
+    // dropped inverted rule. See migrations/0054_*.sql header for context.
+    uniqRoleActionSubjectInverted: unique(
+      "role_permissions_role_id_action_subject_inverted_unique",
+    ).on(t.roleId, t.action, t.subject, t.inverted),
   }),
 );
 

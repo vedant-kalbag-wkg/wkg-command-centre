@@ -379,6 +379,13 @@
       "when": 1781600000000,
       "tag": "0053_phase_10_role_permissions_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1781700000000,
+      "tag": "0054_phase_10_role_permissions_unique_fix",
+      "breakpoints": true
     }
   ]
 }
