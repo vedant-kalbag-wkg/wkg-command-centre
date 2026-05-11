@@ -25,9 +25,27 @@ export default async function LocationDetailPage({ params }: LocationDetailPageP
     notFound();
   }
 
-  const { location } = locationResult;
+  const { location: rawLocation } = locationResult;
   const allowed = new Set(readableFields(ctx.ability, "Location"));
   const canSeeSensitive = allowed.has("bankingDetails");
+
+  // Plan 10-14 / Cluster A — readableFields(ability, "Location") returns
+  // the Drizzle column set for the `locations` table. Three derived join
+  // fields on LocationWithRelations are NOT columns (hotelGroupMemberships,
+  // assignedKiosks, internalPocName) and get nulled out by the redaction
+  // loop in getLocation (src/app/(app)/locations/actions.ts:283-289).
+  // Downstream consumer LocationDetailForm calls .map() on these (lines
+  // 373/385/389/940), crashing the page with `Cannot read properties of
+  // null (reading 'map')`. Backfill safe defaults here at the RSC boundary
+  // so the consumer's signature (LocationWithRelations) is honoured
+  // without changing getLocation's contract or the field-redaction
+  // semantics.
+  const location = {
+    ...rawLocation,
+    hotelGroupMemberships: rawLocation.hotelGroupMemberships ?? [],
+    assignedKiosks: rawLocation.assignedKiosks ?? [],
+    internalPocName: rawLocation.internalPocName ?? null,
+  };
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
