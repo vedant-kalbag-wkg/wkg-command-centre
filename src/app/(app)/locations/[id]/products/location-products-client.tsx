@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Plus, ChevronDown, ChevronUp, Calendar, History, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSession } from "@/lib/auth-client";
+import { Can } from "@/lib/casl/ability-context";
 import {
   listLocationProducts,
   listAllProviders,
@@ -250,11 +250,10 @@ function TierEditor({ tiers, onSave, onCancel }: TierEditorProps) {
 interface ProductRowProps {
   item: LocationProductItem;
   allProviders: ProviderSelectItem[];
-  isAdmin?: boolean;
   onUpdate: (id: string, data: Partial<{ availability: string; providerId: string | null; commissionTiers: VersionedTierConfig[] }>) => Promise<void>;
 }
 
-function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) {
+function ProductRow({ item, allProviders, onUpdate }: ProductRowProps) {
   const [showTierEditor, setShowTierEditor] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showRecalc, setShowRecalc] = useState(false);
@@ -408,7 +407,7 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
           )}
 
           {/* Recalculate button (admin-only) */}
-          {isAdmin && (
+          <Can I="manage" a="LocationProduct">
             <div>
               {showRecalc ? (
                 <div className="flex items-center gap-2 rounded-md border border-border p-2">
@@ -453,7 +452,7 @@ function ProductRow({ item, allProviders, isAdmin, onUpdate }: ProductRowProps) 
                 </button>
               )}
             </div>
-          )}
+          </Can>
         </div>
       </td>
     </tr>
@@ -470,8 +469,6 @@ interface LocationProductsClientProps {
 
 export function LocationProductsClient({ locationId }: LocationProductsClientProps) {
   const router = useRouter();
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "admin";
   const [locationProductItems, setLocationProductItems] = useState<LocationProductItem[]>([]);
   const [allProviders, setAllProviders] = useState<ProviderSelectItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -574,7 +571,6 @@ export function LocationProductsClient({ locationId }: LocationProductsClientPro
                   key={item.id}
                   item={item}
                   allProviders={allProviders}
-                  isAdmin={isAdmin}
                   onUpdate={handleUpdate}
                 />
               ))}

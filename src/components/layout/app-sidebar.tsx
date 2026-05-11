@@ -42,6 +42,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { Can } from "@/lib/casl/ability-context";
 
 // ============================================================
 // Types
@@ -146,7 +147,7 @@ function NavGroup({
 // AppSidebar
 // ============================================================
 
-export function AppSidebar({ isAdmin }: { isAdmin: boolean }) {
+export function AppSidebar() {
   const pathname = usePathname();
 
   return (
@@ -162,7 +163,9 @@ export function AppSidebar({ isAdmin }: { isAdmin: boolean }) {
       <SidebarContent>
         <NavGroup label="Kiosk Management" items={kioskManagement} pathname={pathname} />
         <NavGroup label="Analytics" items={analytics} pathname={pathname} />
-        {isAdmin && <NavGroup label="Configure" items={configure} pathname={pathname} />}
+        <Can I="manage" a="all">
+          <NavGroup label="Configure" items={configure} pathname={pathname} />
+        </Can>
       </SidebarContent>
       <SidebarFooter />
       <SidebarRail />
