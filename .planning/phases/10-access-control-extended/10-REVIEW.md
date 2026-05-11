@@ -19,7 +19,7 @@ files_reviewed_list:
   - migrations/0050_phase_10_roles_schema.sql
   - migrations/0051_phase_10_seed_and_backfill.sql
   - migrations/0052_phase_10_user_scopes_role_id_required.sql
-status: issues_found
+status: clean
 findings:
   critical: 4
   warning: 3
@@ -315,6 +315,26 @@ if (userType === "system" || (u.role as string) === "system") {
 
 ---
 
+---
+
+## Fix Log
+
+All 9 findings resolved. Commits below (branch `worktree-agent-a0ecb202ede2f15bf`, merged to `gsd/phase-10-access-control-extended`):
+
+| Finding | Description | Commit |
+|---------|-------------|--------|
+| CR-01 | Widen lockout-guard predicate to `system-kind OR name='admin'` | `3b9530b` |
+| CR-02 | Add `UNIQUE(role_id,action,subject)` to `role_permissions` via migration 0053 | `2998eec` |
+| CR-03 | Reserve role names to block privilege escalation via custom `admin` role | `7bdd50a` |
+| CR-04 | Wrap scope removal guard and DELETE in transaction with `FOR UPDATE` | `d355ddb` |
+| WR-01 | Add null guard for fallback `userRoleId` after upsert | `c4fffae` |
+| WR-02 | Wrap scope audit log in transaction (fixed as part of CR-04) | `d355ddb` |
+| WR-03 | Stabilise `AbilityProvider` `useMemo` via JSON string key | `0b3af6d` |
+| IN-01 | Remove dead `void` import suppressions (fixed as part of CR-03/WR-01) | `7bdd50a`, `c4fffae` |
+| IN-02 | Move null guard before `userType` assignment in `buildAbility` | `6018190` |
+
 _Reviewed: 2026-05-10_
 _Reviewer: Claude (adversarial code review — gsd/phase-10-access-control-extended)_
 _Depth: deep_
+_Fixed: 2026-05-10_
+_Fixer: Claude (gsd-code-fixer)_
