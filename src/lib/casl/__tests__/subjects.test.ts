@@ -7,7 +7,9 @@
  */
 import { describe, it, expect } from "vitest";
 import { getTableColumns } from "drizzle-orm";
+// @ts-expect-error — Wave 0 RED: @/lib/casl/subjects does not exist until Plan 10-03
 import { SUBJECT_TABLES, assertValidSubject } from "@/lib/casl/subjects";
+// @ts-expect-error — Wave 0 RED: @/lib/casl/ability does not exist until Plan 10-03
 import { type Subject } from "@/lib/casl/ability";
 
 /** Every Subject literal declared in the AppAbility type. */

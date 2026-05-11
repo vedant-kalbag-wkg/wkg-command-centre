@@ -64,8 +64,8 @@ describe("migration 0051 backfill (integration)", () => {
     await ctx.db.insert(userScopes).values({
       id: randomUUID(),
       userId: preExistingMemberId,
-      scopeType: "region",
-      scopeId: "test-region-0051",
+      dimensionType: "region",
+      dimensionId: "test-region-0051",
       // role_id is intentionally omitted — the backfill populates it
     });
   }, 120_000);
@@ -77,7 +77,8 @@ describe("migration 0051 backfill (integration)", () => {
   it("roles table contains exactly 3 seed rows after migration 0051", async () => {
     // Fails because the `roles` table doesn't exist until Plan 10-02.
     // After migration 0051: admin (kind=system), ops-it (kind=tier), read-only (kind=tier).
-    const { roles } = await import("@/db/schema");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { roles } = await import("@/db/schema") as any;
 
     const [{ total }] = await ctx.db
       .select({ total: count() })
@@ -90,17 +91,20 @@ describe("migration 0051 backfill (integration)", () => {
     // Fails because the `role_permissions` table doesn't exist until Plan 10-02.
     // Admin (kind=system) short-circuits — no rule rows needed, managed in code.
     // Ops-it and read-only must have ≥1 rule row each.
-    const { roles, rolePermissions } = await import("@/db/schema");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { roles, rolePermissions } = await import("@/db/schema") as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dbQ = ctx.db.query as any;
 
-    const adminRole = await ctx.db.query.roles?.findFirst({
+    const adminRole = await dbQ.roles?.findFirst({
       where: (r: { kind: { equals: (s: string) => unknown } }) =>
         r.kind.equals("system"),
     });
-    const opsItRole = await ctx.db.query.roles?.findFirst({
+    const opsItRole = await dbQ.roles?.findFirst({
       where: (r: { name: { equals: (s: string) => unknown } }) =>
         r.name.equals("ops-it"),
     });
-    const readOnlyRole = await ctx.db.query.roles?.findFirst({
+    const readOnlyRole = await dbQ.roles?.findFirst({
       where: (r: { name: { equals: (s: string) => unknown } }) =>
         r.name.equals("read-only"),
     });
@@ -137,7 +141,8 @@ describe("migration 0051 backfill (integration)", () => {
   it("every pre-existing user has a user_roles row matching their legacy user.role text", async () => {
     // Fails because the `user_roles` table doesn't exist until Plan 10-02.
     // Migration 0051 backfill must create user_roles rows for all pre-existing users.
-    const { userRoles, roles } = await import("@/db/schema");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { userRoles, roles } = await import("@/db/schema") as any;
     const { eq, and, inArray } = await import("drizzle-orm");
 
     const preExistingUserIds = [
@@ -155,15 +160,12 @@ describe("migration 0051 backfill (integration)", () => {
     expect(existingRoles).toHaveLength(3);
 
     // Verify each user's role maps correctly
-    const adminUserRole = existingRoles.find(
-      (ur: { userId: string }) => ur.userId === preExistingAdminId,
-    );
-    const memberUserRole = existingRoles.find(
-      (ur: { userId: string }) => ur.userId === preExistingMemberId,
-    );
-    const viewerUserRole = existingRoles.find(
-      (ur: { userId: string }) => ur.userId === preExistingViewerId,
-    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const adminUserRole = existingRoles.find((ur: any) => ur.userId === preExistingAdminId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const memberUserRole = existingRoles.find((ur: any) => ur.userId === preExistingMemberId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const viewerUserRole = existingRoles.find((ur: any) => ur.userId === preExistingViewerId);
 
     expect(adminUserRole).toBeDefined();
     expect(memberUserRole).toBeDefined();
@@ -188,7 +190,8 @@ describe("migration 0051 backfill (integration)", () => {
   it("zero userScopes rows have null role_id after backfill", async () => {
     // Fails because role_id column on userScopes doesn't exist until Plan 10-02.
     // Migration 0051 backfill must populate role_id for all pre-existing scope rows.
-    const { userScopes: userScopesTable } = await import("@/db/schema");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { userScopes: userScopesTable } = await import("@/db/schema") as any;
 
     const [{ nullCount }] = await ctx.db
       .select({ nullCount: count() })

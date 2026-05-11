@@ -19,7 +19,9 @@ import {
   type TestDbContext,
 } from "../helpers/test-db";
 import { user } from "@/db/schema";
+// @ts-expect-error — Wave 0 RED: @/lib/casl/role-mutations does not exist until Plan 10-03
 import { assignRole, revokeRole } from "@/lib/casl/role-mutations";
+// @ts-expect-error — Wave 0 RED: @/lib/casl/lockout-guard does not exist until Plan 10-03
 import { LOCKOUT_PREVENTION } from "@/lib/casl/lockout-guard";
 
 describe("better-auth admin plugin backwards compat (integration)", () => {
@@ -92,8 +94,10 @@ describe("better-auth admin plugin backwards compat (integration)", () => {
     //
     // This requires roles table + user_roles table (Wave 2 migration 0051).
 
-    const { roles } = await import("@/db/schema");
-    const opsItRole = await ctx.db.query.roles?.findFirst({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { roles } = await import("@/db/schema") as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opsItRole = await (ctx.db.query as any).roles?.findFirst({
       where: (r: { name: unknown }) => r.name,
     });
 
@@ -137,8 +141,10 @@ describe("better-auth admin plugin backwards compat (integration)", () => {
     });
 
     // Get the admin role id
-    const { roles, userRoles } = await import("@/db/schema");
-    const adminRole = await ctx.db.query.roles?.findFirst({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { roles, userRoles } = await import("@/db/schema") as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const adminRole = await (ctx.db.query as any).roles?.findFirst({
       where: (r: { name: unknown }) => r.name,
     });
 

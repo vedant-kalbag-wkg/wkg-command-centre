@@ -6,6 +6,7 @@
  * Do NOT make these pass in this plan — Wave 2 is the GREEN bar.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+// @ts-expect-error — Wave 0 RED: @/lib/casl/ability does not exist until Plan 10-03
 import { buildAbility, type AppAbility, type Subject, type Action } from "@/lib/casl/ability";
 
 describe("buildAbility", () => {

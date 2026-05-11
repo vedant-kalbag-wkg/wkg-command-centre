@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { AbilityBuilder, createMongoAbility } from "@casl/ability";
+// @ts-expect-error — Wave 0 RED: @/lib/casl/ability does not exist until Plan 10-03
 import { type AppAbility, type Subject, type Action } from "@/lib/casl/ability";
 
 /**

@@ -17,10 +17,9 @@ import {
   type TestDbContext,
 } from "../helpers/test-db";
 import { user } from "@/db/schema";
-import {
-  assertAtLeastOneEffectiveAdmin,
-  LOCKOUT_PREVENTION,
-} from "@/lib/casl/lockout-guard";
+// @ts-expect-error — Wave 0 RED: @/lib/casl/lockout-guard does not exist until Plan 10-03
+import { assertAtLeastOneEffectiveAdmin, LOCKOUT_PREVENTION } from "@/lib/casl/lockout-guard";
+// @ts-expect-error — Wave 0 RED: @/lib/casl/role-mutations does not exist until Plan 10-03
 import { assignRole, revokeRole } from "@/lib/casl/role-mutations";
 
 describe("lockout-guard (integration)", () => {
@@ -72,7 +71,9 @@ describe("lockout-guard (integration)", () => {
 
   it("revokeRole of last admin grant throws LOCKOUT_PREVENTION and rolls back", async () => {
     // Assign admin role to adminId so we have a user_roles row to revoke
-    const roleId = await ctx.db.query.roles
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dbQuery = ctx.db.query as any;
+    const roleId = await dbQuery.roles
       ?.findFirst({ where: (r: { name: { equals: (s: string) => unknown } }) => r.name.equals("admin") })
       .then((r: { id?: string } | undefined) => r?.id);
 
@@ -95,7 +96,8 @@ describe("lockout-guard (integration)", () => {
     ).rejects.toThrow(LOCKOUT_PREVENTION);
 
     // Verify the user_roles row was NOT deleted (transaction rolled back)
-    const { userRoles } = await import("@/db/schema");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { userRoles } = await import("@/db/schema") as any;
     const remaining = await ctx.db
       .select()
       .from(userRoles)
@@ -107,7 +109,9 @@ describe("lockout-guard (integration)", () => {
     // Path B: a custom role that grants `manage all` should count as an effective admin.
     // This test exercises the SQL query logic inside assertAtLeastOneEffectiveAdmin.
     // Fails at module-load because lockout-guard doesn't exist; also requires roles table.
-    const customAdminRoleId = await ctx.db.query.roles?.findFirst({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dbQuery2 = ctx.db.query as any;
+    const customAdminRoleId = await dbQuery2.roles?.findFirst({
       where: (r: { name: { equals: (s: string) => unknown } }) => r.name.equals("admin"),
     }).then((r: { id?: string } | undefined) => r?.id);
 
