@@ -31,8 +31,22 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import type { db as defaultDb } from "@/db";
-import { locations } from "@/db/schema";
+import {
+  hotelGroups,
+  locationHotelGroupMemberships,
+  locations,
+} from "@/db/schema";
 import { iterateBoardItems, type MondayItem } from "@/lib/monday/client";
+import {
+  extractDropdownLabels,
+  extractLinkedItemId,
+  extractLocationValue,
+  extractMondayDate,
+  extractMondayNumber,
+  extractMondayRating,
+  extractMondayStatusLabel,
+  extractMondayText,
+} from "@/lib/monday/extractors";
 import { normaliseName } from "@/lib/normalise";
 
 // Board IDs duplicated from import-location-products.ts on purpose — both
@@ -46,24 +60,69 @@ const BOARD_NAMES: Record<number, string> = {
   5092887865: "Australia DCM",
 };
 
-// Custom item fragment — `mirror3__1` is "Cust_cd (RPS)", a Monday MirrorValue
-// that mirrors the customer code from the Assets board's `text9`. Like
-// `mirror9` it requires `display_value` via a typed inline fragment (the
-// default `text` field on a MirrorValue is null). We pull `group { id title }`
-// for region resolution and `location` (LocationValue.text contains the
-// address — the trailing `, <country>` is the per-item region fallback when
-// the group title doesn't resolve).
+// Hotel-board item shape. Each Monday hotel item carries 15+ metadata
+// columns that the importer landed in `locations` historically; Phase 07-06
+// inadvertently dropped the enrichment when `enrich-locations-from-monday.ts`
+// was deprecated. This fragment restores it.
+//
+//   - `mirror3__1`     Cust_cd (RPS), the canonical hotel-level RPS account
+//                      code (MirrorValue — needs typed inline fragment).
+//   - `location`       Hotel address (LocationValue — lat/lng come from the
+//                      inline fragment; `text` is the formatted address; also
+//                      used by `extractCountryFromLocation` for region fallback).
+//   - `group0`         Hotel Group dropdown (can be comma-separated multi-label
+//                      e.g. "Arora, Radisson Hotels").
+//   - `status_17`      Launch Phase.
+//   - `status`         Live / Ready for Launch / Removed.
+//   - `live_date`      Date the hotel went live.
+//   - `key_contact_*`  Hotel-side contact name + email.
+//   - `finance_contact1`  Hotel finance contact.
+//   - `numbers__1`     Maintenance Fee (ex VAT).
+//   - `date9`          Free Trial End Date.
+//   - `number_of_rooms`  Hotel room count.
+//   - `rating__1`      Hotel star rating (1-5).
+//   - `label8__1`      Sourced by (WKG / partner channel).
+//   - `status_11`      Location Group label.
+//   - `link_to_ssm_groups__1`  BoardRelationValue → SSM Groups board
+//                              (id 1466686598); resolved to a
+//                              `kiosk_config_groups.id` by name lookup.
+//   - `long_text__1`   Hotel-level operator notes.
 const HOTEL_ITEM_FRAGMENT = `
   id
   name
   group { id title }
-  column_values(ids: ["mirror3__1", "location"]) {
+  column_values(ids: [
+    "mirror3__1",
+    "location",
+    "group0",
+    "status_17",
+    "status",
+    "live_date",
+    "key_contact_name",
+    "key_contact_email",
+    "finance_contact1",
+    "numbers__1",
+    "date9",
+    "number_of_rooms",
+    "rating__1",
+    "label8__1",
+    "status_11",
+    "link_to_ssm_groups__1",
+    "long_text__1"
+  ]) {
     id
     type
     text
     ... on MirrorValue { display_value }
+    ... on LocationValue { lat lng }
+    ... on BoardRelationValue { linked_item_ids }
   }
 `;
+
+// Monday SSM Groups board (board_relation target of `link_to_ssm_groups__1`).
+// Items are kiosk-config-groups by name. The runbook pre-fetches this board
+// and feeds the importer a `linkedItemId → kioskConfigGroups.id` map.
+export const SSM_GROUPS_BOARD_ID = 1466686598;
 
 // Pending-deployment groups: hotels here have `Number of SSMs` set but no
 // outlet code yet (no Assets entry). Per the operator workflow they get
@@ -137,6 +196,19 @@ export type HotelLocationImportResult = {
    * runbook hands this to `runAssetsImport` so each Asset's
    * `link_to_hotel_ssms` can be resolved to a real location id. */
   hotelMondayIdToLocationId: Map<string, string>;
+  /** Metadata-enrichment counters (post Phase-07-06 follow-up). */
+  /** Number of rows where the Monday LocationValue.text landed in
+   * `locations.address`. */
+  addressesWritten: number;
+  /** Number of items whose `group0` dropdown yielded at least one label that
+   * was resolved to a `hotel_groups` row (existing or upserted). */
+  hotelGroupsResolved: number;
+  /** Number of items whose SSM-Group BoardRelation pointed to an item id
+   * that the supplied lookup map didn't cover (typically because the
+   * `kiosk_config_groups` row doesn't yet exist for that operator-managed
+   * name). The row is inserted with NULL `kiosk_config_group_id`. */
+  kioskConfigGroupsResolved: number;
+  kioskConfigGroupsUnresolved: number;
   boardsProcessed: number;
   durationMs: number;
 };
@@ -154,6 +226,22 @@ export type HotelLocationImportDeps = {
     boardId: number,
     groupTitle: string,
   ) => Promise<string | null>;
+  /**
+   * Monday SSM-Groups-board linked-item id (the value held in each hotel
+   * item's `link_to_ssm_groups__1` BoardRelation) → `kiosk_config_groups.id`.
+   *
+   * Built by the runbook by (a) iterating board {@link SSM_GROUPS_BOARD_ID}
+   * for `id → name` and (b) joining against the existing
+   * `kiosk_config_groups` table by name. The importer does NOT auto-create
+   * — `kiosk_config_groups` is operator-managed (preserved across the
+   * v2 wipe-and-reseed). Hotel items whose SSM-Group link resolves through
+   * the map land with `kiosk_config_group_id` set; unresolved links land
+   * with NULL and increment `kioskConfigGroupsUnresolved` for triage.
+   *
+   * Omit (or pass an empty map) when the caller doesn't need SSM-Group
+   * resolution — e.g. unit-style tests focused on other behaviour.
+   */
+  kioskConfigGroupByMondayLinkedId?: Map<string, string>;
   logger?: (phase: string, msg: string) => void;
 };
 
@@ -212,6 +300,9 @@ export async function runHotelLocationImport(
   const previousToken = process.env.MONDAY_API_TOKEN;
   process.env.MONDAY_API_TOKEN = mondayApiToken;
 
+  const kioskConfigGroupMap =
+    deps.kioskConfigGroupByMondayLinkedId ?? new Map<string, string>();
+
   let locationsInserted = 0;
   let locationsSkippedExisting = 0;
   let hotelsSkippedNoRegion = 0;
@@ -219,8 +310,42 @@ export async function runHotelLocationImport(
   let customerCodesPopulated = 0;
   let customerCodeConflictsRetried = 0;
   let sameNameSkipped = 0;
+  let addressesWritten = 0;
+  let hotelGroupsResolved = 0;
+  let kioskConfigGroupsResolved = 0;
+  let kioskConfigGroupsUnresolved = 0;
   const unmappedTitles = new Set<string>();
   const hotelMondayIdToLocationId = new Map<string, string>();
+  // Side-cache for hotel-group upserts: `hotel_groups` is wiped by the v2
+  // runbook so we expect to insert each distinct label once per reseed.
+  // Caching here avoids a SELECT per item for the common case where many
+  // hotels share a group.
+  const hotelGroupNameToId = new Map<string, string>();
+
+  /** Upsert `hotel_groups` by name (unique) and return the id. */
+  const resolveHotelGroupId = async (name: string): Promise<string> => {
+    const cached = hotelGroupNameToId.get(name);
+    if (cached) return cached;
+    // Insert-or-fetch idempotent shape — `name` is UNIQUE on hotel_groups.
+    const inserted = await db
+      .insert(hotelGroups)
+      .values({ name })
+      .onConflictDoNothing({ target: hotelGroups.name })
+      .returning({ id: hotelGroups.id });
+    let id: string;
+    if (inserted.length > 0) {
+      id = inserted[0].id;
+    } else {
+      const existing = await db
+        .select({ id: hotelGroups.id })
+        .from(hotelGroups)
+        .where(eq(hotelGroups.name, name))
+        .limit(1);
+      id = existing[0].id;
+    }
+    hotelGroupNameToId.set(name, id);
+    return id;
+  };
 
   try {
     for (const boardId of HOTEL_BOARD_IDS) {
@@ -265,11 +390,66 @@ export async function runHotelLocationImport(
           continue;
         }
 
+        // ── Metadata extraction (Phase 07-06 follow-up) ────────────────────
+        // Pull all the optional metadata columns. None of these are required
+        // for the insert to succeed; missing values become NULL on insert.
+        const locationValue = extractLocationValue(item, "location");
+        const hotelGroupLabels = extractDropdownLabels(item, "group0");
+        const hotelGroupText =
+          hotelGroupLabels.length > 0 ? hotelGroupLabels.join(", ") : null;
+        const launchPhase = extractMondayStatusLabel(item, "status_17");
+        const statusLabel = extractMondayStatusLabel(item, "status");
+        const liveDate = extractMondayDate(item, "live_date");
+        const keyContactName = extractMondayText(item, "key_contact_name");
+        const keyContactEmail = extractMondayText(item, "key_contact_email");
+        const financeContact = extractMondayText(item, "finance_contact1");
+        const maintenanceFee = extractMondayNumber(item, "numbers__1");
+        const freeTrialEndDate = extractMondayDate(item, "date9");
+        const numRooms = extractMondayNumber(item, "number_of_rooms");
+        const starRating = extractMondayRating(item, "rating__1");
+        const sourcedBy = extractMondayStatusLabel(item, "label8__1");
+        const locationGroup = extractMondayStatusLabel(item, "status_11");
+        const mondayNotes = extractMondayText(item, "long_text__1");
+        const ssmGroupLinkedId = extractLinkedItemId(
+          item,
+          "link_to_ssm_groups__1",
+        );
+
+        // Resolve SSM-Group BoardRelation → kiosk_config_groups.id via the
+        // pre-built map. Items pointing at a linked id NOT in the map land
+        // with NULL `kiosk_config_group_id` (operator-managed table; we do
+        // not auto-create).
+        let kioskConfigGroupId: string | null = null;
+        if (ssmGroupLinkedId) {
+          const resolved = kioskConfigGroupMap.get(ssmGroupLinkedId);
+          if (resolved) {
+            kioskConfigGroupId = resolved;
+            kioskConfigGroupsResolved++;
+          } else {
+            kioskConfigGroupsUnresolved++;
+            logger(
+              "hotel-import",
+              `SSM-Group link ${ssmGroupLinkedId} on item ${item.id} ` +
+                `unresolved — kiosk_config_group_id left NULL`,
+            );
+          }
+        }
+
         // One location per hotel (per the v2 data-model rule "one location
         // per hotel, N kiosks via kiosk_assignments"). customer_code is
         // populated when present on mirror3__1; placeholders keep it NULL.
         // ON CONFLICT target → monday_item_id (the universal idempotency
         // key, populated for every imported row).
+        //
+        // Fill-NULLs-only semantics: on conflict we COALESCE each metadata
+        // field so that operator UI edits (made via the location detail
+        // form between reseeds) are NEVER overwritten by Monday. Identity
+        // columns (name, normalised_name, customer_code, primary_region_id,
+        // monday_item_id) are explicitly NOT in the SET list — those are
+        // owned by the importer's insert path and stay frozen on conflict.
+        // The xmax-returning trick distinguishes a fresh INSERT (xmax = 0)
+        // from a COALESCE update so the existing inserted/skipped counters
+        // remain meaningful.
         //
         // Phase 07-06 conflict-recovery contract: a SECOND distinct Monday
         // hotel arriving with a customer_code that's already taken in the
@@ -282,8 +462,26 @@ export async function runHotelLocationImport(
         const tryInsert = async (
           codeForInsert: string | null,
           extraNotes?: string,
-        ) =>
-          db
+        ) => {
+          // Operating-group FK: only set when the dropdown has exactly one
+          // label — multi-label cases ("Arora, Radisson Hotels") leave the
+          // singular FK NULL; the operator picks a primary via the UI, and
+          // analytics splits via `location_hotel_group_memberships`.
+          let operatingGroupId: string | null = null;
+          if (hotelGroupLabels.length === 1) {
+            operatingGroupId = await resolveHotelGroupId(hotelGroupLabels[0]);
+          } else if (hotelGroupLabels.length > 1) {
+            // Touch the cache for every label so the subsequent membership
+            // writes find them already inserted.
+            for (const lbl of hotelGroupLabels) {
+              await resolveHotelGroupId(lbl);
+            }
+          }
+          // Combine Monday-sourced notes with any conflict-recovery extra.
+          const notesText =
+            [extraNotes, mondayNotes].filter(Boolean).join("\n\n") || null;
+
+          return db
             .insert(locations)
             .values({
               name: item.name,
@@ -291,17 +489,66 @@ export async function runHotelLocationImport(
               customerCode: codeForInsert,
               mondayItemId: item.id,
               primaryRegionId,
-              notes: extraNotes ?? null,
+              notes: notesText,
+              address: locationValue.address,
+              latitude: locationValue.latitude,
+              longitude: locationValue.longitude,
+              hotelGroup: hotelGroupText,
+              operatingGroupId,
+              launchPhase,
+              status: statusLabel,
+              liveDate,
+              keyContactName,
+              keyContactEmail,
+              financeContact,
+              maintenanceFee:
+                maintenanceFee !== null ? String(maintenanceFee) : null,
+              freeTrialEndDate,
+              numRooms,
+              roomCount: numRooms,
+              starRating,
+              sourcedBy,
+              locationGroup,
+              kioskConfigGroupId,
             })
-            .onConflictDoNothing({
+            .onConflictDoUpdate({
               target: locations.mondayItemId,
               // `monday_item_id` is a PARTIAL unique index. Drizzle's
-              // `onConflictDoNothing.where` matches the index predicate.
-              where: sql`monday_item_id IS NOT NULL`,
+              // `onConflictDoUpdate.targetWhere` matches the index predicate.
+              targetWhere: sql`monday_item_id IS NOT NULL`,
+              set: {
+                address: sql`COALESCE(${locations.address}, EXCLUDED.address)`,
+                latitude: sql`COALESCE(${locations.latitude}, EXCLUDED.latitude)`,
+                longitude: sql`COALESCE(${locations.longitude}, EXCLUDED.longitude)`,
+                hotelGroup: sql`COALESCE(${locations.hotelGroup}, EXCLUDED.hotel_group)`,
+                operatingGroupId: sql`COALESCE(${locations.operatingGroupId}, EXCLUDED.operating_group_id)`,
+                launchPhase: sql`COALESCE(${locations.launchPhase}, EXCLUDED.launch_phase)`,
+                status: sql`COALESCE(${locations.status}, EXCLUDED.status)`,
+                liveDate: sql`COALESCE(${locations.liveDate}, EXCLUDED.live_date)`,
+                keyContactName: sql`COALESCE(${locations.keyContactName}, EXCLUDED.key_contact_name)`,
+                keyContactEmail: sql`COALESCE(${locations.keyContactEmail}, EXCLUDED.key_contact_email)`,
+                financeContact: sql`COALESCE(${locations.financeContact}, EXCLUDED.finance_contact)`,
+                maintenanceFee: sql`COALESCE(${locations.maintenanceFee}, EXCLUDED.maintenance_fee)`,
+                freeTrialEndDate: sql`COALESCE(${locations.freeTrialEndDate}, EXCLUDED.free_trial_end_date)`,
+                numRooms: sql`COALESCE(${locations.numRooms}, EXCLUDED.num_rooms)`,
+                roomCount: sql`COALESCE(${locations.roomCount}, EXCLUDED.room_count)`,
+                starRating: sql`COALESCE(${locations.starRating}, EXCLUDED.star_rating)`,
+                sourcedBy: sql`COALESCE(${locations.sourcedBy}, EXCLUDED.sourced_by)`,
+                locationGroup: sql`COALESCE(${locations.locationGroup}, EXCLUDED.location_group)`,
+                kioskConfigGroupId: sql`COALESCE(${locations.kioskConfigGroupId}, EXCLUDED.kiosk_config_group_id)`,
+                notes: sql`COALESCE(${locations.notes}, EXCLUDED.notes)`,
+              },
             })
-            .returning({ id: locations.id });
+            .returning({
+              id: locations.id,
+              // xmax = 0 on INSERT, non-0 on UPDATE-on-conflict. Lets the
+              // caller distinguish "fresh insert" from "fill-NULLs update"
+              // for counter purposes without an extra round-trip.
+              isNew: sql<boolean>`xmax = 0`,
+            });
+        };
 
-        let inserted: Array<{ id: string }>;
+        let inserted: Array<{ id: string; isNew: boolean }>;
         let landedCustomerCode = customerCode; // what actually got written
         let sameNameSkippedThisRow = false;
         // Wrap each insert in a SAVEPOINT so a 23505 doesn't abort the
@@ -385,36 +632,50 @@ export async function runHotelLocationImport(
               })
               .where(eq(locations.id, existingId));
             // Use the existing id for the Monday id map so Assets import
-            // attaches its kiosks to the canonical hotel.
-            inserted = [{ id: existingId }];
+            // attaches its kiosks to the canonical hotel. `isNew: false`
+            // skips the per-insert counters below.
+            inserted = [{ id: existingId, isNew: false }];
           } else {
             throw err;
           }
         }
 
+        // ON CONFLICT now uses DO UPDATE (fill-NULLs-only), so `inserted`
+        // always has exactly one row (unless the same-name path overrode
+        // it above). Distinguish fresh INSERT from COALESCE-update via the
+        // xmax-returning trick to keep the existing counter semantics.
         let locationId: string;
         if (sameNameSkippedThisRow) {
-          // Skip the per-board counters (we didn't actually insert).
-          locationId = inserted[0].id;
-        } else if (inserted.length > 0) {
-          if (isPlaceholder) {
-            placeholderLocationsCreated++;
-          } else {
-            locationsInserted++;
-          }
-          if (landedCustomerCode !== null) customerCodesPopulated++;
           locationId = inserted[0].id;
         } else {
-          locationsSkippedExisting++;
-          // Look up the existing row's id so we can still emit the
-          // hotel-id → location-id mapping for the assets-import step.
-          const existing = await db
-            .select({ id: locations.id })
-            .from(locations)
-            .where(eq(locations.mondayItemId, item.id))
-            .limit(1);
-          if (existing.length === 0) continue; // shouldn't happen, defensive
-          locationId = existing[0].id;
+          const row = inserted[0];
+          locationId = row.id;
+          if (row.isNew) {
+            if (isPlaceholder) {
+              placeholderLocationsCreated++;
+            } else {
+              locationsInserted++;
+            }
+            if (landedCustomerCode !== null) customerCodesPopulated++;
+            if (locationValue.address !== null) addressesWritten++;
+            if (hotelGroupLabels.length > 0) hotelGroupsResolved++;
+          } else {
+            locationsSkippedExisting++;
+          }
+        }
+
+        // ── Hotel-group memberships ──────────────────────────────────────
+        // Multi-label dropdowns ("Arora, Radisson Hotels") write one
+        // membership per label so analytics scopes split across every
+        // group. Composite PK (location_id, hotel_group_id) makes the
+        // insert idempotent across re-runs and across the same hotel
+        // landing on multiple boards.
+        for (const lbl of hotelGroupLabels) {
+          const gid = await resolveHotelGroupId(lbl);
+          await db
+            .insert(locationHotelGroupMemberships)
+            .values({ locationId, hotelGroupId: gid })
+            .onConflictDoNothing();
         }
 
         hotelMondayIdToLocationId.set(item.id, locationId);
@@ -443,6 +704,10 @@ export async function runHotelLocationImport(
     sameNameSkipped,
     unmappedGroupTitles: [...unmappedTitles].sort(),
     hotelMondayIdToLocationId,
+    addressesWritten,
+    hotelGroupsResolved,
+    kioskConfigGroupsResolved,
+    kioskConfigGroupsUnresolved,
     boardsProcessed: HOTEL_BOARD_IDS.length,
     durationMs: Date.now() - t0,
   };
