@@ -135,6 +135,10 @@ const GROUP_TITLE_REGION_PATTERNS: Array<{ re: RegExp; code: string }> = [
   { re: /\b(germany|german)\b/i, code: "DE" },
   { re: /\b(czech|prague|praha)\b/i, code: "CZ" },
   { re: /\b(australia|australian)\b/i, code: "AU" },
+  { re: /\b(portugal|portuguese)\b/i, code: "PT" },
+  // NOTE: deliberately exclude plain `us` — would match the pronoun in unrelated
+  // group titles. `usa` and `united states` are sufficient for Monday boards.
+  { re: /\b(usa|united states)\b/i, code: "US" },
 ];
 
 function mapGroupTitleToRegionCode(title: string): string | null {
