@@ -9,6 +9,7 @@ import {
   ScrollText,
   Users,
 } from "lucide-react";
+import { Can } from "@/lib/casl/ability-context";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -95,8 +96,6 @@ export function UserMenu({
   const router = useRouter();
   const pathname = usePathname();
 
-  const isAdmin = user.role === "admin";
-
   const handleSignOut = async () => {
     await signOut();
     router.push("/login");
@@ -104,7 +103,11 @@ export function UserMenu({
 
   return (
     <M3DropdownMenu>
-      <M3DropdownMenuTrigger className="h-9 w-9">
+      <M3DropdownMenuTrigger
+        className="h-9 w-9"
+        aria-label="User menu"
+        data-testid="user-menu-trigger"
+      >
         <Avatar className="h-8 w-8">
           <AvatarFallback className="text-white text-xs font-medium bg-primary">
             {getInitials(user.name)}
@@ -124,30 +127,29 @@ export function UserMenu({
             <RoleBadge role={user.role} />
           </div>
         </div>
-        {isAdmin && (
-          <>
-            <M3DropdownMenuSeparator />
-            <M3DropdownMenuLabel>Admin</M3DropdownMenuLabel>
-            {systemAdminItems.map((item) => {
-              const Icon = item.icon;
-              const active = isItemActive(item.href, pathname);
-              return (
-                <M3DropdownMenuItem
-                  key={item.href}
-                  onSelect={() => router.push(item.href)}
-                  className={cn(active && "text-primary")}
-                >
-                  <Icon className="h-5 w-5 text-muted-foreground" />
-                  {item.label}
-                </M3DropdownMenuItem>
-              );
-            })}
-          </>
-        )}
+        <Can I="manage" a="all">
+          <M3DropdownMenuSeparator />
+          <M3DropdownMenuLabel>Admin</M3DropdownMenuLabel>
+          {systemAdminItems.map((item) => {
+            const Icon = item.icon;
+            const active = isItemActive(item.href, pathname);
+            return (
+              <M3DropdownMenuItem
+                key={item.href}
+                onSelect={() => router.push(item.href)}
+                className={cn(active && "text-primary")}
+              >
+                <Icon className="h-5 w-5 text-muted-foreground" />
+                {item.label}
+              </M3DropdownMenuItem>
+            );
+          })}
+        </Can>
         <M3DropdownMenuSeparator />
         <M3DropdownMenuItem
           onSelect={handleSignOut}
           className="text-red-600"
+          data-testid="sign-out-btn"
         >
           <LogOut className="h-5 w-5" />
           Sign Out

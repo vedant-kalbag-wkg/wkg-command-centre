@@ -17,8 +17,8 @@
  *      `scopes-actions.ts` are reachable from the network.
  */
 
-import { and, eq } from "drizzle-orm";
-import { user, userScopes } from "@/db/schema";
+import { and, eq, sql } from "drizzle-orm";
+import { user, userScopes, userRoles } from "@/db/schema";
 import { writeAuditLog } from "@/lib/audit";
 import type { DimensionType } from "@/lib/scoping/scoped-query";
 
@@ -66,10 +66,14 @@ export async function _listScopesForActor(
   db: AnyDb,
   actor: Actor,
   userId: string,
+  roleId?: string,
 ): Promise<UserScopeRow[]> {
   if (actor.role !== "admin") {
     throw new Error("Forbidden");
   }
+  const condition = roleId
+    ? and(eq(userScopes.userId, userId), eq(userScopes.roleId, roleId))
+    : eq(userScopes.userId, userId);
   const rows = await db
     .select({
       id: userScopes.id,
@@ -79,7 +83,7 @@ export async function _listScopesForActor(
       createdAt: userScopes.createdAt,
     })
     .from(userScopes)
-    .where(eq(userScopes.userId, userId));
+    .where(condition);
   return rows as UserScopeRow[];
 }
 
@@ -87,6 +91,7 @@ export async function _addScopeForActor(
   db: AnyDb,
   actor: Actor,
   userId: string,
+  roleId: string,
   dimensionType: DimensionType,
   dimensionId: string,
 ): Promise<void> {
@@ -95,35 +100,50 @@ export async function _addScopeForActor(
   }
   assertValidDimensionType(dimensionType);
 
-  await db
-    .insert(userScopes)
-    .values({
-      userId,
-      dimensionType,
-      dimensionId,
-      createdBy: actor.id,
-    })
-    .onConflictDoNothing({
-      target: [
-        userScopes.userId,
-        userScopes.dimensionType,
-        userScopes.dimensionId,
-      ],
-    });
+  // Verify the (userId, roleId) assignment exists before binding a scope to it.
+  const assignment = await db
+    .select({ id: userRoles.id })
+    .from(userRoles)
+    .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)))
+    .limit(1);
+  if (assignment.length === 0) {
+    throw new Error("Cannot bind scope: this role is not assigned to the user");
+  }
 
-  await writeAuditLog(
-    {
-      actorId: actor.id,
-      actorName: actor.name,
-      entityType: "user",
-      entityId: userId,
-      entityName: "",
-      action: "assign",
-      field: "userScopes",
-      newValue: `${dimensionType}:${dimensionId}`,
-    },
-    db,
-  );
+  await db.transaction(async (tx: AnyDb) => {
+    await tx
+      .insert(userScopes)
+      .values({
+        userId,
+        roleId,
+        dimensionType,
+        dimensionId,
+        createdBy: actor.id,
+      })
+      .onConflictDoNothing({
+        target: [
+          userScopes.userId,
+          userScopes.roleId,
+          userScopes.dimensionType,
+          userScopes.dimensionId,
+        ],
+      });
+
+    await writeAuditLog(
+      {
+        actorId: actor.id,
+        actorName: actor.name,
+        entityType: "user",
+        entityId: userId,
+        entityName: "",
+        action: "assign",
+        field: "userScopes",
+        newValue: `${dimensionType}:${dimensionId}`,
+        metadata: { kind: "user.scope.bind", role_id: roleId },
+      },
+      tx,
+    );
+  });
 }
 
 export async function _removeScopeForActor(
@@ -141,6 +161,7 @@ export async function _removeScopeForActor(
       userId: userScopes.userId,
       dimensionType: userScopes.dimensionType,
       dimensionId: userScopes.dimensionId,
+      roleId: userScopes.roleId,
     })
     .from(userScopes)
     .where(eq(userScopes.id, scopeId))
@@ -154,39 +175,48 @@ export async function _removeScopeForActor(
     userId: string;
     dimensionType: DimensionType;
     dimensionId: string;
+    roleId: string | null;
   };
 
-  const targetUser = await db
-    .select({ userType: user.userType })
-    .from(user)
-    .where(eq(user.id, row.userId))
-    .limit(1);
+  await db.transaction(async (tx: AnyDb) => {
+    const targetUser = await tx
+      .select({ userType: user.userType })
+      .from(user)
+      .where(eq(user.id, row.userId))
+      .limit(1);
 
-  if (targetUser.length > 0 && targetUser[0].userType === "external") {
-    const remaining = await db
-      .select({ id: userScopes.id })
-      .from(userScopes)
-      .where(eq(userScopes.userId, row.userId));
-    if (remaining.length <= 1) {
-      throw new Error(
-        "Cannot remove last scope from external user — external users must have at least one scope row",
+    if (targetUser.length > 0 && targetUser[0].userType === "external") {
+      // Lock the scope rows for this user to prevent concurrent removes from
+      // racing past the guard. FOR UPDATE ensures only one tx proceeds at a time.
+      const remaining = await tx.execute(
+        sql`SELECT id FROM user_scopes WHERE user_id = ${row.userId} FOR UPDATE`,
       );
+      const remainingRows = (remaining as { rows?: unknown[] }).rows ?? (remaining as unknown[]);
+      if (remainingRows.length <= 1) {
+        throw new Error(
+          "Cannot remove last scope from external user — external users must have at least one scope row",
+        );
+      }
     }
-  }
 
-  await db.delete(userScopes).where(and(eq(userScopes.id, scopeId)));
+    await tx.delete(userScopes).where(and(eq(userScopes.id, scopeId)));
 
-  await writeAuditLog(
-    {
-      actorId: actor.id,
-      actorName: actor.name,
-      entityType: "user",
-      entityId: row.userId,
-      entityName: "",
-      action: "unassign",
-      field: "userScopes",
-      oldValue: `${row.dimensionType}:${row.dimensionId}`,
-    },
-    db,
-  );
+    await writeAuditLog(
+      {
+        actorId: actor.id,
+        actorName: actor.name,
+        entityType: "user",
+        entityId: row.userId,
+        entityName: "",
+        action: "unassign",
+        field: "userScopes",
+        oldValue: `${row.dimensionType}:${row.dimensionId}`,
+        metadata: {
+          kind: "user.scope.unbind",
+          ...(row.roleId ? { role_id: row.roleId } : {}),
+        },
+      },
+      tx,
+    );
+  });
 }

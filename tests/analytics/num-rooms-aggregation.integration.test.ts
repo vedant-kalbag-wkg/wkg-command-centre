@@ -17,6 +17,8 @@
  * summed per active member, regardless of sales volume).
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { createMongoAbility } from "@casl/ability";
+import type { AppAbility } from "@/lib/casl/types";
 import { setupTestDb, teardownTestDb, type TestDbContext } from "../helpers/test-db";
 
 // vi.hoisted survives mock hoisting — required because location-groups.ts
@@ -61,6 +63,7 @@ const userCtx: UserCtx = {
   id: "test-user",
   userType: "internal",
   role: "admin",
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 describe("num_rooms aggregation (Tasks 2.1 + 2.2)", () => {

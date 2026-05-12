@@ -521,6 +521,7 @@ export const userScopes = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    roleId: uuid("role_id").references(() => roles.id, { onDelete: "cascade" }),
     dimensionType: text("dimension_type", {
       enum: [
         "hotel_group",
@@ -536,7 +537,7 @@ export const userScopes = pgTable(
     createdBy: text("created_by").references(() => user.id),
   },
   (t) => ({
-    uniq: unique().on(t.userId, t.dimensionType, t.dimensionId),
+    uniq: unique().on(t.userId, t.roleId, t.dimensionType, t.dimensionId),
     byUser: index("user_scopes_user_idx").on(t.userId),
   })
 );
@@ -1191,5 +1192,66 @@ export const exchangeRates = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.currency, t.rateDate] }),
+  }),
+);
+
+// =============================================================================
+// Phase 10 — RBAC: roles, role_permissions, user_roles
+// =============================================================================
+
+export const roles = pgTable("roles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  kind: text("kind", { enum: ["system", "tier", "custom"] }).notNull(),
+  displayName: text("display_name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    action: text("action").notNull(),
+    subject: text("subject").notNull(),
+    fields: jsonb("fields").$type<string[] | null>(),
+    conditions: jsonb("conditions").$type<Record<string, unknown> | null>(),
+    inverted: boolean("inverted").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    byRole: index("role_permissions_role_idx").on(t.roleId),
+    // UNIQUE includes `inverted` because 0051 seeds two rows for read-only
+    // with the same (role_id, action='read', subject='Location') that differ
+    // only by `inverted` (the inverted=true row carries the banking-fields
+    // redact list). Migration 0053's narrower UNIQUE collapsed those two
+    // rows; migration 0054 widens to include `inverted` and restores the
+    // dropped inverted rule. See migrations/0054_*.sql header for context.
+    uniqRoleActionSubjectInverted: unique(
+      "role_permissions_role_id_action_subject_inverted_unique",
+    ).on(t.roleId, t.action, t.subject, t.inverted),
+  }),
+);
+
+export const userRoles = pgTable(
+  "user_roles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
+    assignedBy: text("assigned_by").references(() => user.id),
+  },
+  (t) => ({
+    uniq: unique().on(t.userId, t.roleId),
+    byUser: index("user_roles_user_idx").on(t.userId),
   }),
 );

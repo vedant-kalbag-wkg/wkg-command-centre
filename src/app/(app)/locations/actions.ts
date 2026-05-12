@@ -15,14 +15,16 @@ import {
 } from "@/db/schema";
 import {
   requireRole,
-  redactSensitiveFields,
   type Role,
 } from "@/lib/rbac";
+import { getUserCtx } from "@/lib/auth/get-user-ctx";
+import { readableFields } from "@/lib/casl/fields";
 import { writeAuditLog } from "@/lib/audit";
 import { LOCATION_TYPES, type LocationType } from "@/lib/analytics/types";
 import { eq, isNull, and, desc, inArray, sql } from "drizzle-orm";
 import { getScopedActiveLocationIds } from "@/lib/scoping/scoped-active-locations";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
+import { buildAbility } from "@/lib/casl/ability";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -275,11 +277,14 @@ export async function getLocation(id: string): Promise<
       assignedKiosks: assignmentRows,
     };
 
-    // Apply role-based redaction for sensitive fields
-    const userType =
-      (session.user as { userType?: "internal" | "external" }).userType ?? "internal";
-    const role = (session.user.role as Role | null) ?? "viewer";
-    const redacted = redactSensitiveFields(locationData, { userType, role });
+    // Apply CASL-ability field filtering (Pattern A — T-10-04 migration).
+    // readableFields returns the set of Location columns the user may read;
+    // fields absent from that set are nulled out.
+    const ctx = await getUserCtx();
+    const allowed = new Set(readableFields(ctx.ability, "Location"));
+    const redacted = Object.fromEntries(
+      Object.entries(locationData).map(([k, v]) => [k, allowed.has(k) ? v : null]),
+    ) as LocationWithRelations;
 
     return { location: redacted as LocationWithRelations };
   } catch (error) {
@@ -1026,6 +1031,7 @@ export async function listRegionOptions(): Promise<Array<{ id: string; name: str
         (session.user as { userType?: "internal" | "external" }).userType ??
         "internal",
       role: (session.user.role as UserCtx["role"]) ?? null,
+      ability: await buildAbility(session.user.id),
     };
     // Only show regions that have at least one location the user is allowed
     // to see (Task 3.9). Admin/system users get all regions because the

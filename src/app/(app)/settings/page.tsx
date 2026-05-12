@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays, ClipboardCheck, Gauge, Clock, MapPin } from "lucide-react";
+import { Users, GitBranch, ScrollText, Copy, FileUp, SlidersHorizontal, Ban, CalendarDays, ClipboardCheck, Gauge, Clock, MapPin, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import {
   Card,
@@ -8,6 +8,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { requireRole } from "@/lib/rbac";
+import { getUserCtx } from "@/lib/auth/get-user-ctx";
 
 export default async function SettingsPage() {
   // Determine if current user is admin (for conditional Audit Log card)
@@ -17,6 +18,15 @@ export default async function SettingsPage() {
     isAdmin = true;
   } catch {
     // Non-admin users see the page without Audit Log card
+  }
+
+  let canManageRoles = false;
+  try {
+    const ctx = await getUserCtx();
+    canManageRoles =
+      ctx.ability.can("manage", "Role") || ctx.ability.can("manage", "all");
+  } catch {
+    // fall through; tile hidden
   }
 
   return (
@@ -42,6 +52,24 @@ export default async function SettingsPage() {
               </CardHeader>
             </Card>
           </Link>
+
+          {canManageRoles && (
+            <Link href="/settings/roles" className="group">
+              <Card className="h-full cursor-pointer border-border/40 transition-shadow group-hover:shadow-md">
+                <CardHeader>
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5 text-primary" />
+                    </div>
+                    <CardTitle className="text-base font-medium">Roles</CardTitle>
+                  </div>
+                  <CardDescription className="text-sm text-muted-foreground">
+                    Manage RBAC roles, permissions, and tier defaults.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+          )}
 
           <Link href="/settings/pipeline-stages" className="group">
             <Card className="h-full cursor-pointer border-border/40 transition-shadow group-hover:shadow-md">

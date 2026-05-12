@@ -1,0 +1,59 @@
+(node:22171) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:22171) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+[globalSetup] TEST_LOCATION_ID=23376a11-601f-4206-b218-66b1c9436175
+[globalSetup] TEST_OPS_IT_ROLE_ID=794aa7db-578f-4968-b270-733a23195b8b
+[globalSetup] TEST_VIEWER_USER_ID=6l-vzsppStvTPWWpfkhpK
+
+Running 8 tests using 1 worker
+
+(node:22178) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:22178) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/access-control/can-component.spec.ts:39:7 › <Can> component — visibility gating › viewer does NOT see Merge button on /locations/[id] (10.0s)
+  ✓  2 tests/access-control/can-component.spec.ts:60:7 › <Can> component — visibility gating › admin sees Merge button on /locations/[id] (5.2s)
+  ✓  3 tests/access-control/can-component.spec.ts:78:7 › <Can> component — visibility gating › viewer does NOT see Configure nav-group in sidebar (5.4s)
+  ✓  4 tests/access-control/edit-tier.spec.ts:39:7 › edit tier role — /settings/roles/[id] › admin modifies Ops-IT rule, sees diff modal with impacted count, saves, ops-it user sees effect (13.9s)
+  ✓  5 tests/access-control/role-editor.spec.ts:15:7 › role editor — /settings/roles › admin can navigate to /settings/roles and see Roles heading (5.9s)
+  ✓  6 tests/access-control/role-editor.spec.ts:32:7 › role editor — /settings/roles › admin creates a custom role and sees toast + new row (8.2s)
+  ✓  7 tests/access-control/user-role-assignment.spec.ts:41:7 › user role assignment — /settings/users/[id] › admin can navigate to viewer user profile and see role-assignment block (5.8s)
+  ✘  8 tests/access-control/user-role-assignment.spec.ts:61:7 › user role assignment — /settings/users/[id] › admin assigns Ops-IT role to viewer user with south-west scope (5.0s)
+
+
+  1) tests/access-control/user-role-assignment.spec.ts:61:7 › user role assignment — /settings/users/[id] › admin assigns Ops-IT role to viewer user with south-west scope 
+
+    Error: locator.click: Error: strict mode violation: getByLabel(/role/i) resolved to 3 elements:
+        1) <section role="region" aria-label="Role assignment">…</section> aka getByRole('region', { name: 'Role assignment' })
+        2) <button tabindex="0" type="button" role="combobox" aria-label="Role" data-placeholder="" data-size="default" aria-expanded="false" aria-haspopup="listbox" data-slot="select-trigger" id="base-ui-_R_1l5fiv5ubt9fjb_" class="flex items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:…>…</button> aka getByRole('combobox', { name: 'Role' })
+        3) <button tabindex="0" type="button" data-slot="button" aria-label="Assign role" class="group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/…>Assign role</button> aka getByRole('button', { name: 'Assign role' })
+
+    Call log:
+    [2m  - waiting for getByLabel(/role/i)[22m
+
+
+      77 |     // API is incompatible; use the canonical click + option-click pattern.
+      78 |     // Plan 10-15 / gap-closure-round-3.
+    > 79 |     await page.getByLabel(/role/i).click();
+         |                                    ^
+      80 |     await page.getByRole("option", { name: /ops.?it/i }).click();
+      81 |
+      82 |     // Add scope: region = south-west
+        at /Users/vedant/Work/WeKnowGroup/wkg-kiosk-tool/tests/access-control/user-role-assignment.spec.ts:79:36
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    playwright-output/access-control-user-role-a-12b9c--user-with-south-west-scope/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: playwright-output/access-control-user-role-a-12b9c--user-with-south-west-scope/error-context.md
+
+  1 failed
+    tests/access-control/user-role-assignment.spec.ts:61:7 › user role assignment — /settings/users/[id] › admin assigns Ops-IT role to viewer user with south-west scope 
+  7 passed (1.0m)

@@ -224,6 +224,7 @@ export async function reactivateUser(userId: string) {
 }
 
 export async function deleteUser(userId: string) {
+  const { LOCKOUT_PREVENTION } = await import("@/lib/casl/lockout-guard");
   try {
     await requireRole("admin");
 
@@ -231,6 +232,10 @@ export async function deleteUser(userId: string) {
     const { db } = await import("@/db");
     const { session, account, userViews } = await import("@/db/schema");
     const { eq } = await import("drizzle-orm");
+    const { assertAtLeastOneEffectiveAdmin } = await import("@/lib/casl/lockout-guard");
+
+    // Lockout guard: refuse if deleting this user leaves no effective admin.
+    await assertAtLeastOneEffectiveAdmin(db, { excludeUserId: userId });
 
     await db.delete(session).where(eq(session.userId, userId));
     await db.delete(account).where(eq(account.userId, userId));
@@ -244,6 +249,13 @@ export async function deleteUser(userId: string) {
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (message === LOCKOUT_PREVENTION) {
+      return {
+        error:
+          "This change would leave the system with no effective admin. " +
+          "Assign Admin (or a role that grants 'manage all') to at least one other user before continuing.",
+      };
+    }
     // FK constraint = user is referenced by locations, audit logs, etc.
     if (message.includes("foreign key") || message.includes("violates") || message.includes("constraint")) {
       return { error: "Cannot delete this user — they are referenced by locations or other records. Deactivate them instead." };

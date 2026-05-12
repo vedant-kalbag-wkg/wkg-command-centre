@@ -12,6 +12,8 @@
 import { describe, it, expect } from "vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql as drizzleSql, type SQL } from "drizzle-orm";
+import { createMongoAbility } from "@casl/ability";
+import type { AppAbility } from "@/lib/casl/types";
 import {
   scopedLocationsCondition,
   type Scope,
@@ -46,18 +48,21 @@ const admin: UserCtx = {
   id: "a1",
   userType: "internal",
   role: "admin",
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 const externalRegion: UserCtx = {
   id: "e-region",
   userType: "external",
   role: null,
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 const externalLocation: UserCtx = {
   id: "e-loc",
   userType: "external",
   role: null,
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 describe("scopedLocationsCondition", () => {

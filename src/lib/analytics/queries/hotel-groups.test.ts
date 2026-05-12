@@ -37,6 +37,8 @@ vi.mock("@/lib/analytics/active-locations", () => ({
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
+import { createMongoAbility } from "@casl/ability";
+import type { AppAbility } from "@/lib/casl/types";
 import { getHotelGroupsList, getHotelGroupDetail } from "./hotel-groups";
 import type { AnalyticsFilters } from "@/lib/analytics/types";
 import type { UserCtx } from "@/lib/scoping/scoped-query";
@@ -78,6 +80,7 @@ const userCtx: UserCtx = {
   id: "test-user",
   userType: "internal",
   role: "admin",
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 /**

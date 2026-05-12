@@ -9,6 +9,8 @@ export const getUserCtx = cache(async (): Promise<UserCtx> => {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error("Not authenticated");
 
+  const { buildAbility } = await import("@/lib/casl/ability");
+
   const cookieStore = await cookies();
   const impersonatingId = cookieStore.get("impersonating_user_id")?.value;
 
@@ -28,6 +30,7 @@ export const getUserCtx = cache(async (): Promise<UserCtx> => {
         id: target.id,
         userType: (target.userType ?? "internal") as "internal" | "external",
         role: (target.role ?? null) as "admin" | "system" | "member" | "viewer" | null,
+        ability: await buildAbility(target.id),
       };
     }
   }
@@ -38,5 +41,6 @@ export const getUserCtx = cache(async (): Promise<UserCtx> => {
       (session.user as unknown as { userType: "internal" | "external" })
         .userType ?? "internal",
     role: (session.user.role ?? null) as "admin" | "system" | "member" | "viewer" | null,
+    ability: await buildAbility(session.user.id),
   };
 });

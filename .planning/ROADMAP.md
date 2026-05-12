@@ -18,7 +18,7 @@ Source documents: `PROJECT.md` (current milestone section), `REQUIREMENTS.md`, `
 - [x] **Phase 8: Email Infrastructure** — Resend transport, self-serve change-password, forgot-password deliverability UAT, transactional alerts substrate via Inngest. **MERGED 2026-05-09** (PR #37, commit `693e28d`). Sandbox UAT complete via `onboarding@resend.dev`; 3 DNS-cutover-deferred items pick up when `command.weknowgroup.com` DNS records are added (see `phases/08-email-infrastructure/deferred-items.md` + `08-HUMAN-UAT.md`).
 - [x] **Phase 9: POC Underperformance Alerts** — Weekly Inngest cron emails kiosk POCs when their `Live` kiosks fall into bottom outlet-tier; admin per-kiosk silencing; `/admin/performance-alerts` dashboard with manual run trigger (merged 2026-05-09, PR #38)
 - [x] **Phase 9.1: Multi-currency analytics — forex normalisation to GBP base reporting** (INSERTED) — Adds `exchange_rates` table populated daily from Bank of England spot rates via Inngest cron, denormalises `net_amount_gbp` onto `sales_records` at ingest with carry-forward + 7-day staleness ceiling, swaps every analytics aggregate to dual-emit native + GBP for auto-pick rendering, switches the Phase 9 POC classifier and commission processor to GBP-normalised revenue for cross-portfolio ranking. **MERGED 2026-05-10** (PR #40, squash `ca62db3`; 2-round Claude review loop closed 4 medium + 3 nit + 2 follow-up observations incl. migration 0049 commission_ledger column rename). Prod migrations 0046–0049 applied + 95,103-row GBP-identity backfill 2026-05-10. Tracks GitHub issue #39. Two deferred items in `phases/09.1-…/deferred-items.md`.
-- [ ] **Phase 10: Access Control Extended** — CASL `Ability` migration; configurable Ops/IT/Read-only tier rules in DB JSON; admin UI for tier editing without deploy; custom granular roles authorable in admin UI
+- [x] **Phase 10: Access Control Extended** — CASL `Ability` migration; configurable Ops/IT/Read-only tier rules in DB JSON; admin UI for tier editing without deploy; custom granular roles authorable in admin UI. **MERGED 2026-05-10** (8 plans across 6 waves; Q1 reversal: user.role text mirror PRESERVED — Better Auth admin plugin reads it in 12 endpoints; 3 new DB tables: roles, role_permissions, user_roles; redactSensitiveFields → permittedFieldsOf at 3 call sites; <Can> gates on sidebar/user-menu/Merge button; CASL Ability built with react.cache; diff-preview modal + impacted-user count on tier rule save)
 - [ ] **Phase 11: Tooling, Polish & Tech-Debt Close-out** — Staging orphan-rate baseline, Monday drift detection, analytics `useEffect → loadData()` migration, GitHub auto-delete-merged-branches, tab hover/loading polish, calendar empty-state overlay, bulk-action type-safety, Drizzle 0.45.2 patch audit
 
 ## Phase Details
@@ -115,7 +115,41 @@ Plans:
   3. `redactSensitiveFields` replaced by `permittedFieldsOf(ability, 'read', subject)` drop-in across all call sites
   4. Admin can create / edit / clone custom granular roles (subjects × actions × fields × conditions) and assign per-user
   5. Existing 3-role coverage (Admin / Ops-IT / Read-only) preserved as default tier definitions; no behavioural regression for current users
-**Plans**: TBD (run `/gsd-plan-phase 10`)
+**Plans**: 15 plans (8 original + 7 gap closure)
+
+Plans:
+**Wave 1**
+- [x] 10-01-wave-0-test-scaffolds-PLAN.md — Wave 1 RED test scaffolds (16 files)
+- [x] 10-02-schema-migrations-and-audit-extension-PLAN.md — Wave 1 schema (3 tables) + 3 migrations + audit union widen + CASL deps
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 10-03-casl-core-ability-builder-PLAN.md — Wave 2 buildAbility (react.cache) + types/subjects/fields/external-invariant/seed/role-mirror/lockout-guard/ability-context
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 10-04-rbac-shim-and-call-site-cutover-PLAN.md — Wave 3 rbac.ts shim + 3 redactSensitiveFields call sites (location-products-client owned by 10-07)
+- [x] 10-05-settings-roles-admin-ui-PLAN.md — Wave 3 /settings/roles list + drill-in + diff-preview + impacted-users
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [x] 10-06-user-role-assignment-ui-and-removeuser-wrap-PLAN.md — Wave 4 /settings/users/[id]/page.tsx + role-actions + deleteUser lockout wrap
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [x] 10-07-client-can-gates-and-ability-provider-PLAN.md — Wave 5 layout AbilityProvider + 3 <Can> client gates
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [x] 10-08-playwright-uat-and-doc-closeout-PLAN.md — Wave 6 preview Playwright UAT + ops runbook + ROADMAP/REQUIREMENTS/STATE close-out
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [x] 10-09-PLAN.md — Wave 7 (gap closure A): migrations/meta/_journal.json sync — register tags 0050..0053 so drizzle-kit migrate applies Phase 10 SQL on fresh deploys (PROD BLOCKER from 10-UAT-AUTONOMOUS.md)
+- [x] 10-10-PLAN.md — Wave 7 (gap closure B): canonical seeder — delete broken scripts/seed-test-users.ts (uses auth.api.signUpEmail which disableSignUp:true blocks); rename scripts/seed-test-users-direct.ts → seed-test-users.ts
+- [x] 10-11-PLAN.md — Wave 7 (gap closure D): a11y selector alignment — Create role button always-renders (disabled-not-hidden); role-assignment block wrapped in section[role=region]; Assign button widened to "Assign role"
+- [x] 10-12-PLAN.md — Wave 7 (gap closure C): Merge button CASL gate — <Can I="merge" a="Location"> added on /locations/[id]
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 10-13-PLAN.md — Wave 8 (gap closure verification): live Playwright run against Vercel preview alias; closeout 10-VERIFICATION.md + deferred-items.md + 10-HUMAN-UAT.md + STATE.md
+- [x] 10-14-PLAN.md — Wave 8 (gap closure round 2 — source fixes): null-guard derived fields on /locations/[id] RSC (cluster A); RuleRow row+remove a11y; Create role Description Textarea; role picker + Add scope aria-labels (unblocks resumed 10-13)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [x] 10-15-PLAN.md — Wave 9 (gap closure round 3 — final source fixes): T1 ability-eval gap (Branch A: migration 0055 backfills missing user_roles row for admin); T2 diff-modal copy alignment (`user(s) impacted` on single source line); T3 Playwright globalSetup populates TEST_LOCATION_ID/TEST_OPS_IT_ROLE_ID/TEST_VIEWER_USER_ID from preview DB via pg; T4 replace selectOption() on Radix Selects with canonical click + option-click pattern (unblocks resumed 10-13 toward ≥7/8 PASS)
 
 ### Phase 11: Tooling, Polish & Tech-Debt Close-out
 **Goal**: Close every outstanding non-trivial item batched at v1.1 close: staging orphan-rate baseline, Monday drift detection, analytics `useEffect → loadData()` migration, GitHub auto-delete-merged-branches, tab hover/loading polish, calendar empty-state overlay, bulk-action type-safety, Drizzle 0.45.2 patch audit. v1.1 reaches a clean operational baseline before v1.2 / v2.0 scope.
@@ -141,7 +175,7 @@ Phases execute in numeric order: 7 → 8 → 9 → 10 → 11. Phase 10 may execu
 | 8. Email Infrastructure | 3/3 | Code-complete; awaiting operator UAT | — |
 | 9. POC Underperformance Alerts | 7/7 | Complete (PR #38 merged) | 2026-05-09 |
 | 9.1 Multi-currency analytics — forex normalisation (INSERTED) | 10/11 | Gap closure round 2 planned (09.1-11 — closes 3 NEW regressions introduced by 09.1-09: NEW CR-01 recipient-in-arg-eval, NEW CR-02 EmailTemplate union miss, 2 test regressions); awaiting execution + operator UAT against preview alias (`09.1-HUMAN-UAT.md`) | — |
-| 10. Access Control Extended | 0/0 | Not planned | — |
+| 10. Access Control Extended | 14/15 | In Progress|  |
 | 11. Tooling, Polish & Tech-Debt Close-out | 0/0 | Not planned | — |
 
 ## Out of Scope

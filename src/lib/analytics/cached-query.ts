@@ -1,8 +1,10 @@
 import { unstable_cache } from 'next/cache';
+import { createMongoAbility } from '@casl/ability';
 import { withStats } from '@/lib/analytics/cache-stats';
 import type { CanonicalFilters } from '@/lib/analytics/canonicalise-filters';
 import type { AnalyticsFilters } from '@/lib/analytics/types';
 import type { UserCtx } from '@/lib/scoping/scoped-query';
+import type { AppAbility } from '@/lib/casl/types';
 
 export const INTERNAL_SCOPE_KEY = '__internal__' as const;
 export type CachedQueryScope = typeof INTERNAL_SCOPE_KEY | `ext:${string}`;
@@ -21,6 +23,7 @@ export const INTERNAL_USER_CTX: UserCtx = {
   id: '__internal__',
   userType: 'internal',
   role: 'admin',
+  ability: createMongoAbility([]) as AppAbility,
 };
 
 function denormaliseCanonical(f: CanonicalFilters): AnalyticsFilters {

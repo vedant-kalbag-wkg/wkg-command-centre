@@ -50,8 +50,8 @@ Turn v1.0's MVP into the day-to-day ops platform the team operates from by:
 
 ## D. Access control extended
 
-- [ ] **AUTH-06** — Configurable Ops/IT/Read-only RBAC tiers via CASL. Rules stored as JSON in DB; admin UI for editing tier permissions without deploy. `redactSensitiveFields` migrates to `permittedFieldsOf(ability, 'read', subject)`. Existing `userScopes` preserved (feeds CASL `conditions`).
-- [ ] **AUTH-07** — Custom granular roles authorable in admin UI. Per-role rule set (subjects × actions × fields × conditions). Role assignment per-user; UI for creating/editing/cloning roles.
+- [x] **AUTH-06** — Configurable Ops/IT/Read-only RBAC tiers via CASL. Rules stored as JSON in DB; admin UI for editing tier permissions without deploy. `redactSensitiveFields` migrates to `permittedFieldsOf(ability, 'read', subject)`. Existing `userScopes` preserved (feeds CASL `conditions`).
+- [x] **AUTH-07** — Custom granular roles authorable in admin UI. Per-role rule set (subjects × actions × fields × conditions). Role assignment per-user; UI for creating/editing/cloning roles.
 
 ## E. Test coverage + tooling
 
@@ -115,8 +115,8 @@ Filled by `gsd-roadmapper` 2026-05-03 — every REQ-ID maps to exactly one phase
 | EMAIL-03 | Phase 8 | SC3 — end-to-end forgot-password UAT against prod passes via git-branch-aliased `BETTER_AUTH_URL` |
 | EMAIL-04 | Phase 8 | SC4 — Inngest send + retry functions, branded templates, `email_log` audit table with `payloadHash` unique index for digest idempotency |
 | POC-ALERT-01 | Phase 9 | SC1 — weekly Inngest cron classifies `Live` kiosks via existing percentile cutoffs over admin-tunable trailing window; emails batched per `kiosks.internal_poc_id` for flip-in + monthly cadence; admin per-kiosk silencing + read-only `/admin/performance-alerts` page with manual "Run now" trigger |
-| AUTH-06 | Phase 10 | SC1+SC2+SC4+SC5 — CASL `Ability` built in `get-user-ctx`; configurable Ops/IT/Read-only tier rules in DB JSON; admin UI for tier editing without deploy; `userScopes` continues to drive `conditions` |
-| AUTH-07 | Phase 10 | SC3 — admin UI for creating/editing/cloning custom granular roles (subjects × actions × fields × conditions) with per-user assignment |
+| AUTH-06 | Phase 10 | SC1+SC2+SC4+SC5 — CASL Ability built in get-user-ctx; admin UI for tier rule editing without deploy; redactSensitiveFields → permittedFieldsOf; existing 3-role coverage preserved | ✓ COMPLETE 2026-05-10 |
+| AUTH-07 | Phase 10 | SC3 — admin UI for creating/editing/cloning custom granular roles + per-(user, role) scope binding | ✓ COMPLETE 2026-05-10 |
 | TEST-01 | Phase 11 | SC1 — staging orphan-rate baseline measurement + CI invariant assertion when threshold exceeded |
 | MONDAY-01 | Phase 11 | SC2 — scheduled Monday-drift detection job surfacing diffs in admin UI (reframed: Monday is SoT, "drift" means Monday changed) |
 | REF-01 | Phase 11 | SC3 — analytics dashboards migrated to shared `loadData()` pattern; `react-hooks/set-state-in-effect` suppressions removed |

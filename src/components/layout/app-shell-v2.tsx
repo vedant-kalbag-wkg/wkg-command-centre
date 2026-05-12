@@ -9,13 +9,15 @@ export function AppShellV2({
   user: { name: string; email: string; role: string };
   children: React.ReactNode;
 }) {
-  const isAdmin = user.role === "admin";
   return (
     <SidebarProvider>
-      <AppSidebar isAdmin={isAdmin} />
+      <AppSidebar />
       <SidebarInset className="min-w-0">
         <AppTopBar user={user} />
-        <main className="flex-1 min-w-0 overflow-x-clip">{children}</main>
+        {/* <SidebarInset> already renders <main> — keep this wrapper a <div>
+            to avoid nested <main> (invalid HTML; trips strict-mode on
+            page.getByRole("main") in tests/access-control/edit-tier.spec.ts:87). */}
+        <div className="flex-1 min-w-0 overflow-x-clip">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );
