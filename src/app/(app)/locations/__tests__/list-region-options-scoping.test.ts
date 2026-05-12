@@ -62,6 +62,13 @@ vi.mock("@/lib/rbac", () => ({
   redactSensitiveFields: (x: unknown) => x,
 }));
 
+// Stub buildAbility so the listRegionOptions UserCtx construction doesn't run
+// real Drizzle queries (those would be captured by the @/db chain mock below,
+// polluting the captured[] array used by these assertions).
+vi.mock("@/lib/casl/ability", () => ({
+  buildAbility: vi.fn(async () => ({ rules: [] })),
+}));
+
 vi.mock("@/lib/audit", () => ({
   writeAuditLog: vi.fn(async () => undefined),
 }));
@@ -98,11 +105,13 @@ describe("listRegionOptions — scope-restricted picker (Task 3.9)", () => {
     const { listRegionOptions } = await import("../actions");
     await listRegionOptions();
 
-    expect(scopedActiveIdsFn).toHaveBeenCalledWith({
-      id: "user-uk-1",
-      userType: "external",
-      role: "viewer",
-    });
+    expect(scopedActiveIdsFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "user-uk-1",
+        userType: "external",
+        role: "viewer",
+      }),
+    );
     expect(captured.length).toBe(1);
     const sql = captured[0]!;
     // Picker filter must use the location_region_memberships subquery.

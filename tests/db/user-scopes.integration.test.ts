@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { setupTestDb, teardownTestDb, type TestDbContext } from '../helpers/test-db';
-import { user, userScopes } from '@/db/schema';
+import { user, userScopes, roles } from '@/db/schema';
 
 describe('userScopes', () => {
   let ctx: TestDbContext;
@@ -31,16 +31,24 @@ describe('userScopes', () => {
     ).rejects.toThrow();
   });
 
-  it('enforces uniqueness on (userId, dimensionType, dimensionId)', async () => {
+  it('enforces uniqueness on (userId, roleId, dimensionType, dimensionId)', async () => {
+    // Phase 10 widened the UNIQUE constraint to include role_id so that the
+    // same scope can bind to multiple roles for the same user. The legacy
+    // 3-column UNIQUE is replaced by a 4-column UNIQUE
+    // (see migrations/0056_phase_10_user_scopes_uniq_swap.sql).
     await ctx.db.insert(user).values({
       id: 'u-uniq', email: 'uniq@t.t', name: 'Uniq', emailVerified: true,
     });
+    const [opsItRole] = await ctx.db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(eq(roles.name, 'ops-it'));
     await ctx.db.insert(userScopes).values({
-      userId: 'u-uniq', dimensionType: 'provider', dimensionId: '9',
+      userId: 'u-uniq', roleId: opsItRole!.id, dimensionType: 'provider', dimensionId: '9',
     });
     await expect(
       ctx.db.insert(userScopes).values({
-        userId: 'u-uniq', dimensionType: 'provider', dimensionId: '9',
+        userId: 'u-uniq', roleId: opsItRole!.id, dimensionType: 'provider', dimensionId: '9',
       }),
     ).rejects.toThrow();
   });
