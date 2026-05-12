@@ -103,14 +103,16 @@ export function UserMenu({
 
   return (
     <M3DropdownMenu>
-      {/* Off-screen sign-out button — gives Playwright (and other a11y
-          consumers that prefer role=button over a dropdown menuitem) a
-          reachable affordance without changing the visible UI. Used by
-          tests/access-control/edit-tier.spec.ts:78. */}
+      {/* Invisible-in-viewport sign-out button — gives Playwright (and
+          other a11y consumers that prefer role=button over a dropdown
+          menuitem) a reachable affordance without changing the visible
+          UI. Used by tests/access-control/edit-tier.spec.ts:78.
+          Positioned fixed inside the viewport (not off-screen) so
+          Playwright's "scroll into view" actionability gate passes. */}
       <button
         type="button"
         onClick={handleSignOut}
-        className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden"
+        className="fixed top-0 left-0 h-px w-px opacity-0 pointer-events-auto"
         tabIndex={-1}
         aria-hidden="false"
       >
