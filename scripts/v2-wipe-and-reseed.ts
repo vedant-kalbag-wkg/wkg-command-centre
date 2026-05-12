@@ -195,6 +195,37 @@ function parseSeedFilename(
   };
 }
 
+/**
+ * Pure helper — compute the de-duplicated, sorted list of Monday SSM-Group
+ * item names that are present on the board but absent from the operator-
+ * managed `kiosk_config_groups` table. Exported for unit testing; the
+ * runbook uses this to auto-seed missing rows on a fresh DB (and to close
+ * incremental drift on prod when SSM-Groups items get added upstream).
+ *
+ * Behaviour:
+ * - Trims whitespace and ignores empty names (Monday items occasionally
+ *   land with a blank name during a rename mid-poll).
+ * - De-duplicates on the trimmed name (Monday boards have shipped duplicate
+ *   item names historically; ON CONFLICT (name) DO NOTHING handles the
+ *   second insert at the DB layer too, but de-duping here keeps the log
+ *   line clean).
+ * - Sorts the output to make the log line deterministic across runs.
+ */
+export function computeKioskConfigGroupsToInsert(
+  existingNames: Iterable<string>,
+  mondayItemNames: Iterable<string>,
+): string[] {
+  const existing = new Set(existingNames);
+  const toInsert = new Set<string>();
+  for (const raw of mondayItemNames) {
+    const name = raw?.trim();
+    if (!name) continue;
+    if (existing.has(name)) continue;
+    toInsert.add(name);
+  }
+  return [...toInsert].sort((a, b) => a.localeCompare(b));
+}
+
 const RUNBOOK_ACTOR: ImportActor = {
   id: ETL_SYSTEM_USER_ID,
   name: "System (v2-wipe-and-reseed)",
@@ -324,29 +355,20 @@ async function main(): Promise<void> {
       const kcgByName = new Map(kcgRows.rows.map((r) => [r.name, r.id]));
       console.log(`  ${kcgByName.size} kiosk_config_groups loaded.`);
 
-      // 2. Iterate the SSM-groups board on Monday; for each item, look up
-      //    the matching kiosk_config_groups row by name. Items whose name
-      //    doesn't match any kiosk_config_groups row are silently skipped —
-      //    the hotel importer will record an unresolved-link counter when
-      //    that's the case. Bridge token into env for the shared client.
+      // 2. Iterate the SSM-groups board on Monday once and capture every
+      //    item's (id, name). We need two passes over this list — one to
+      //    auto-seed missing kiosk_config_groups rows, one to build the
+      //    linkedItemId → kiosk_config_groups.id map — and refetching the
+      //    board would double the Monday roundtrip cost.
+      const mondayItems: Array<{ id: string; name: string }> = [];
       const previousToken = process.env.MONDAY_API_TOKEN;
       process.env.MONDAY_API_TOKEN = mondayApiToken;
       try {
-        let scanned = 0;
-        let mapped = 0;
         for await (const item of iterateBoardItems(SSM_GROUPS_BOARD_ID, {
           itemFragment: `id name`,
         })) {
-          scanned++;
-          const kcgId = kcgByName.get(item.name);
-          if (kcgId) {
-            kioskConfigGroupByMondayLinkedId.set(item.id, kcgId);
-            mapped++;
-          }
+          mondayItems.push({ id: item.id, name: item.name });
         }
-        console.log(
-          `  SSM-groups board scanned: ${scanned} items; resolved to kiosk_config_groups: ${mapped}.`,
-        );
       } finally {
         if (previousToken === undefined) {
           delete process.env.MONDAY_API_TOKEN;
@@ -354,6 +376,56 @@ async function main(): Promise<void> {
           process.env.MONDAY_API_TOKEN = previousToken;
         }
       }
+
+      // 3. Auto-seed kiosk_config_groups rows for any Monday SSM-Group item
+      //    name not yet present in the table. Idempotent on prod (existing
+      //    rows untouched); on a fresh DB this closes the gap that would
+      //    otherwise leave every hotel with `kiosk_config_group_id = NULL`.
+      //    ON CONFLICT (name) DO NOTHING also handles the rare case where
+      //    a duplicate name slips through `computeKioskConfigGroupsToInsert`'s
+      //    de-dup (e.g. concurrent operator add between SELECT and INSERT).
+      const namesToInsert = computeKioskConfigGroupsToInsert(
+        kcgByName.keys(),
+        mondayItems.map((i) => i.name),
+      );
+      if (namesToInsert.length > 0) {
+        for (const name of namesToInsert) {
+          const inserted = await client.query<{ id: string; name: string }>(
+            `INSERT INTO kiosk_config_groups (name) VALUES ($1)
+             ON CONFLICT (name) DO NOTHING
+             RETURNING id, name`,
+            [name],
+          );
+          if (inserted.rows[0]) {
+            kcgByName.set(inserted.rows[0].name, inserted.rows[0].id);
+          }
+        }
+        console.log(
+          `  auto-created ${namesToInsert.length} new kiosk_config_groups ` +
+            `rows from Monday SSM-Groups board: ${namesToInsert.join(", ")}`,
+        );
+      } else {
+        console.log(`  no new kiosk_config_groups rows to auto-create.`);
+      }
+
+      // 4. Build the linkedItemId → kiosk_config_groups.id map. Items whose
+      //    name still doesn't match a kiosk_config_groups row after the
+      //    auto-seed are silently skipped — the hotel importer records an
+      //    unresolved-link counter when that's the case (should be zero
+      //    after the auto-seed lands).
+      let mapped = 0;
+      for (const item of mondayItems) {
+        const kcgId = kcgByName.get(item.name);
+        if (kcgId) {
+          kioskConfigGroupByMondayLinkedId.set(item.id, kcgId);
+          mapped++;
+        }
+      }
+      console.log(
+        `  SSM-groups board scanned: ${mondayItems.length} items; ` +
+          `resolved to kiosk_config_groups: ${mapped}.`,
+      );
+      console.log(`  ${kcgByName.size} kiosk_config_groups loaded (post-seed).`);
     }
 
     // ════════════════════════════════════════════════════════════════════════
