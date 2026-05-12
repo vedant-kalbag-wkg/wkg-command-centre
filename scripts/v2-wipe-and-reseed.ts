@@ -32,7 +32,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -45,9 +45,13 @@ import {
 } from "@/app/(app)/settings/data-import/sales/pipeline";
 import { ETL_AZURE_LOCK_KEY } from "@/lib/sales/etl/advisory-lock";
 import { LocalFileSource } from "@/lib/sales/local-file-source";
+import { iterateBoardItems } from "@/lib/monday/client";
 import { runAssetsImport } from "@/lib/monday/import-assets";
 import { runHeathrowImport } from "@/lib/monday/import-heathrow";
-import { runHotelLocationImport } from "@/lib/monday/import-hotel-locations";
+import {
+  runHotelLocationImport,
+  SSM_GROUPS_BOARD_ID,
+} from "@/lib/monday/import-hotel-locations";
 import { runMondayImport } from "@/lib/monday/import-location-products";
 import { normaliseName } from "@/lib/normalise";
 import {
@@ -249,6 +253,16 @@ async function main(): Promise<void> {
   let assetsResult: Awaited<ReturnType<typeof runAssetsImport>> | undefined;
   let heathrowResult: Awaited<ReturnType<typeof runHeathrowImport>> | undefined;
   let tierResult: Awaited<ReturnType<typeof runMondayImport>> | undefined;
+  // 2026-05 follow-up — SSM-Group linked-item id (the value held in each
+  // hotel item's `link_to_ssm_groups__1` BoardRelation) → kiosk_config_groups.id.
+  // Built before BEGIN so the Monday roundtrip doesn't hold the transaction
+  // open. `kiosk_config_groups` is operator-managed (preserved across the
+  // reseed) — the importer does NOT auto-create from this map.
+  let kioskConfigGroupByMondayLinkedId = new Map<string, string>();
+  // Snapshot path captured pre-Phase-1 so the post-reseed restore step can
+  // diff operator-only edits (notes hand-edits, sentinel address) back into
+  // the freshly seeded locations table.
+  let preReseedSnapshotPath: string | undefined;
 
   try {
     const lockResult = await client.query<{ acquired: boolean }>(
@@ -261,6 +275,82 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     console.log(`Advisory lock ${LOCK_KEY} acquired.`);
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PRE-PHASE 1 — Snapshot existing locations + build SSM-Group map
+    // ════════════════════════════════════════════════════════════════════════
+    // Both steps run OUTSIDE the BEGIN/TRUNCATE transaction:
+    //   * Snapshot captures the pre-reseed locations state so the post-reseed
+    //     restore script can re-apply operator-only edits (hand-edited notes,
+    //     sentinel rows, anything Monday doesn't supply). Skipped in dry-run
+    //     because no data changes.
+    //   * SSM-Group map fetches board 1466686598 once and joins against the
+    //     preserved `kiosk_config_groups` table so the hotel importer can
+    //     resolve `link_to_ssm_groups__1 → kiosk_config_groups.id` inline.
+    //     Doing this outside the transaction avoids holding the Phase 1
+    //     transaction open during a slow Monday roundtrip (the same reason
+    //     the importer fan-out itself was already isolated to STEP 4).
+    if (APPLY) {
+      console.log(`\n=== PRE-PHASE 1: Snapshot locations ===`);
+      const snapResult = await client.query<{ row: Record<string, unknown> }>(
+        `SELECT row_to_json(l) AS row FROM locations l`,
+      );
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      preReseedSnapshotPath = `/tmp/locations-pre-reseed-${ts}.json`;
+      await writeFile(
+        preReseedSnapshotPath,
+        JSON.stringify(snapResult.rows.map((r) => r.row), null, 2),
+      );
+      console.log(
+        `  ${snapResult.rows.length} rows snapshotted → ${preReseedSnapshotPath}`,
+      );
+    } else {
+      console.log(
+        `\n[dry-run] PRE-PHASE 1: Skipping locations snapshot (no data change).`,
+      );
+    }
+
+    console.log(`\n=== PRE-PHASE 1: Build SSM-Group → kiosk_config_groups map ===`);
+    {
+      // 1. Pull the operator-managed kiosk_config_groups (preserved across
+      //    the reseed). Build a name → id lookup.
+      const kcgRows = await client.query<{ id: string; name: string }>(
+        `SELECT id, name FROM kiosk_config_groups`,
+      );
+      const kcgByName = new Map(kcgRows.rows.map((r) => [r.name, r.id]));
+      console.log(`  ${kcgByName.size} kiosk_config_groups loaded.`);
+
+      // 2. Iterate the SSM-groups board on Monday; for each item, look up
+      //    the matching kiosk_config_groups row by name. Items whose name
+      //    doesn't match any kiosk_config_groups row are silently skipped —
+      //    the hotel importer will record an unresolved-link counter when
+      //    that's the case. Bridge token into env for the shared client.
+      const previousToken = process.env.MONDAY_API_TOKEN;
+      process.env.MONDAY_API_TOKEN = mondayApiToken;
+      try {
+        let scanned = 0;
+        let mapped = 0;
+        for await (const item of iterateBoardItems(SSM_GROUPS_BOARD_ID, {
+          itemFragment: `id name`,
+        })) {
+          scanned++;
+          const kcgId = kcgByName.get(item.name);
+          if (kcgId) {
+            kioskConfigGroupByMondayLinkedId.set(item.id, kcgId);
+            mapped++;
+          }
+        }
+        console.log(
+          `  SSM-groups board scanned: ${scanned} items; resolved to kiosk_config_groups: ${mapped}.`,
+        );
+      } finally {
+        if (previousToken === undefined) {
+          delete process.env.MONDAY_API_TOKEN;
+        } else {
+          process.env.MONDAY_API_TOKEN = previousToken;
+        }
+      }
+    }
 
     // ════════════════════════════════════════════════════════════════════════
     // PHASE 1 — Structural reseed (atomic transaction)
@@ -367,6 +457,7 @@ async function main(): Promise<void> {
       mondayApiToken,
       db: drizzleDb,
       resolveRegionIdByGroup,
+      kioskConfigGroupByMondayLinkedId,
       logger: (phase, msg) => console.log(`  [${phase}] ${msg}`),
     });
     console.log(
@@ -377,6 +468,10 @@ async function main(): Promise<void> {
         `customer-codes-populated=${hotelResult.customerCodesPopulated} ` +
         `customer-code-conflicts-retried=${hotelResult.customerCodeConflictsRetried} ` +
         `same-name-skipped=${hotelResult.sameNameSkipped} ` +
+        `addresses-written=${hotelResult.addressesWritten} ` +
+        `hotel-groups-resolved=${hotelResult.hotelGroupsResolved} ` +
+        `kcg-resolved=${hotelResult.kioskConfigGroupsResolved} ` +
+        `kcg-unresolved=${hotelResult.kioskConfigGroupsUnresolved} ` +
         `hotelIdMap=${hotelResult.hotelMondayIdToLocationId.size} ` +
         `(took ${hotelResult.durationMs}ms)`,
     );
