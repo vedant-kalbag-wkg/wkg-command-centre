@@ -13,16 +13,26 @@
 --
 --   0053 added UNIQUE(role_id, action, subject) and BEFORE adding the constraint
 --   ran a PARTITION-BY-(role_id, action, subject) dedup that kept the OLDEST row
---   (by created_at). On preview DB, this collapsed the two rules into the
---   non-inverted one, silently dropping the inverted (banking-fields) rule —
---   read-only users would have seen banking columns. (Discovered during 10-13
---   live UAT preflight.)
+--   (by created_at). The OLDEST of the two same-created_at rows is decided by
+--   id (UUID) ordering — i.e. non-deterministic per environment. On preview
+--   the inverted=true row got dropped (discovered during 10-13 live UAT
+--   preflight); in CI's fresh Testcontainers DB the inverted=false row gets
+--   dropped instead. Either outcome leaves read-only users in a broken state.
 --
--- This migration:
---   1. DROPs the (role_id, action, subject) UNIQUE constraint.
---   2. Re-INSERTs the dropped read-only Location inverted rule (scoped to
---      the read-only role only — safer than wholesale re-running 0051's INSERTs).
---   3. ADDs the wider UNIQUE constraint on (role_id, action, subject, inverted).
+-- This migration leaves the DB in the canonical 2-row state regardless of
+-- which row 0053's dedup happened to keep:
+--   1. DROP the narrow (role_id, action, subject) UNIQUE.
+--   2. Dedup on the wider partition (role_id, action, subject, inverted) so
+--      the wider UNIQUE add at the end never trips. No-op once the wider
+--      UNIQUE is already in place (re-run case).
+--   3. Ensure the canonical read-only Location `read inverted=false` (base
+--      read) row exists, via WHERE NOT EXISTS. Idempotent on a re-run; covers
+--      the CI case where 0053 dropped the base-read row.
+--   4. Ensure the canonical read-only Location `read inverted=true` (banking
+--      redact) row exists, via WHERE NOT EXISTS. Idempotent on a re-run;
+--      covers the preview case where 0053 dropped the invert row.
+--   5. ADD the wider UNIQUE constraint on (role_id, action, subject, inverted).
+--      IF NOT EXISTS guard makes it idempotent on a re-run.
 --
 -- The wider UNIQUE is sufficient for the seed: in 0051 there is no role whose
 -- two rules differ ONLY in `fields` (and not also in `inverted`). `fields`
@@ -33,8 +43,9 @@
 -- protection given the seed shape. If a future tier introduces two same-
 -- inverted rules that differ only by fields, revisit then.
 --
--- Idempotent: each DDL step uses DO $$ guards; the data INSERT uses
--- ON CONFLICT DO NOTHING so a re-run after the wider UNIQUE is added is a no-op.
+-- Idempotent end-to-end: every step is guarded so a re-run on a DB where
+-- this migration already succeeded is a no-op. (Re-runs happen via the
+-- patched dialect.js hash-membership check when the migration file changes.)
 
 -- ── Step 1: Drop the narrow UNIQUE (idempotent) ──────────────────────────────
 DO $$
@@ -50,11 +61,51 @@ BEGIN
 END $$;
 --> statement-breakpoint
 
--- ── Step 2: Re-insert the dropped read-only Location inverted rule ───────────
+-- ── Step 2: Dedup on the wider partition (idempotent) ────────────────────────
+-- Removes any rows where (role_id, action, subject, inverted) is duplicated,
+-- keeping the OLDEST by created_at (tiebreak: id). No-op once the wider
+-- UNIQUE is in place (re-run case) — ROW_NUMBER never exceeds 1.
+DELETE FROM "role_permissions"
+WHERE "id" IN (
+  SELECT "id"
+  FROM (
+    SELECT
+      "id",
+      ROW_NUMBER() OVER (
+        PARTITION BY "role_id", "action", "subject", "inverted"
+        ORDER BY "created_at" ASC, "id" ASC
+      ) AS rn
+    FROM "role_permissions"
+  ) sub
+  WHERE sub.rn > 1
+);
+--> statement-breakpoint
+
+-- ── Step 3: Ensure the read-only Location base-read (inverted=false) rule ───
+-- Covers the CI case where 0053 happened to drop the base-read row.
+-- WHERE NOT EXISTS is idempotent on a re-run after the wider UNIQUE is added.
+INSERT INTO "role_permissions" ("role_id", "action", "subject", "fields", "conditions", "inverted")
+  SELECT r.id,
+         'read',
+         'Location',
+         NULL::jsonb,
+         NULL::jsonb,
+         false
+    FROM "roles" r
+    WHERE r.name = 'read-only'
+      AND NOT EXISTS (
+        SELECT 1 FROM "role_permissions" rp
+        WHERE rp.role_id = r.id
+          AND rp.action = 'read'
+          AND rp.subject = 'Location'
+          AND rp.inverted = false
+      );
+--> statement-breakpoint
+
+-- ── Step 4: Ensure the read-only Location banking-redact (inverted=true) rule ─
+-- Covers the preview case where 0053 happened to drop the inverted row.
 -- Banking-fields-redact list mirrors 0051 Delta 3 exactly.
--- The WHERE r.name='read-only' scopes the SELECT to the single intended role.
--- ON CONFLICT DO NOTHING is defensive — the rule should not exist post-0053,
--- but a re-run of THIS migration after the wider UNIQUE is in place must be a no-op.
+-- WHERE NOT EXISTS is idempotent on a re-run after the wider UNIQUE is added.
 INSERT INTO "role_permissions" ("role_id", "action", "subject", "fields", "conditions", "inverted")
   SELECT r.id,
          'read',
@@ -64,10 +115,16 @@ INSERT INTO "role_permissions" ("role_id", "action", "subject", "fields", "condi
          true
     FROM "roles" r
     WHERE r.name = 'read-only'
-  ON CONFLICT DO NOTHING;
+      AND NOT EXISTS (
+        SELECT 1 FROM "role_permissions" rp
+        WHERE rp.role_id = r.id
+          AND rp.action = 'read'
+          AND rp.subject = 'Location'
+          AND rp.inverted = true
+      );
 --> statement-breakpoint
 
--- ── Step 3: Add the wider UNIQUE constraint (idempotent) ─────────────────────
+-- ── Step 5: Add the wider UNIQUE constraint (idempotent) ─────────────────────
 DO $$
 BEGIN
   IF NOT EXISTS (

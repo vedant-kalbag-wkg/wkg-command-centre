@@ -367,13 +367,6 @@
       "breakpoints": true
     },
     {
-      "idx": 52,
-      "version": "7",
-      "when": 1781500000000,
-      "tag": "0052_phase_10_user_scopes_role_id_required",
-      "breakpoints": true
-    },
-    {
       "idx": 53,
       "version": "7",
       "when": 1781600000000,
@@ -385,6 +378,13 @@
       "version": "7",
       "when": 1781700000000,
       "tag": "0054_phase_10_role_permissions_unique_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1781800000000,
+      "tag": "0056_phase_10_user_scopes_uniq_swap",
       "breakpoints": true
     }
   ]
