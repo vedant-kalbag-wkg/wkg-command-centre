@@ -882,7 +882,14 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only run main() when invoked as the entry script — guards against
+// auto-execution when unit tests import the exported helpers from this file.
+// `process.argv[1]` is the script Node was asked to run; `import.meta.url`
+// is this module's URL. They match only on direct invocation via tsx/node.
+import { fileURLToPath } from "node:url";
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
