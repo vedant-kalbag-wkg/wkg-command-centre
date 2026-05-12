@@ -4,8 +4,8 @@ milestone: v1.1
 milestone_name: milestone
 status: executing
 stopped_at: "Phase 9.1 (Multi-currency forex normalisation) shipped 2026-05-09 on branch `gsd/phase-09.1-multi-currency-analytics-forex-normalisation-to-gbp-base-rep`. 8 plans across 5 waves: 09.1-01 Wave 0 fixtures + RED tests; 09.1-02 schema substrate (exchange_rates table, sales_records.net_amount_gbp NULLABLE, EmailKind extended); 09.1-03 FX library (boe-fetch + rate-lookup + currencies); 09.1-04 Inngest cron `fx-rates.fetch-daily` + serve registration; 09.1-05 ETL stamping + backfill script + migration 0048 NOT NULL flip operator-gated; 09.1-06 analytics SQL audit dual-emit (41 sites / 13 files) with saved-pivot back-compat (D-17); 09.1-07 renderer dispatch + tooltips + classifier/commission swaps + admin stale-rate banner; 09.1-08 doc surgery (ROADMAP/REQUIREMENTS/PROJECT/STATE) + 09.1-HUMAN-UAT.md operator runbook. Awaiting operator UAT against preview alias per CLAUDE.md gate (`PLAYWRIGHT_BASE_URL=<preview-alias> npx playwright test tests/fx-normalisation/`); list-pass is NOT sufficient evidence."
-last_updated: "2026-05-11T16:12:28.476Z"
-last_activity: 2026-05-11
+last_updated: "2026-05-12T03:30:00.000Z"
+last_activity: 2026-05-12
 progress:
   total_phases: 6
   completed_phases: 3
@@ -28,7 +28,38 @@ See: .planning/PROJECT.md (updated 2026-05-03 at v1.1 milestone scoping)
 Phase: 11
 Plan: Not started
 Status: Ready to execute
-Last activity: 2026-05-11
+Last activity: 2026-05-12
+
+## Phase 10 close entry (2026-05-12)
+
+Phase 10 — Access Control Extended — closed at 7/8 PASS on `tests/access-control/`
+against the Vercel preview alias (`wkg-command-centre-git-gsd-p-10273a-...`).
+ROADMAP already shows Phase 10 as MERGED 2026-05-10 (the optimistic merge predated
+final UAT verification); this entry records the gap-closure work that drove the
+live tally from 3/8 → 4/8 → 4/8 → 7/8 across four rounds.
+
+**Gap-closure plans (after the initial 8-plan ship):**
+
+- Plan 10-09 — `migrations/meta/_journal.json` sync so 0050..0053 are visible to `drizzle-kit migrate` (was silently missing on fresh deploys).
+- Plan 10-10 — canonical `scripts/seed-test-users.ts` (Better Auth `auth.$context.password.hash()` path; the legacy seeder did not work).
+- Plan 10-11 — region landmark on `/settings/users/[id]` + `Add scope` aria-label + RuleRow `role="row"`/aria-label + create-role Description field.
+- Plan 10-12 — `<Can I="merge" a="Location">` gate on `/locations/[id]` + migration 0054 widening `role_permissions` UNIQUE on `inverted`.
+- Plan 10-13 — the live UAT plan itself; multi-round pause/resume (PARTIAL → PARTIAL-r2 → PARTIAL-r3 → SUMMARY).
+- Plan 10-14 — Cluster A null-guard on `/locations/[id]` + Cluster B a11y selectors (subject-first RuleRow aria-label, `aria-label="Remove"`, Description Textarea, `aria-label="Role"`, `aria-label="Add scope"`).
+- Plan 10-15 — Branch A migration 0055 backfill of admin `user_roles` + `tests/global-setup.ts` populating fixture IDs from preview DB + Radix selectOption→click+option-click pattern + DialogDescription copy alignment with `/user(s) impacted/i`.
+- Plan 10-13 round-4 (this close-out) — 9 commits (`fb80f00`..`0e9ffc0`) closing Clusters 1/2/3/4/6/8/9/10 with surgical source fixes. Cluster 5 (`user-role-assignment.spec.ts:61` strict-mode) is intractable in current spec shape and deferred as `DEFERRED-10-02-A` in `phases/10-access-control-extended/deferred-items.md`.
+
+**Final Playwright tally (commit `0e9ffc0`, log `phases/10-access-control-extended/artifacts/playwright-10-13-r10-green.log`):**
+
+```
+7 passed, 1 failed (1.0m)
+✘ tests/access-control/user-role-assignment.spec.ts:61 — DEFERRED-10-02-A
+```
+
+Run-cost / cycle-time: ~4 hours of iteration across two days (2026-05-11 → 2026-05-12),
+9 atomic commits, 7 files modified in product source. Operator runbook updated in
+`phases/10-access-control-extended/10-HUMAN-UAT.md` with the canonical re-run
+quick reference and the test-data idempotency note.
 
 ## Pending v1.1 close-out actions (from completed phases)
 

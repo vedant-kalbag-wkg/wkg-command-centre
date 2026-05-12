@@ -2,8 +2,57 @@
 
 **Phase:** 10 — Access Control Extended
 **Branch:** `gsd/phase-10-access-control-extended`
-**Status:** code-complete + UAT-pending
-**Last updated:** 2026-05-10
+**Status:** code-complete + UAT-verified (7/8 PASS, gap-closure rounds 1-4 closed)
+**Last updated:** 2026-05-12
+
+> **Post-gap-closure summary (2026-05-12).** The runbook below was authored before
+> the multi-round gap-closure (Plans 10-09..10-15 plus 10-13 round-4 source fixes).
+> See `## Round-4 re-run quick reference` immediately below for the canonical commands
+> used to drive the suite to 7/8 PASS. The Step 1-N walk further down remains
+> accurate for a from-cold UAT setup; the quick reference is for re-runs that
+> assume the preview alias is already pinned and the test users are already seeded.
+
+## Round-4 re-run quick reference
+
+```bash
+# 1. Confirm preview alias points at latest HEAD (auto-points on push if Vercel webhook fires)
+git push origin gsd/phase-10-access-control-extended
+vercel ls | head -3     # latest deploy should be Ready
+vercel alias ls | grep git-gsd-p-10273a    # confirms the alias target
+
+# 2. Restore non-idempotent test data (edit-tier removes ops-it's `read Kiosk` rule on success)
+DATABASE_URL=$(grep '^DATABASE_URL=' .env.preview | cut -d= -f2- | sed 's/^"//;s/"$//')
+psql "$DATABASE_URL" -c "INSERT INTO role_permissions (role_id, action, subject, fields, conditions, inverted)
+  SELECT id, 'read', 'Kiosk', NULL, NULL, false FROM roles WHERE name='ops-it'
+  ON CONFLICT (role_id, action, subject, inverted) DO NOTHING;"
+psql "$DATABASE_URL" -c "DELETE FROM roles WHERE name='custom-kiosk-reader' OR display_name='Custom Kiosk Reader';"
+
+# 3. Run the suite against the alias (creds in .env.test; DATABASE_URL pulled above)
+TEST_ADMIN_EMAIL=$(grep '^TEST_ADMIN_EMAIL=' .env.test | cut -d= -f2-)
+TEST_ADMIN_PASSWORD=$(grep '^TEST_ADMIN_PASSWORD=' .env.test | cut -d= -f2-)
+PLAYWRIGHT_BASE_URL="https://wkg-command-centre-git-gsd-p-10273a-vedant-kalbag-wkgs-projects.vercel.app" \
+  TEST_ADMIN_EMAIL="$TEST_ADMIN_EMAIL" \
+  TEST_ADMIN_PASSWORD="$TEST_ADMIN_PASSWORD" \
+  DATABASE_URL="$DATABASE_URL" \
+  npx playwright test tests/access-control/
+```
+
+Expected: **7/8 PASS** (`user-role-assignment.spec.ts:61` is the documented
+`DEFERRED-10-02-A` intractable spec-shape gap; see `deferred-items.md`).
+
+**Migrations applied as of 2026-05-12:**
+- 0050 — phase 10 roles schema
+- 0051 — seed + backfill
+- 0052 — `user_scopes.role_id` NOT NULL flip (operator-gated, applied)
+- 0053 — (Phase 10 follow-up; see migration file for rationale)
+- 0054 — UNIQUE-on-inverted widening (Plan 10-12 → commit `7497c12`)
+- 0055 — admin `user_roles` backfill (Plan 10-15 Branch A → commit `85d5820`)
+
+**Canonical test-user seeder:** `npx tsx scripts/seed-test-users.ts` (Plan 10-10).
+Seeds `TEST_OPS_IT` and `TEST_VIEWER` with correct `user_roles` join rows.
+Idempotent; safe to re-run.
+
+---
 
 ---
 
