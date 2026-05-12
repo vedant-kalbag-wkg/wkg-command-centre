@@ -169,7 +169,7 @@ Source of truth: `src/db/schema.ts`. The list below is the navigation map; the f
 
 ## Migration workflow
 
-`drizzle-kit` is the only migration tool. The `migrations/` directory has 39 forward migrations (`0000`–`0038`) and a `meta/` snapshot — it's append-only after merge.
+`drizzle-kit` is the only migration tool. The `migrations/` directory has 51 forward migrations (`0000`–`0050`) and a `meta/` snapshot — it's append-only after merge. Prod is at id 51 as of 2026-05-12; the most recent entry is `migrations/0050_monday_metadata_pt_us_regions.sql` (adds `PT` + `US` rows to `regions`, both with intentionally NULL `azure_code` — see top-of-file comment).
 
 ```bash
 # 1. Edit src/db/schema.ts.
@@ -204,6 +204,47 @@ Long-running operations (ETL run, Monday import) use `pg_try_advisory_lock(<int8
 - Behaviour: if the lock can't be acquired, returns `{ status: "skipped-lock" }` (HTTP 409 / exit code 2). The caller is expected to be idempotent.
 - The lock is released on the same connection. **Do not** mix this with a connection pool that can move you between sockets mid-transaction — if you ever introduce PgBouncer in transaction-pooling mode, advisory locks will silently break. See AZURE-SELF-HOSTING.md.
 
+## Monday import → `locations` (post 2026-05-12)
+
+The canonical structural reseed (`scripts/v2-wipe-and-reseed.ts`, exposed as `npm run db:reseed`) re-derives `locations` from four Monday hotel boards (Live Estate `1356570756`, Ready to Launch `1743012104`, Removed `5026387784`, Australia DCM `5092887865`) plus the Heathrow Express board (`1356657751`). Shared pure extractors live in `src/lib/monday/extractors.ts` (location with lat/lng, dropdown, status, date, number, rating, board_relation, text, country-from-location) — 25 unit tests in `src/lib/monday/__tests__/`.
+
+**Hotel boards — 15 metadata fields written by `runHotelLocationImport`** (`src/lib/monday/import-hotel-locations.ts`):
+
+| Monday column | → `locations` column |
+|---|---|
+| `location` (LocationValue) | `address`, `latitude`, `longitude` |
+| `group0` (dropdown) | `hotel_group` (raw comma-joined text), `operating_group_id` (FK iff single label) |
+| `status_17` | `launch_phase` |
+| `status` | `status` |
+| `live_date` | `live_date` |
+| `key_contact_name` | `key_contact_name` |
+| `key_contact_email` | `key_contact_email` |
+| `finance_contact1` | `finance_contact` |
+| `numbers__1` | `maintenance_fee` |
+| `date9` | `free_trial_end_date` |
+| `number_of_rooms` | `num_rooms`, `room_count` |
+| `rating__1` | `star_rating` |
+| `label8__1` | `sourced_by` |
+| `status_11` | `location_group` |
+| `link_to_ssm_groups__1` (board_relation) | `kiosk_config_group_id` (resolved via the auto-seeded SSM-Group map) |
+| `long_text__1` | `notes` |
+
+**Heathrow board — 8 metadata fields written by `runHeathrowImport`** (`src/lib/monday/import-heathrow.ts`): `status`, `live_date`, `maintenance_fee` (Heathrow uses `numeric` column id), `key_contact_name`, `key_contact_email`, `finance_contact`, `address`/`latitude`/`longitude`, `location_group` (from Heathrow `category1`).
+
+**Multi-label `hotel_group` handling.** Per dropdown label, the importer upserts a `hotel_groups` row and inserts an idempotent `location_hotel_group_memberships` row. Multi-label hotels surface under every group via the junction; single-label hotels also get `locations.operating_group_id` set; multi-label hotels leave `operating_group_id` NULL (operator picks a primary via the UI).
+
+**Fill-NULLs-only ON CONFLICT semantics.** Inserts use `ON CONFLICT DO UPDATE SET <field> = COALESCE(locations.<field>, EXCLUDED.<field>)` per metadata field. Re-runs of `db:reseed` (and partial syncs) cannot clobber operator UI edits. Identity columns (`name`, `normalised_name`, `customer_code`, `monday_item_id`, `primary_region_id`) are NOT touched on conflict — they stay frozen per the existing contract. Fresh INSERT vs COALESCE update is distinguished via the `xmax = 0` trick in `RETURNING` so the reseed log's `inserted`/`skipped` counters stay accurate.
+
+**`kiosk_config_groups` auto-seed.** Pre-Phase-1 of the reseed orchestrator fetches the Monday SSM-Groups board (`1466686598`), upserts missing rows into `kiosk_config_groups`, and builds a `mondayLinkedItemId → kioskConfigGroups.id` map passed into the hotel importer. Fresh DBs no longer need operator-curated `kiosk_config_groups` rows up front. The table is still preserved across reseed (not in `WIPE_TABLES`); auto-seed only adds, never deletes.
+
+**Pre-Phase-1 snapshot + restore.** When run with `--apply`, the orchestrator dumps every `locations` row's full metadata to `/tmp/locations-pre-reseed-<ISO>.json` before any writes. Post-reseed, `scripts/restore-locations-operator-edits.ts` diffs the snapshot against current rows and re-applies operator-only fields under the same fill-NULLs-only semantics. `--field-allowlist` is validated at parse time; the composite map key uses NUL separator to avoid spurious collisions on values containing commas.
+
+**Reseed STEP 4 log counters.** `addresses-written`, `hotel-groups-resolved`, `kcg-resolved`, `kcg-unresolved` — non-zero `kcg-unresolved` is expected and signals operator triage (Monday SSM-Group names that don't yet match a `kiosk_config_groups` row by name).
+
+### Regions extension (migration `0050`)
+
+`migrations/0050_monday_metadata_pt_us_regions.sql` adds `PT` (Portugal) and `US` (United States) to `regions`. Both rows have intentionally NULL `azure_code` because no Azure Blob path is mapped for those regions yet — sales ETL won't enumerate them until populated. Top-of-file comment in the migration explains the rationale.
+
 ## Seeds & dev data
 
 | Script | What it seeds |
@@ -213,7 +254,7 @@ Long-running operations (ETL run, Monday import) use `pg_try_advisory_lock(<int8
 | `npm run db:seed:markets` | Markets + regions tree |
 | `npm run db:seed:sales-demo` | Synthetic sales for analytics smoke testing |
 | `npm run seed:azure-testdata` | Uploads CSV fixtures to a local/dev Azure Blob container so the ETL has something to chew on |
-| `npm run db:import:monday` | One-shot import from Monday.com (real data; needs a valid token) |
+| `npm run db:reseed` | Canonical wipe-and-rebuild from Monday + `seed_data/*.csv` (dry-run by default; pass `-- --apply` to commit). Replaces the deprecated `db:enrich:locations` and `db:import:monday` scripts (both retained on disk as hard-fail stubs that point at `db:reseed`). |
 
 All seeds are idempotent — re-running won't duplicate. They read from `.env.local`. Don't seed against prod.
 

@@ -1,0 +1,37 @@
+-- Monday metadata backfill — add PT (Portugal) and US (United States) regions.
+--
+-- Why: the v2-wipe-and-reseed.ts dry-run against prod surfaced 31 hotels
+-- skipped under 4 unmapped Monday group titles. Two of them — "Live: Portugal
+-- Hotels" and "Live: USA Hotels" — are real region groupings we want to
+-- import; the resolver in scripts/v2-wipe-and-reseed.ts could not map them
+-- because the regions table had no row for PT or US. The other two
+-- ("Engagements", "On Hold") are workflow groups, not regions — deliberately
+-- excluded.
+--
+-- This migration adds the foundation rows so:
+--   • the group-title resolver can map "Portugal" → PT and "USA"/"United
+--     States" → US (companion change in scripts/v2-wipe-and-reseed.ts).
+--   • operators can reassign existing locations to PT or US via the region
+--     picker in /settings/outlet-types (same surface as AU in 0025).
+--
+-- `azure_code` is INTENTIONALLY LEFT NULL here. Azure sales ETL resolves a
+-- region from each blob path's leading prefix via `regions.azure_code`, so a
+-- non-NULL value would silently divert future Azure feeds. We don't currently
+-- have Azure sales feeds for PT or US, and we don't know the canonical Azure
+-- prefix for either market — guessing risks routing sales into the wrong
+-- region. When Azure feeds land for PT or US, an operator runs (e.g.):
+--
+--   UPDATE regions SET azure_code = 'PT' WHERE code = 'PT';
+--   UPDATE regions SET azure_code = 'US' WHERE code = 'US';
+--
+-- via the regions admin path (or a one-off SQL) with the actual canonical
+-- prefix used by the Azure container layout for that market. Until then,
+-- Azure ETL keeps treating PT/US sales as LOCATION_NEEDED, which is the
+-- correct safe-default behaviour.
+--
+-- Idempotent: ON CONFLICT DO NOTHING makes this safe to re-run on
+-- environments where PT or US was inserted manually before this migration.
+
+INSERT INTO "regions" ("code", "name") VALUES ('PT', 'Portugal') ON CONFLICT ("code") DO NOTHING;
+--> statement-breakpoint
+INSERT INTO "regions" ("code", "name") VALUES ('US', 'United States') ON CONFLICT ("code") DO NOTHING;

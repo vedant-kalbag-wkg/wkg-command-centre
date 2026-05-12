@@ -32,7 +32,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -45,9 +45,13 @@ import {
 } from "@/app/(app)/settings/data-import/sales/pipeline";
 import { ETL_AZURE_LOCK_KEY } from "@/lib/sales/etl/advisory-lock";
 import { LocalFileSource } from "@/lib/sales/local-file-source";
+import { iterateBoardItems } from "@/lib/monday/client";
 import { runAssetsImport } from "@/lib/monday/import-assets";
 import { runHeathrowImport } from "@/lib/monday/import-heathrow";
-import { runHotelLocationImport } from "@/lib/monday/import-hotel-locations";
+import {
+  runHotelLocationImport,
+  SSM_GROUPS_BOARD_ID,
+} from "@/lib/monday/import-hotel-locations";
 import { runMondayImport } from "@/lib/monday/import-location-products";
 import { normaliseName } from "@/lib/normalise";
 import {
@@ -131,6 +135,10 @@ const GROUP_TITLE_REGION_PATTERNS: Array<{ re: RegExp; code: string }> = [
   { re: /\b(germany|german)\b/i, code: "DE" },
   { re: /\b(czech|prague|praha)\b/i, code: "CZ" },
   { re: /\b(australia|australian)\b/i, code: "AU" },
+  { re: /\b(portugal|portuguese)\b/i, code: "PT" },
+  // NOTE: deliberately exclude plain `us` — would match the pronoun in unrelated
+  // group titles. `usa` and `united states` are sufficient for Monday boards.
+  { re: /\b(usa|united states)\b/i, code: "US" },
 ];
 
 function mapGroupTitleToRegionCode(title: string): string | null {
@@ -185,6 +193,37 @@ function parseSeedFilename(
     regionCode: SEED_REGION_PREFIX_MAP[prefix] ?? prefix,
     blobDate,
   };
+}
+
+/**
+ * Pure helper — compute the de-duplicated, sorted list of Monday SSM-Group
+ * item names that are present on the board but absent from the operator-
+ * managed `kiosk_config_groups` table. Exported for unit testing; the
+ * runbook uses this to auto-seed missing rows on a fresh DB (and to close
+ * incremental drift on prod when SSM-Groups items get added upstream).
+ *
+ * Behaviour:
+ * - Trims whitespace and ignores empty names (Monday items occasionally
+ *   land with a blank name during a rename mid-poll).
+ * - De-duplicates on the trimmed name (Monday boards have shipped duplicate
+ *   item names historically; ON CONFLICT (name) DO NOTHING handles the
+ *   second insert at the DB layer too, but de-duping here keeps the log
+ *   line clean).
+ * - Sorts the output to make the log line deterministic across runs.
+ */
+export function computeKioskConfigGroupsToInsert(
+  existingNames: Iterable<string>,
+  mondayItemNames: Iterable<string>,
+): string[] {
+  const existing = new Set(existingNames);
+  const toInsert = new Set<string>();
+  for (const raw of mondayItemNames) {
+    const name = raw?.trim();
+    if (!name) continue;
+    if (existing.has(name)) continue;
+    toInsert.add(name);
+  }
+  return [...toInsert].sort((a, b) => a.localeCompare(b));
 }
 
 const RUNBOOK_ACTOR: ImportActor = {
@@ -249,6 +288,16 @@ async function main(): Promise<void> {
   let assetsResult: Awaited<ReturnType<typeof runAssetsImport>> | undefined;
   let heathrowResult: Awaited<ReturnType<typeof runHeathrowImport>> | undefined;
   let tierResult: Awaited<ReturnType<typeof runMondayImport>> | undefined;
+  // 2026-05 follow-up — SSM-Group linked-item id (the value held in each
+  // hotel item's `link_to_ssm_groups__1` BoardRelation) → kiosk_config_groups.id.
+  // Built before BEGIN so the Monday roundtrip doesn't hold the transaction
+  // open. `kiosk_config_groups` is operator-managed (preserved across the
+  // reseed) — the importer does NOT auto-create from this map.
+  let kioskConfigGroupByMondayLinkedId = new Map<string, string>();
+  // Snapshot path captured pre-Phase-1 so the post-reseed restore step can
+  // diff operator-only edits (notes hand-edits, sentinel address) back into
+  // the freshly seeded locations table.
+  let preReseedSnapshotPath: string | undefined;
 
   try {
     const lockResult = await client.query<{ acquired: boolean }>(
@@ -261,6 +310,123 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     console.log(`Advisory lock ${LOCK_KEY} acquired.`);
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PRE-PHASE 1 — Snapshot existing locations + build SSM-Group map
+    // ════════════════════════════════════════════════════════════════════════
+    // Both steps run OUTSIDE the BEGIN/TRUNCATE transaction:
+    //   * Snapshot captures the pre-reseed locations state so the post-reseed
+    //     restore script can re-apply operator-only edits (hand-edited notes,
+    //     sentinel rows, anything Monday doesn't supply). Skipped in dry-run
+    //     because no data changes.
+    //   * SSM-Group map fetches board 1466686598 once and joins against the
+    //     preserved `kiosk_config_groups` table so the hotel importer can
+    //     resolve `link_to_ssm_groups__1 → kiosk_config_groups.id` inline.
+    //     Doing this outside the transaction avoids holding the Phase 1
+    //     transaction open during a slow Monday roundtrip (the same reason
+    //     the importer fan-out itself was already isolated to STEP 4).
+    if (APPLY) {
+      console.log(`\n=== PRE-PHASE 1: Snapshot locations ===`);
+      const snapResult = await client.query<{ row: Record<string, unknown> }>(
+        `SELECT row_to_json(l) AS row FROM locations l`,
+      );
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      preReseedSnapshotPath = `/tmp/locations-pre-reseed-${ts}.json`;
+      await writeFile(
+        preReseedSnapshotPath,
+        JSON.stringify(snapResult.rows.map((r) => r.row), null, 2),
+      );
+      console.log(
+        `  ${snapResult.rows.length} rows snapshotted → ${preReseedSnapshotPath}`,
+      );
+    } else {
+      console.log(
+        `\n[dry-run] PRE-PHASE 1: Skipping locations snapshot (no data change).`,
+      );
+    }
+
+    console.log(`\n=== PRE-PHASE 1: Build SSM-Group → kiosk_config_groups map ===`);
+    {
+      // 1. Pull the operator-managed kiosk_config_groups (preserved across
+      //    the reseed). Build a name → id lookup.
+      const kcgRows = await client.query<{ id: string; name: string }>(
+        `SELECT id, name FROM kiosk_config_groups`,
+      );
+      const kcgByName = new Map(kcgRows.rows.map((r) => [r.name, r.id]));
+      console.log(`  ${kcgByName.size} kiosk_config_groups loaded.`);
+
+      // 2. Iterate the SSM-groups board on Monday once and capture every
+      //    item's (id, name). We need two passes over this list — one to
+      //    auto-seed missing kiosk_config_groups rows, one to build the
+      //    linkedItemId → kiosk_config_groups.id map — and refetching the
+      //    board would double the Monday roundtrip cost.
+      const mondayItems: Array<{ id: string; name: string }> = [];
+      const previousToken = process.env.MONDAY_API_TOKEN;
+      process.env.MONDAY_API_TOKEN = mondayApiToken;
+      try {
+        for await (const item of iterateBoardItems(SSM_GROUPS_BOARD_ID, {
+          itemFragment: `id name`,
+        })) {
+          mondayItems.push({ id: item.id, name: item.name });
+        }
+      } finally {
+        if (previousToken === undefined) {
+          delete process.env.MONDAY_API_TOKEN;
+        } else {
+          process.env.MONDAY_API_TOKEN = previousToken;
+        }
+      }
+
+      // 3. Auto-seed kiosk_config_groups rows for any Monday SSM-Group item
+      //    name not yet present in the table. Idempotent on prod (existing
+      //    rows untouched); on a fresh DB this closes the gap that would
+      //    otherwise leave every hotel with `kiosk_config_group_id = NULL`.
+      //    ON CONFLICT (name) DO NOTHING also handles the rare case where
+      //    a duplicate name slips through `computeKioskConfigGroupsToInsert`'s
+      //    de-dup (e.g. concurrent operator add between SELECT and INSERT).
+      const namesToInsert = computeKioskConfigGroupsToInsert(
+        kcgByName.keys(),
+        mondayItems.map((i) => i.name),
+      );
+      if (namesToInsert.length > 0) {
+        for (const name of namesToInsert) {
+          const inserted = await client.query<{ id: string; name: string }>(
+            `INSERT INTO kiosk_config_groups (name) VALUES ($1)
+             ON CONFLICT (name) DO NOTHING
+             RETURNING id, name`,
+            [name],
+          );
+          if (inserted.rows[0]) {
+            kcgByName.set(inserted.rows[0].name, inserted.rows[0].id);
+          }
+        }
+        console.log(
+          `  auto-created ${namesToInsert.length} new kiosk_config_groups ` +
+            `rows from Monday SSM-Groups board: ${namesToInsert.join(", ")}`,
+        );
+      } else {
+        console.log(`  no new kiosk_config_groups rows to auto-create.`);
+      }
+
+      // 4. Build the linkedItemId → kiosk_config_groups.id map. Items whose
+      //    name still doesn't match a kiosk_config_groups row after the
+      //    auto-seed are silently skipped — the hotel importer records an
+      //    unresolved-link counter when that's the case (should be zero
+      //    after the auto-seed lands).
+      let mapped = 0;
+      for (const item of mondayItems) {
+        const kcgId = kcgByName.get(item.name);
+        if (kcgId) {
+          kioskConfigGroupByMondayLinkedId.set(item.id, kcgId);
+          mapped++;
+        }
+      }
+      console.log(
+        `  SSM-groups board scanned: ${mondayItems.length} items; ` +
+          `resolved to kiosk_config_groups: ${mapped}.`,
+      );
+      console.log(`  ${kcgByName.size} kiosk_config_groups loaded (post-seed).`);
+    }
 
     // ════════════════════════════════════════════════════════════════════════
     // PHASE 1 — Structural reseed (atomic transaction)
@@ -367,6 +533,7 @@ async function main(): Promise<void> {
       mondayApiToken,
       db: drizzleDb,
       resolveRegionIdByGroup,
+      kioskConfigGroupByMondayLinkedId,
       logger: (phase, msg) => console.log(`  [${phase}] ${msg}`),
     });
     console.log(
@@ -377,6 +544,10 @@ async function main(): Promise<void> {
         `customer-codes-populated=${hotelResult.customerCodesPopulated} ` +
         `customer-code-conflicts-retried=${hotelResult.customerCodeConflictsRetried} ` +
         `same-name-skipped=${hotelResult.sameNameSkipped} ` +
+        `addresses-written=${hotelResult.addressesWritten} ` +
+        `hotel-groups-resolved=${hotelResult.hotelGroupsResolved} ` +
+        `kcg-resolved=${hotelResult.kioskConfigGroupsResolved} ` +
+        `kcg-unresolved=${hotelResult.kioskConfigGroupsUnresolved} ` +
         `hotelIdMap=${hotelResult.hotelMondayIdToLocationId.size} ` +
         `(took ${hotelResult.durationMs}ms)`,
     );
@@ -711,7 +882,14 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only run main() when invoked as the entry script — guards against
+// auto-execution when unit tests import the exported helpers from this file.
+// `process.argv[1]` is the script Node was asked to run; `import.meta.url`
+// is this module's URL. They match only on direct invocation via tsx/node.
+import { fileURLToPath } from "node:url";
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

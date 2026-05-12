@@ -351,6 +351,13 @@
       "when": 1781200000000,
       "tag": "0049_phase_09_1_commission_ledger_gross_amount_gbp",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1781300000000,
+      "tag": "0050_monday_metadata_pt_us_regions",
+      "breakpoints": true
     }
   ]
 }
