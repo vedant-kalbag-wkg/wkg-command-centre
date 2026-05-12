@@ -62,7 +62,7 @@ openssl rand -base64 32
 
 Optional variables used by specific features (safe to omit for most local work):
 
-- `MONDAY_API_TOKEN` — Monday.com data import (board IDs are hardcoded in `scripts/import-from-monday.ts`; the optional `BOARD_ID` override is read only by `scripts/diagnose-new-board.ts`)
+- `MONDAY_API_TOKEN` — Monday.com data import / `npm run db:reseed` (board IDs are hardcoded in `src/lib/monday/`; the optional `BOARD_ID` override is read only by `scripts/diagnose-new-board.ts`)
 - `RESEND_API_KEY` / `EMAIL_FROM` / `ADMIN_SUPPORT_EMAIL` — Phase 8 email send (set `RESEND_API_KEY=re_test_key` to satisfy `src/lib/rbac.test.ts` even when not exercising email — see DEFERRED-08.02-01)
 - `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` — Inngest webhook auth in deployed envs; can stay blank locally if you run the Inngest dev server (Step 7b)
 - `FX_ALERT_TO` — Recipient for `fx_rate_fetch_failed` (cron) and `fx_rate_stale` (Azure ETL pre-blob gate) emails. **Required on every deploy target** — `fx-rates-fetch-daily` and `azure-etl` throw at the call site if unset (Phase 9.1 CR-02)
@@ -134,14 +134,47 @@ npx tsx --env-file=.env.local --tsconfig tsconfig.json src/db/seed-sales-demo.ts
 All three are idempotent (skip when their target rows already exist) and depend
 on the base seeds from Step 6 — run them in order.
 
-**Monday.com import (optional, requires credentials):**
+**Monday.com import / structural reseed (optional, requires credentials):**
 
 ```bash
-# Pulls real kiosk + location rows from the Monday.com "Assets" board.
-npm run db:import:monday
+# Dry-run by default — prints what WOULD be wiped + reseeded from Monday.
+npm run db:reseed
+
+# Commit. Wipes the Monday-sourced + sales-sourced + audit/temporal tables
+# (see `.planning/notes/v2-data-reset-decision.md` for the wipe vs preserve
+# list) and rebuilds locations, kiosks, and assignments from the 4 hotel
+# boards + Heathrow + Assets + seed_data/*.csv.
+npm run db:reseed -- --apply
 ```
 
-Prereqs: `MONDAY_API_TOKEN` in `.env.local`. Board IDs are hardcoded in `scripts/import-from-monday.ts`; only `scripts/diagnose-new-board.ts` reads the optional `BOARD_ID` override.
+Prereqs: `MONDAY_API_TOKEN` in `.env.local`. Board IDs are hardcoded in `src/lib/monday/`; only `scripts/diagnose-new-board.ts` reads the optional `BOARD_ID` override.
+
+Two legacy scripts (`scripts/import-from-monday.ts` invoked via `db:import:monday`, and `scripts/enrich-locations-from-monday.ts` invoked via `db:enrich:locations`) were deprecated in Phase 07-06 and removed from `package.json` in the 2026-05-12 metadata-backfill change. Both still exist on disk as hard-fail stubs that print a deprecation pointer to `db:reseed`.
+
+### Fresh-DB bootstrap (zero-touch, post-2026-05-12)
+
+Brand-new Neon branch / fresh Postgres → fully populated dev instance in four commands. The Monday metadata backfill made this end-to-end: importer now writes 15 location metadata fields on hotel boards (8 on Heathrow) with fill-NULLs-only ON CONFLICT semantics, and the reseed orchestrator auto-seeds `kiosk_config_groups` from the Monday SSM-Groups board so no operator-curated rows are required up front.
+
+```bash
+# 1. Provision a Postgres DB (Neon branch, Docker container, etc.).
+#    Note the connection string.
+
+# 2. Apply schema migrations (canonical; never `drizzle-kit push` against
+#    anything you care about — `push` bypasses the migration history).
+DATABASE_URL='<conn>' npx drizzle-kit migrate
+
+# 3. Seed the admin user (idempotent).
+#    Reads ADMIN_EMAIL + ADMIN_PASSWORD from .env.local if unset.
+ADMIN_EMAIL=admin@weknow.co ADMIN_PASSWORD='Admin123!' npm run db:seed
+
+# 4. Reseed structural data from Monday + seed_data/*.csv.
+#    Dry-run first (no `--apply`) to inspect counts; then commit.
+MONDAY_API_TOKEN='<token>' npm run db:reseed -- --apply
+```
+
+Expected post-step-4 STEP 4 log line includes `addresses-written`, `hotel-groups-resolved`, `kcg-resolved`, and `kcg-unresolved` counters — non-zero `kcg-unresolved` is normal (operator triage: Monday SSM-Group names that don't yet match a `kiosk_config_groups` row).
+
+For prod hostname patterns see `.env.production`; for dev see `.env.local`.
 
 ## 7. Run the dev server
 

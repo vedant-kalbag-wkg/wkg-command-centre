@@ -2,8 +2,8 @@
 
 **Date**: 2026-05-12
 **Owner**: vedant
-**Status**: PLAN — awaiting sign-off before code changes
-**Branch**: TBD (likely a fix branch off `main`, NOT off the current `gsd/phase-10-access-control-extended`)
+**Status**: SHIPPED 2026-05-12. PR #43. Branch `fix/monday-metadata-import-backfill`.
+**Branch**: `fix/monday-metadata-import-backfill` (off `main`, merged shortly after prod cutover)
 
 ## Problem
 
@@ -148,3 +148,50 @@ Skipped Heathrow columns: `outlet_code1` / `text2` / `checkbox` (kiosk-level, al
 - UAT cutover dry-run: 1h
 - Prod cutover (operator-supervised): 30-45m
 - Total: ~1 working day
+
+## Outcomes (2026-05-12, post-deploy)
+
+Prod state after the reseed against `https://wkg-command-centre.vercel.app`:
+
+- 524 active locations, 523 Monday-sourced (1× `LOCATION_NEEDED` sentinel).
+- 16 hotels skipped (workflow groupings `Engagements` + `On Hold` — not real hotels).
+- 76 SSM-Group links unresolved (Monday names don't match `kiosk_config_groups` rows — operator triage).
+
+| Field | Coverage |
+|---|---|
+| `address` | 96.4% |
+| `latitude` / `longitude` | 96.2% |
+| `hotel_group` | 96.4% |
+| `status` | 99.2% |
+| `launch_phase` | 97.3% |
+| `num_rooms` | 90.5% |
+| `key_contact_name` / `key_contact_email` | ~90% |
+| `star_rating` | 84.2% |
+| `sourced_by` | 81.1% |
+| `live_date` | 77.7% |
+| `operating_group_id` | 76.0% |
+| `location_group` | 75.4% |
+| `maintenance_fee` | 55% |
+| `kiosk_config_group_id` | 48.7% |
+| `free_trial_end_date` | 18.7% |
+| `finance_contact` | 18.5% |
+| `notes` | 20.2% |
+
+Pre-fix coverage was 0% on every column in the list above.
+
+### Commits (in order)
+
+1. `944d67f` feat(monday-import): shared field extractors for hotel + Heathrow importers
+2. `a2d3f3d` feat(monday-import): write 15 metadata fields + multi-group membership
+3. `68c08db` feat(monday-import): write 8 metadata fields on Heathrow import
+4. `16095c0` feat(v2-wipe-and-reseed): pre-Phase-1 locations snapshot + SSM-Group map
+5. `0664c2c` feat(v2-wipe-and-reseed): restore-locations-operator-edits script + tests
+6. `bc88b1b` chore: strip stray NUL bytes from restore-locations-operator-edits.ts
+7. `1adc999` feat(monday-import): add PT + US regions + extend group-title resolver
+8. `01add90` feat(v2-wipe-and-reseed): auto-seed kiosk_config_groups + canonicalise
+9. `946cc2e` fix(monday-import): address PR #43 review feedback (6 items)
+10. `f5fe249` fix(v2-wipe-and-reseed): guard `main()` behind entry-point check
+
+### Migration state
+
+Prod `__drizzle_migrations` was at id 43 pre-cutover with 0043-0049 pending in the repo (0046-0049 had been hand-applied out-of-band). `drizzle migrate()` brought prod to id 51 including the new `migrations/0050_monday_metadata_pt_us_regions.sql` (adds PT + US to `regions`; top-of-file comment explains intentional NULL `azure_code`).

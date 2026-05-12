@@ -2,9 +2,9 @@
 
 **Document scope:** Consolidated current-state reference for the kiosk management platform across **v1.0** (shipped 2026-04-29) and **v1.1** (in flight, Phase 10 active 2026-05-10). Synthesised from `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/STATE.md`, `.planning/MILESTONES.md`, `.planning/RETROSPECTIVE.md`, the v1.0 archive in `.planning/milestones/`, every per-phase CONTEXT/PLAN/SUMMARY artifact, and `tasks/v2-carryover-from-v1-phase-6.md`.
 
-**Last updated:** 2026-05-10
+**Last updated:** 2026-05-12 (Monday metadata backfill shipped; previously 2026-05-10)
 **Production URL:** https://wkg-command-centre.vercel.app
-**Active branch:** `gsd/phase-10-access-control-extended`
+**Active branch:** `gsd/phase-10-access-control-extended` (Monday metadata fix shipped from `fix/monday-metadata-import-backfill`, PR #43)
 
 ---
 
@@ -21,7 +21,7 @@ An internal web application — branded **WeKnow Command Centre** in production 
 - Weekly POC underperformance alerting to surface bottom-tier kiosks (v1.1).
 - CASL-driven configurable RBAC with admin-authorable custom roles (v1.1, Phase 10 in flight).
 
-Monday.com remains the **upstream-only data feed** for hotel-board enrichment via `enrich-locations-from-monday.ts` (one-way, NULL-fields-only). Sales data ingests through the `etl-azure` arc.
+Monday.com remains the **upstream-only data feed** for hotel + Heathrow + Assets boards. Re-derivation is now the canonical structural reseed (`npm run db:reseed`, wraps `scripts/v2-wipe-and-reseed.ts`) — the legacy `enrich-locations-from-monday.ts` and `import-from-monday.ts` paths are hard-fail stubs post Phase 07-06. Sales data ingests through the `etl-azure` arc.
 
 ---
 
@@ -235,6 +235,19 @@ Monday.com remains the **upstream-only data feed** for hotel-board enrichment vi
 | 07-04 | Same-name prevention guardrails + import dry-run warnings |
 | 07-05 | `LOCATION_NEEDED` sentinel pattern in sales ETL fallback |
 | 07-06 | Two-pass `assigned_at` backfill integration (`live_date` primary, `MIN(sales)` fallback) |
+
+**Update (2026-05-12) — Monday metadata backfill (PR #43, branch `fix/monday-metadata-import-backfill`).** Phase 07-06 deprecated `scripts/enrich-locations-from-monday.ts` and `scripts/import-from-monday.ts` (now hard-fail stubs), and the replacement runbook `scripts/v2-wipe-and-reseed.ts` only carried forward identity re-derivation (6 columns). On prod that left 510 active locations with **0% coverage** on 15 Monday-derivable metadata fields (address, lat/lng, hotel_group, launch_phase, key contacts, maintenance fee, free-trial end date, room count, star rating, sourced_by, location_group, live_date, status, SSM-Group link, notes). Fix:
+
+- Shared pure extractors moved into `src/lib/monday/extractors.ts` (25 unit tests).
+- `runHotelLocationImport` (`src/lib/monday/import-hotel-locations.ts`) now writes 15 metadata fields with `ON CONFLICT DO UPDATE SET <f> = COALESCE(locations.<f>, EXCLUDED.<f>)` — fill-NULLs-only semantics so operator UI edits survive re-runs.
+- `runHeathrowImport` (`src/lib/monday/import-heathrow.ts`) writes 8 metadata fields under the same COALESCE pattern.
+- Per Monday dropdown label the importer inserts a `location_hotel_group_memberships` row; single-label hotels also get `locations.operating_group_id` set, multi-label hotels leave it NULL.
+- `scripts/v2-wipe-and-reseed.ts` auto-seeds `kiosk_config_groups` from the Monday SSM-Groups board (`1466686598`) pre-Phase-1, snapshots `locations` to `/tmp/locations-pre-reseed-<ISO>.json` (APPLY-only), and emits `addresses-written` / `hotel-groups-resolved` / `kcg-resolved` / `kcg-unresolved` counters in the STEP 4 log.
+- `scripts/restore-locations-operator-edits.ts` (new) re-applies operator-edited fields from the snapshot post-reseed (fill-NULLs-only, `--field-allowlist` validated at parse time).
+- `migrations/0050_monday_metadata_pt_us_regions.sql` adds PT + US to `regions` (intentional NULL `azure_code`); prod migrations now at id 51.
+- `package.json` drops `db:enrich:locations` + `db:import:monday`, adds `db:reseed` as the canonical entry. Fresh DB → `migrate()` → `db:seed` → `MONDAY_API_TOKEN=… npm run db:reseed -- --apply` is the full bootstrap.
+
+**Prod coverage post-deploy (2026-05-12, 524 active locations, 523 Monday-sourced):** address 96.4%, lat/lng 96.2%, hotel_group 96.4%, status 99.2%, launch_phase 97.3%, num_rooms 90.5%, key_contact_name/email ~90%, star_rating 84.2%, sourced_by 81.1%, live_date 77.7%, operating_group_id 76.0%, location_group 75.4%, maintenance_fee 55%, kiosk_config_group_id 48.7%, free_trial_end_date 18.7%, finance_contact 18.5%, notes 20.2%. 76 SSM-Group links unresolved (operator triage); 16 hotels skipped (workflow groupings `Engagements` + `On Hold`). Full plan + outcomes: `.planning/notes/2026-05-12-monday-metadata-backfill.md`.
 
 ### Phase 8 — Email Infrastructure (3/3 plans, code-complete; operator UAT pending)
 
@@ -457,8 +470,9 @@ This is the file-level orientation a new engineer needs to fix any issue or exte
 
 | Capability | Location |
 |---|---|
-| Monday.com importer (GraphQL client + field mapper + subitem parser) | `src/lib/monday/` + `scripts/import-from-monday.ts` |
-| Hotel-board enrichment (one-way, NULL-fields-only) | `scripts/enrich-locations-from-monday.ts` |
+| Monday.com importer (GraphQL client + 4 hotel boards + Heathrow + Assets + SSM-Groups auto-seed) | `src/lib/monday/` (incl. `extractors.ts`, `import-hotel-locations.ts`, `import-heathrow.ts`); orchestrated by `scripts/v2-wipe-and-reseed.ts` (npm: `db:reseed`) |
+| Hotel-board metadata enrichment (fill-NULLs-only, 15 cols hotel / 8 cols Heathrow) | Folded into `runHotelLocationImport` + `runHeathrowImport` as of 2026-05-12 (PR #43). Legacy `scripts/enrich-locations-from-monday.ts` is a hard-fail stub pointing at `db:reseed`. |
+| Pre-reseed `locations` snapshot + post-reseed operator-edit restore | `scripts/v2-wipe-and-reseed.ts` (snapshot to `/tmp/locations-pre-reseed-<ISO>.json`) + `scripts/restore-locations-operator-edits.ts` |
 | Multi-POS site merge (server logic) | `src/lib/multi-pos-merge.ts` (legacy script — replaced by location-merge UI in Phase 7) |
 | Location-merge admin UI + server actions | `src/app/(app)/locations/merge-proposals/` + `src/app/(app)/settings/data-quality/` |
 | Same-name guardrails (DB partial unique idx + dry-run warning) | `migrations/0039_phase_07_normalised_name_and_merge_snapshots.sql` + `src/lib/duplicates/` |
@@ -531,9 +545,11 @@ This is the file-level orientation a new engineer needs to fix any issue or exte
 | Script | Purpose |
 |---|---|
 | `scripts/run-azure-etl.ts` | CLI ETL runner (uses `pg.Pool` directly) |
-| `scripts/v2-wipe-and-reseed.ts` | Phase 7 wipe-and-rebuild runbook |
+| `scripts/v2-wipe-and-reseed.ts` | Canonical wipe-and-rebuild runbook (npm: `db:reseed`). Post-2026-05-12 also auto-seeds `kiosk_config_groups` from Monday SSM-Groups and snapshots `locations` pre-Phase-1. |
+| `scripts/restore-locations-operator-edits.ts` | Re-apply operator-edited fields from a pre-reseed snapshot (fill-NULLs-only, `--field-allowlist` validated at parse). |
 | `scripts/v2-preflight.ts` | Pre-wipe baseline / golden-snapshot diff |
-| `scripts/import-from-monday.ts` | Bulk Monday import |
+| `scripts/import-from-monday.ts` | Deprecated (Phase 07-06). Hard-fail stub pointing at `db:reseed`. |
+| `scripts/enrich-locations-from-monday.ts` | Deprecated (Phase 07-06). Hard-fail stub pointing at `db:reseed`. |
 | `scripts/multi-pos-merge.ts` | Legacy — superseded by location-merge UI |
 | `scripts/probe-monday-vs-db-addresses.ts` | Address-quality CSV producer (`/tmp/monday-vs-db-addresses.csv`) |
 | `scripts/backfill-kiosk-install-dates.ts` | Two-pass `assigned_at` seed |
@@ -608,7 +624,7 @@ The locked decisions are in §5 of this doc; the planner must still resolve thes
 
 ### v2 carryover (not blocking v1.1 ship, but tracked)
 
-- **V2-DQ-01** — 61 active locations have NULL latitude/longitude. Operator hand-research per Monday board, then re-run `scripts/enrich-locations-from-monday.ts` + `/settings/geocoding` Apply with "Re-geocode all UNCHECKED".
+- **V2-DQ-01** — Some active locations still have NULL latitude/longitude (≈3.8% of active rows post the 2026-05-12 backfill; was 61 pre-Phase 7). Triage path is now: fix the upstream Monday LocationValue, then re-run `npm run db:reseed -- --apply` (fill-NULLs-only ON CONFLICT means committed operator edits survive); finish with `/settings/geocoding` Apply "Re-geocode all UNCHECKED" for anything Monday still doesn't know. The legacy `scripts/enrich-locations-from-monday.ts` is a hard-fail stub — don't use it.
 - **V2-DQ-02** — Cluster 10 (`0Y` Clayton London Wall) has a wrong sibling-copied address. Hand fix.
 - **V2-DQ-03** — 60 NO_MONDAY outlets need triage (link to Monday / archive / accept).
 - **V2-DM-01** — 19+ same-name active location pairs. Policy decision: collapse-all vs keep-as-multi-kiosk. Two new same-name pairs (Sheraton Heathrow SSM, Radisson Blu Edwardian SSM) are direct consequences of Wave 1 renames and should be collapsed early in v2.
@@ -672,7 +688,7 @@ A development team picking up this codebase to take v1.1 over the line should wa
 
 ### Database state on prod
 
-- [ ] All migrations through `0049` applied (`DATABASE_URL='<prod>' npx drizzle-kit migrate`).
+- [x] All migrations through `0050` applied (`DATABASE_URL='<prod>' npx drizzle-kit migrate`) — prod at id 51 as of 2026-05-12.
 - [ ] `app_settings.underperformance_window_days` set (default 30 — confirm desired prod value).
 - [ ] `app_settings.pipeline_stage_id_live` points at the canonical Live stage UUID.
 - [ ] `exchange_rates` is non-empty (BoE cron has fired at least once — closes DEFERRED-09.1-02).
@@ -739,6 +755,7 @@ A development team picking up this codebase to take v1.1 over the line should wa
 | Apply migration locally | `npx drizzle-kit migrate` |
 | Apply migration to prod | `DATABASE_URL='<prod-url>' npx drizzle-kit migrate` |
 | Reset prod admin password | `ADMIN_EMAIL=… ADMIN_PASSWORD=… DATABASE_URL='<prod>' npx tsx scripts/reset-admin-password.ts` |
+| Reseed locations + kiosks from Monday (dry-run / apply) | `MONDAY_API_TOKEN=… npm run db:reseed` / `MONDAY_API_TOKEN=… npm run db:reseed -- --apply` |
 | Regenerate lockfile (Linux x64) | See repo `CLAUDE.md` § "npm lockfile must stay in sync" |
 | Where is the next thing? | `.planning/STATE.md` |
 | What's the v1.1 plan tree? | `.planning/ROADMAP.md` |

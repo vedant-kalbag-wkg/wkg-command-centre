@@ -41,6 +41,8 @@ A forward-only rule (just enforce going forward, leave history alone) was reject
 - App config: `appSettings` (thresholds, geocoding key ref), `pipelineStages` (customised), `eventCategories`
 - User customisations: `userViews`, `analyticsSavedViews`, `analyticsPresets`, `duplicateDismissals`, `kioskConfigGroups`, `outletExclusions`, `experimentCohorts`, `actionItems`
 
+> **Update (2026-05-12)** — `kiosk_config_groups` is still preserved across reseed (still **not** in `WIPE_TABLES`), but is now also **auto-seeded** at reseed time from the Monday SSM-Groups board (`1466686598`). Fresh DBs no longer require manual operator population of this table before the first reseed — the orchestrator fetches the board, upserts missing rows, and builds a `mondayLinkedItemId → kioskConfigGroups.id` map that the hotel importer uses to resolve `link_to_ssm_groups__1` to `locations.kiosk_config_group_id`. See `scripts/v2-wipe-and-reseed.ts` § PRE-PHASE 1.
+
 ## Sequencing constraint
 
 Two-pass `assigned_at` backfill (rule 4) must run **after** the full sales ETL completes — the `MIN(salesRecords.date)` fallback needs the entire corpus loaded. Runbook ordering:
