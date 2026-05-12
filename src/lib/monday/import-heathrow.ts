@@ -28,6 +28,13 @@ import { and, eq, sql } from "drizzle-orm";
 import type { db as defaultDb } from "@/db";
 import { kioskAssignments, kiosks, locations } from "@/db/schema";
 import { iterateBoardItems, type MondayItem } from "@/lib/monday/client";
+import {
+  extractLocationValue,
+  extractMondayDate,
+  extractMondayNumber,
+  extractMondayStatusLabel,
+  extractMondayText,
+} from "@/lib/monday/extractors";
 import { normaliseName } from "@/lib/normalise";
 
 const HEATHROW_BOARD_ID = 1356657751;
@@ -38,17 +45,43 @@ const PENDING_GROUP_RE = /^\s*in progress\s*$/i;
 
 // Phase 07-06 — Heathrow board uses `text4` as "Cust_cd (RPS)". Mostly empty
 // per the data probe (1 of 12 items populated — Hilton London Metropole).
-// Pulled alongside outlet_code1 (per-kiosk codes) and the location text. The
-// `number_of_ssms` field is no longer requested — it was only used to skip
-// pre-deployment items, which the In-Progress group handling already covers.
+// `outlet_code1` is the per-kiosk code; `location` is the LocationValue
+// (lat/lng come from the inline fragment).
+//
+// 2026-05 follow-up: the board exposes several metadata columns that the
+// importer previously ignored. We now pull them so Heathrow rows land with
+// the same metadata coverage as the 4 standard hotel boards (minus the
+// columns the Heathrow board doesn't expose — hotel_group, launch_phase,
+// star_rating, num_rooms, sourced_by, SSM-Group link, long_text/notes).
+//
+//   - status               Live / In Progress (writes locations.status)
+//   - live_date            DateValue
+//   - numeric              Maintenance Deduction (writes locations.maintenance_fee)
+//   - key_contact_name     hotel-side contact name
+//   - key_contact_email    hotel-side contact email
+//   - finance_contact1     hotel finance contact
+//   - category1            DropdownValue (writes locations.location_group —
+//                          analogous to status_11 on hotel boards)
 const HEATHROW_ITEM_FRAGMENT = `
   id
   name
   group { id title }
-  column_values(ids: ["outlet_code1", "text4", "location"]) {
+  column_values(ids: [
+    "outlet_code1",
+    "text4",
+    "location",
+    "status",
+    "live_date",
+    "numeric",
+    "key_contact_name",
+    "key_contact_email",
+    "finance_contact1",
+    "category1"
+  ]) {
     id
     type
     text
+    ... on LocationValue { lat lng }
   }
 `;
 
@@ -183,8 +216,24 @@ export async function runHeathrowImport(
       // for every Heathrow row). Phase 07-06 — outlet_code is gone from
       // locations entirely; per-kiosk codes still live on the kiosks table
       // and are populated below.
+      //
+      // 2026-05 follow-up: metadata fields land on INSERT; ON CONFLICT now
+      // uses DO UPDATE with COALESCE per metadata column so operator UI
+      // edits between reseeds are preserved (fill-NULLs-only). Identity
+      // columns (name, normalised_name, customer_code, monday_item_id,
+      // primary_region_id) stay frozen on conflict.
       const isPlaceholder = isPending && outletCodes.length === 0;
       const customerCode = extractCustomerCode(item);
+
+      // ── Metadata extraction (2026-05 follow-up) ─────────────────────────
+      const locationValue = extractLocationValue(item, "location");
+      const statusLabel = extractMondayStatusLabel(item, "status");
+      const liveDate = extractMondayDate(item, "live_date");
+      const maintenanceFee = extractMondayNumber(item, "numeric");
+      const keyContactName = extractMondayText(item, "key_contact_name");
+      const keyContactEmail = extractMondayText(item, "key_contact_email");
+      const financeContact = extractMondayText(item, "finance_contact1");
+      const locationGroup = extractMondayStatusLabel(item, "category1");
 
       const inserted = await db
         .insert(locations)
@@ -194,30 +243,51 @@ export async function runHeathrowImport(
           customerCode,
           mondayItemId: item.id,
           primaryRegionId,
+          address: locationValue.address,
+          latitude: locationValue.latitude,
+          longitude: locationValue.longitude,
+          status: statusLabel,
+          liveDate,
+          maintenanceFee:
+            maintenanceFee !== null ? String(maintenanceFee) : null,
+          keyContactName,
+          keyContactEmail,
+          financeContact,
+          locationGroup,
         })
-        .onConflictDoNothing({
+        .onConflictDoUpdate({
           target: locations.mondayItemId,
           // Phase 07-06 — partial unique on (monday_item_id) requires the
           // ON CONFLICT predicate to match for arbiter inference.
-          where: sql`monday_item_id IS NOT NULL`,
+          targetWhere: sql`monday_item_id IS NOT NULL`,
+          set: {
+            address: sql`COALESCE(${locations.address}, EXCLUDED.address)`,
+            latitude: sql`COALESCE(${locations.latitude}, EXCLUDED.latitude)`,
+            longitude: sql`COALESCE(${locations.longitude}, EXCLUDED.longitude)`,
+            status: sql`COALESCE(${locations.status}, EXCLUDED.status)`,
+            liveDate: sql`COALESCE(${locations.liveDate}, EXCLUDED.live_date)`,
+            maintenanceFee: sql`COALESCE(${locations.maintenanceFee}, EXCLUDED.maintenance_fee)`,
+            keyContactName: sql`COALESCE(${locations.keyContactName}, EXCLUDED.key_contact_name)`,
+            keyContactEmail: sql`COALESCE(${locations.keyContactEmail}, EXCLUDED.key_contact_email)`,
+            financeContact: sql`COALESCE(${locations.financeContact}, EXCLUDED.finance_contact)`,
+            locationGroup: sql`COALESCE(${locations.locationGroup}, EXCLUDED.location_group)`,
+          },
         })
-        .returning({ id: locations.id });
+        .returning({
+          id: locations.id,
+          // xmax = 0 on fresh INSERT, non-0 on UPDATE-on-conflict.
+          isNew: sql<boolean>`xmax = 0`,
+        });
 
       let locationId: string;
-      if (inserted.length > 0) {
+      const row = inserted[0];
+      locationId = row.id;
+      if (row.isNew) {
         if (isPlaceholder) placeholderLocationsCreated++;
         else liveLocationsInserted++;
         if (customerCode !== null) customerCodesPopulated++;
-        locationId = inserted[0].id;
       } else {
         liveLocationsSkippedExisting++;
-        const existing = await db
-          .select({ id: locations.id })
-          .from(locations)
-          .where(eq(locations.mondayItemId, item.id))
-          .limit(1);
-        if (existing.length === 0) continue;
-        locationId = existing[0].id;
       }
 
       // Synthesise kiosks for items with codes. Each outlet code becomes one
