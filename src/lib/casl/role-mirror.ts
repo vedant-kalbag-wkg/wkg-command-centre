@@ -13,7 +13,7 @@ type AnyDb = any; // eslint-disable-line @typescript-eslint/no-explicit-any
  *
  * Sync logic:
  *  1. If the user has a `kind='system'` role assignment → role = "admin"
- *  2. Else find the lowest-privilege tier role (admin > ops-it > read-only)
+ *  2. Else find the highest-privilege tier role (admin > ops-it > read-only)
  *     and map it: admin → "admin", ops-it → "member", read-only → "viewer"
  *  3. If no role assignment exists → role = null
  *

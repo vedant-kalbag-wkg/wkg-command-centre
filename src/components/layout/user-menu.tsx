@@ -103,22 +103,11 @@ export function UserMenu({
 
   return (
     <M3DropdownMenu>
-      {/* Invisible-in-viewport sign-out button — gives Playwright (and
-          other a11y consumers that prefer role=button over a dropdown
-          menuitem) a reachable affordance without changing the visible
-          UI. Used by tests/access-control/edit-tier.spec.ts:78.
-          Positioned fixed inside the viewport (not off-screen) so
-          Playwright's "scroll into view" actionability gate passes. */}
-      <button
-        type="button"
-        onClick={handleSignOut}
-        className="fixed top-0 left-0 h-px w-px opacity-0 pointer-events-auto"
-        tabIndex={-1}
-        aria-hidden="false"
+      <M3DropdownMenuTrigger
+        className="h-9 w-9"
+        aria-label="User menu"
+        data-testid="user-menu-trigger"
       >
-        Sign out
-      </button>
-      <M3DropdownMenuTrigger className="h-9 w-9">
         <Avatar className="h-8 w-8">
           <AvatarFallback className="text-white text-xs font-medium bg-primary">
             {getInitials(user.name)}
@@ -160,6 +149,7 @@ export function UserMenu({
         <M3DropdownMenuItem
           onSelect={handleSignOut}
           className="text-red-600"
+          data-testid="sign-out-btn"
         >
           <LogOut className="h-5 w-5" />
           Sign Out

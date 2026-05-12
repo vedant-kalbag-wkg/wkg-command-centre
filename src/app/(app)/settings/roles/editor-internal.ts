@@ -86,6 +86,20 @@ function validateRules(rules: RawRule[]): void {
     if (r.fields !== null && r.fields !== undefined && !Array.isArray(r.fields)) {
       throw new Error(`Invalid rule.fields shape: must be string[] or null`);
     }
+    // Block manage:all in custom-role definitions. Without this, an operator
+    // could author a custom role with the same ability surface as the system
+    // 'admin' role (which is reserved via RESERVED_ROLE_NAMES). The reserved-
+    // name guard only protects the *name* — this protects the *grant*.
+    // Plumbing the role kind down here would force RawRule to carry it; the
+    // simpler invariant is that no custom or tier role should ever grant
+    // manage:all. Only the seeded system 'admin' role gets manage:all, and it
+    // gets it via the short-circuit in src/lib/casl/ability.ts (roleKind ===
+    // 'system'), not via a stored rule row.
+    if (r.action === "manage" && r.subject === "all") {
+      throw new Error(
+        "Rule manage:all is reserved for the system admin role and cannot be authored on tier or custom roles.",
+      );
+    }
   }
 }
 

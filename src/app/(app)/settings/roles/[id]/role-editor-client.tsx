@@ -362,6 +362,12 @@ function ConditionsBuilder({
           {jsonMode ? "Switch to form" : "Switch to JSON"}
         </button>
       </div>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        Conditions are stored on the rule but are not yet enforced against
+        resource instances. Per-user access scoping (region, hotel group,
+        location, etc.) is driven by the user&apos;s scope assignments on the
+        user page, not by these conditions.
+      </p>
 
       {jsonMode ? (
         <textarea

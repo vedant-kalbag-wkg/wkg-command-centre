@@ -17,7 +17,7 @@ export default async function UserDetailPage({
 }) {
   const { id } = await params;
   const ctx = await getUserCtx();
-  if (!(ctx.ability.can("manage", "User") || ctx.ability.can("manage", "all"))) {
+  if (!ctx.ability.can("manage", "User")) {
     redirect("/settings");
   }
 

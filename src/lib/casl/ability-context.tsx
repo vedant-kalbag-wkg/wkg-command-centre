@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useMemo, type ReactNode } from "react";
+import { createContext, useMemo, useRef, type ReactNode } from "react";
 import { createMongoAbility, type RawRuleOf } from "@casl/ability";
 import { createContextualCan } from "@casl/react";
 import type { AppAbility } from "./types";
@@ -21,8 +21,16 @@ export function AbilityProvider({
   // array reference. RSC passes a fresh array object on every render even
   // when the rules are unchanged; comparing by JSON string prevents
   // unnecessary ability reconstruction and downstream re-renders.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const rulesKey = useMemo(() => JSON.stringify(rules), [JSON.stringify(rules)]);
+  //
+  // We serialise once per render and cache against a ref so React's
+  // exhaustive-deps check is satisfied without double-serialising in the
+  // dep array.
+  const lastKeyRef = useRef<string>("");
+  const rulesKey = useMemo(() => {
+    const key = JSON.stringify(rules);
+    if (key !== lastKeyRef.current) lastKeyRef.current = key;
+    return lastKeyRef.current;
+  }, [rules]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ability = useMemo(() => createMongoAbility<AppAbility>(rules), [rulesKey]);
   return (

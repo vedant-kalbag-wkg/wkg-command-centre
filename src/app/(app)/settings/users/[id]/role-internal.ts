@@ -133,6 +133,15 @@ export async function _listUserRolesForActor(
 }
 
 // ── _assignRoleForActor ───────────────────────────────────────────────
+//
+// Scope semantics are ADD-ONLY: the `scopes` array is inserted via
+// onConflictDoNothing keyed on (user_id, role_id, dimension_type, dimension_id),
+// so repeated calls with different scope sets ADD to the user-role's scope
+// list, never replace it. The admin UI's "Assign role" flow always passes
+// `scopes: []` and routes scope changes through ManageScopesDialog +
+// addUserScope/removeUserScope (which delete + insert atomically). Server-
+// side callers (seeders, fixtures, migrations) wanting replace semantics
+// must clear existing rows for (user_id, role_id) themselves before calling.
 export async function _assignRoleForActor(
   db: AnyDb,
   actor: Actor,

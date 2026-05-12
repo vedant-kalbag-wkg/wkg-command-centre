@@ -74,8 +74,9 @@ test.describe("edit tier role — /settings/roles/[id]", () => {
       page.getByRole("status").filter({ hasText: /saved/i }),
     ).toBeVisible();
 
-    // Log out
-    await page.getByRole("button", { name: /sign out|log out/i }).click();
+    // Log out via the user-menu dropdown (avatar trigger → sign-out menuitem).
+    await page.getByTestId("user-menu-trigger").click();
+    await page.getByTestId("sign-out-btn").click();
     await page.waitForURL("**/login");
 
     // Sign in as Ops-IT user and verify the change is reflected
