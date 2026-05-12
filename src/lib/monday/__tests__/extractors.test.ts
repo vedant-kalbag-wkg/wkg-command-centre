@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import type { MondayItem } from "@/lib/monday/client";
 import {
+  extractCountryFromLocation,
   extractLocationValue,
   extractDropdownLabels,
   extractMondayStatusLabel,
@@ -210,6 +211,51 @@ describe("extractLinkedItemId", () => {
       } as MondayItem["column_values"][number] & { linked_item_ids: string[] },
     ]);
     expect(extractLinkedItemId(empty, "link_to_ssm_groups__1")).toBeNull();
+  });
+});
+
+describe("extractCountryFromLocation", () => {
+  it("returns the trailing comma-separated token as the country", () => {
+    const item = makeItem([
+      {
+        id: "location",
+        type: "location",
+        text: "Novotel London Bridge, Southwark Bridge Road, London, UK",
+      },
+    ]);
+    expect(extractCountryFromLocation(item)).toBe("UK");
+  });
+
+  it("returns the only token when the address has no commas", () => {
+    const item = makeItem([
+      { id: "location", type: "location", text: "UK" },
+    ]);
+    expect(extractCountryFromLocation(item)).toBe("UK");
+  });
+
+  it("returns null when the column is absent or has empty text", () => {
+    expect(extractCountryFromLocation(makeItem([]))).toBeNull();
+    expect(
+      extractCountryFromLocation(
+        makeItem([{ id: "location", type: "location", text: "" }]),
+      ),
+    ).toBeNull();
+    expect(
+      extractCountryFromLocation(
+        makeItem([{ id: "location", type: "location", text: "   " }]),
+      ),
+    ).toBeNull();
+  });
+
+  it("trims whitespace around tokens and skips empty segments", () => {
+    const item = makeItem([
+      {
+        id: "location",
+        type: "location",
+        text: "  Some Hotel ,  Street  ,  Germany  ",
+      },
+    ]);
+    expect(extractCountryFromLocation(item)).toBe("Germany");
   });
 });
 

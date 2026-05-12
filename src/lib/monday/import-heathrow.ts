@@ -29,6 +29,7 @@ import type { db as defaultDb } from "@/db";
 import { kioskAssignments, kiosks, locations } from "@/db/schema";
 import { iterateBoardItems, type MondayItem } from "@/lib/monday/client";
 import {
+  extractCountryFromLocation,
   extractLocationValue,
   extractMondayDate,
   extractMondayNumber,
@@ -139,14 +140,6 @@ function extractCustomerCode(item: MondayItem): string | null {
   const cv = item.column_values.find((c) => c.id === "text4");
   const text = cv?.text?.trim();
   return text && text.length > 0 ? text : null;
-}
-
-function extractCountryFromLocation(item: MondayItem): string | null {
-  const cv = item.column_values.find((c) => c.id === "location");
-  const text = cv?.text?.trim();
-  if (!text) return null;
-  const tokens = text.split(",").map((s) => s.trim()).filter(Boolean);
-  return tokens.length > 0 ? tokens[tokens.length - 1] : null;
 }
 
 export async function runHeathrowImport(
@@ -279,10 +272,8 @@ export async function runHeathrowImport(
           isNew: sql<boolean>`xmax = 0`,
         });
 
-      let locationId: string;
-      const row = inserted[0];
-      locationId = row.id;
-      if (row.isNew) {
+      const locationId = inserted[0].id;
+      if (inserted[0].isNew) {
         if (isPlaceholder) placeholderLocationsCreated++;
         else liveLocationsInserted++;
         if (customerCode !== null) customerCodesPopulated++;

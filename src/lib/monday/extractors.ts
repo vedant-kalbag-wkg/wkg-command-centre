@@ -134,3 +134,23 @@ export function extractMondayText(
 ): string | null {
   return trimToNull(findColumn(item, columnId)?.text);
 }
+
+/**
+ * Pull the trailing country token from a Monday LocationValue's `text`, e.g.
+ * "Novotel London Bridge, Southwark Bridge Road, London, UK" → "UK". Used as
+ * a region-resolution fallback when the group title doesn't match an existing
+ * pattern. Returns the last comma-separated token, trimmed; single-token text
+ * returns that token; empty / missing column returns null.
+ */
+export function extractCountryFromLocation(
+  item: MondayItem,
+  columnId = "location",
+): string | null {
+  const text = trimToNull(findColumn(item, columnId)?.text);
+  if (!text) return null;
+  const tokens = text
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return tokens.length > 0 ? tokens[tokens.length - 1] : null;
+}

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeRestorePlan,
   DEFAULT_ALLOWLIST,
+  parseArgs,
   type SnapshotRow,
   type CurrentRow,
 } from "../../scripts/restore-locations-operator-edits";
@@ -172,6 +173,43 @@ describe("computeRestorePlan", () => {
     expect(bd?.snapshotValue).toEqual({ bank: "Acme", acct: "1234" });
   });
 
+  it("matches by (name, primary_region_id) without false positives across boundary collisions", () => {
+    // NUL-byte separator on the byNameRegion key eliminates a theoretical
+    // collision between rows whose `name + primary_region_id` concatenations
+    // alias each other. With the previous joinless key `${name}${region}`,
+    // a row {name:"Foo", region:"1abcd"} and {name:"Foo1", region:"abcd"} both
+    // map to "Foo1abcd". The NUL-byte form keeps them distinct so the
+    // snapshot row matches the correct current row.
+    const snapshot = [
+      snap({
+        id: "snap-1",
+        name: "Foo",
+        primary_region_id: "1abcd",
+        monday_item_id: null,
+        notes: "for Foo",
+      }),
+    ];
+    const current = [
+      curr({
+        id: "curr-foo1-abcd",
+        name: "Foo1",
+        primary_region_id: "abcd",
+        monday_item_id: null,
+        notes: null,
+      }),
+      curr({
+        id: "curr-foo-1abcd",
+        name: "Foo",
+        primary_region_id: "1abcd",
+        monday_item_id: null,
+        notes: null,
+      }),
+    ];
+    const result = computeRestorePlan(snapshot, current, DEFAULT_ALLOWLIST);
+    expect(result.updates).toHaveLength(1);
+    expect(result.updates[0].currentId).toBe("curr-foo-1abcd");
+  });
+
   it("aggregates per-field counts in the summary", () => {
     const snapshot = [
       snap({ id: "s1", monday_item_id: "m1", notes: "a" }),
@@ -188,5 +226,43 @@ describe("computeRestorePlan", () => {
     expect(result.summary.rowsWithRestorableFields).toBe(3);
     expect(result.summary.perField.notes).toBe(2);
     expect(result.summary.perField.hardware_assets).toBe(1);
+  });
+});
+
+describe("parseArgs", () => {
+  // parseArgs reads argv-shaped string[], so we mimic the
+  // `["node", "script.ts", ...args]` shape Node hands main().
+  function argv(...args: string[]): string[] {
+    return ["node", "scripts/restore-locations-operator-edits.ts", ...args];
+  }
+
+  it("accepts a custom --field-allowlist where every field is in DEFAULT_ALLOWLIST", () => {
+    const parsed = parseArgs(
+      argv(
+        "--snapshot=/tmp/some.json",
+        "--field-allowlist=notes,address,banking_details",
+      ),
+    );
+    expect(parsed.snapshotPath).toBe("/tmp/some.json");
+    expect(parsed.apply).toBe(false);
+    expect(parsed.allowlist).toEqual(["notes", "address", "banking_details"]);
+  });
+
+  it("throws when --field-allowlist contains a field not in DEFAULT_ALLOWLIST", () => {
+    expect(() =>
+      parseArgs(
+        argv(
+          "--snapshot=/tmp/some.json",
+          "--field-allowlist=notes,not_a_real_column,address",
+        ),
+      ),
+    ).toThrow(
+      /--field-allowlist contains fields not in DEFAULT_ALLOWLIST: not_a_real_column/,
+    );
+  });
+
+  it("defaults to DEFAULT_ALLOWLIST when --field-allowlist is omitted", () => {
+    const parsed = parseArgs(argv("--snapshot=/tmp/some.json"));
+    expect(parsed.allowlist).toBe(DEFAULT_ALLOWLIST);
   });
 });

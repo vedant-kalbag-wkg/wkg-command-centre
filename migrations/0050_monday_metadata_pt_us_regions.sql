@@ -14,6 +14,21 @@
 --   • operators can reassign existing locations to PT or US via the region
 --     picker in /settings/outlet-types (same surface as AU in 0025).
 --
+-- `azure_code` is INTENTIONALLY LEFT NULL here. Azure sales ETL resolves a
+-- region from each blob path's leading prefix via `regions.azure_code`, so a
+-- non-NULL value would silently divert future Azure feeds. We don't currently
+-- have Azure sales feeds for PT or US, and we don't know the canonical Azure
+-- prefix for either market — guessing risks routing sales into the wrong
+-- region. When Azure feeds land for PT or US, an operator runs (e.g.):
+--
+--   UPDATE regions SET azure_code = 'PT' WHERE code = 'PT';
+--   UPDATE regions SET azure_code = 'US' WHERE code = 'US';
+--
+-- via the regions admin path (or a one-off SQL) with the actual canonical
+-- prefix used by the Azure container layout for that market. Until then,
+-- Azure ETL keeps treating PT/US sales as LOCATION_NEEDED, which is the
+-- correct safe-default behaviour.
+--
 -- Idempotent: ON CONFLICT DO NOTHING makes this safe to re-run on
 -- environments where PT or US was inserted manually before this migration.
 

@@ -133,7 +133,10 @@ export function computeRestorePlan(
   const byNameRegion = new Map<string, CurrentRow>();
   for (const c of currentRows) {
     if (c.monday_item_id) byMondayId.set(c.monday_item_id, c);
-    byNameRegion.set(`${c.name}${c.primary_region_id}`, c);
+    // NUL-byte separator eliminates a theoretical collision between rows
+    // whose `name + primary_region_id` concatenations alias each other
+    // (e.g. name="Foo " + region="bar..." vs name="Foo" + region=" bar...").
+    byNameRegion.set(`${c.name}\x00${c.primary_region_id}`, c);
   }
 
   const updates: UpdateAction[] = [];
@@ -150,7 +153,7 @@ export function computeRestorePlan(
       if (match) matchedBy = "monday_item_id";
     }
     if (!match) {
-      match = byNameRegion.get(`${s.name}${s.primary_region_id}`);
+      match = byNameRegion.get(`${s.name}\x00${s.primary_region_id}`);
       if (match) matchedBy = "name+region";
     }
 
@@ -195,7 +198,7 @@ export function computeRestorePlan(
 // ────────────────────────────────────────────────────────────────────────────
 // CLI / I/O — runs only when invoked directly.
 // ────────────────────────────────────────────────────────────────────────────
-function parseArgs(argv: string[]): {
+export function parseArgs(argv: string[]): {
   snapshotPath: string;
   apply: boolean;
   allowlist: readonly string[];
@@ -210,11 +213,23 @@ function parseArgs(argv: string[]): {
     } else if (arg.startsWith("--snapshot=")) {
       snapshotPath = arg.slice("--snapshot=".length);
     } else if (arg.startsWith("--field-allowlist=")) {
-      allowlist = arg
+      const parsed = arg
         .slice("--field-allowlist=".length)
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+      // Validate at parse time — applyPlan's safety net (refusing to UPDATE
+      // a non-allowlisted field name) is a last-resort guard; the operator
+      // should see the bad input rejected up-front with a clear message.
+      const invalidFields = parsed.filter(
+        (f) => !DEFAULT_ALLOWLIST.includes(f),
+      );
+      if (invalidFields.length > 0) {
+        throw new Error(
+          `--field-allowlist contains fields not in DEFAULT_ALLOWLIST: ${invalidFields.join(", ")}`,
+        );
+      }
+      allowlist = parsed;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }

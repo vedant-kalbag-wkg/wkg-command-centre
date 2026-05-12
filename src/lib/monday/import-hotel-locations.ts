@@ -38,6 +38,7 @@ import {
 } from "@/db/schema";
 import { iterateBoardItems, type MondayItem } from "@/lib/monday/client";
 import {
+  extractCountryFromLocation,
   extractDropdownLabels,
   extractLinkedItemId,
   extractLocationValue,
@@ -146,18 +147,6 @@ function isPendingGroup(groupTitle: string): boolean {
  */
 export const PLACEHOLDER_OUTLET_PREFIX = "TODO-";
 
-// Pull the trailing country from a Monday LocationValue's `text` field, e.g.
-// "Novotel London Bridge, Southwark Bridge Road, London, UK" → "UK". Returns
-// the last comma-separated token, trimmed. Used as a region-resolution fallback
-// when the group title doesn't match an existing pattern.
-function extractCountryFromLocation(item: MondayItem): string | null {
-  const cv = item.column_values.find((c) => c.id === "location");
-  const text = cv?.text?.trim();
-  if (!text) return null;
-  const tokens = text.split(",").map((s) => s.trim()).filter(Boolean);
-  return tokens.length > 0 ? tokens[tokens.length - 1] : null;
-}
-
 export type HotelLocationImportResult = {
   locationsInserted: number;
   locationsSkippedExisting: number;
@@ -196,12 +185,17 @@ export type HotelLocationImportResult = {
    * runbook hands this to `runAssetsImport` so each Asset's
    * `link_to_hotel_ssms` can be resolved to a real location id. */
   hotelMondayIdToLocationId: Map<string, string>;
-  /** Metadata-enrichment counters (post Phase-07-06 follow-up). */
-  /** Number of rows where the Monday LocationValue.text landed in
-   * `locations.address`. */
+  /** Metadata-enrichment counters (post Phase-07-06 follow-up). Pre-insert /
+   * "Monday-side coverage" semantics — counts every item whose Monday
+   * columns yielded a usable value, including items that hit the
+   * COALESCE-update path on conflict. Answers "how many items did Monday
+   * have data for?" — for the DB-side INSERT/skip split see
+   * `locationsInserted` / `locationsSkippedExisting`. */
+  /** Number of items whose Monday LocationValue.text was non-empty (counted
+   * pre-insert; mirrors `kioskConfigGroupsResolved` semantics). */
   addressesWritten: number;
-  /** Number of items whose `group0` dropdown yielded at least one label that
-   * was resolved to a `hotel_groups` row (existing or upserted). */
+  /** Number of items whose `group0` dropdown yielded at least one label
+   * (counted pre-insert; mirrors `kioskConfigGroupsResolved` semantics). */
   hotelGroupsResolved: number;
   /** Number of items whose SSM-Group BoardRelation pointed to an item id
    * that the supplied lookup map didn't cover (typically because the
@@ -435,6 +429,17 @@ export async function runHotelLocationImport(
           }
         }
 
+        // Pre-insert / "Monday-side coverage" counters: count every item
+        // whose Monday columns yielded usable values, not just the items
+        // that produced fresh INSERTs. Mirrors the per-item semantics
+        // already used by kioskConfigGroupsResolved / *Unresolved above.
+        // Answers "how many items did Monday have data for?" rather than
+        // "how many rows did we change?" — the reseed already has
+        // locationsInserted / locationsSkippedExisting for the DB-side
+        // INSERT/COALESCE-update split.
+        if (locationValue.address !== null) addressesWritten++;
+        if (hotelGroupLabels.length > 0) hotelGroupsResolved++;
+
         // One location per hotel (per the v2 data-model rule "one location
         // per hotel, N kiosks via kiosk_assignments"). customer_code is
         // populated when present on mirror3__1; placeholders keep it NULL.
@@ -657,8 +662,6 @@ export async function runHotelLocationImport(
               locationsInserted++;
             }
             if (landedCustomerCode !== null) customerCodesPopulated++;
-            if (locationValue.address !== null) addressesWritten++;
-            if (hotelGroupLabels.length > 0) hotelGroupsResolved++;
           } else {
             locationsSkippedExisting++;
           }
